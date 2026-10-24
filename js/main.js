@@ -1,5 +1,5 @@
 import { Game, POWER_INFO } from './engine.js?v=3';
-import { MODES, LEVELS, COLS, ROWS } from './levels.js?v=3';
+import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS } from './levels.js?v=3';
 import { audio } from './audio.js?v=3';
 import { attachInput } from './input.js?v=3';
 
@@ -22,7 +22,7 @@ function comprobarPiezas() {
   return true;
 }
 
-const ORDEN = ['campaign', 'classic', 'frenzy', 'portals', 'hunter'];
+const ORDEN = MODE_ORDER;
 const CLAVE = 'snake.v2';
 const CLAVE_ANTIGUA = 'snake.frenzy.v1';
 const COLUMNAS_NIVELES = 4;
@@ -32,15 +32,14 @@ const el = {
   canvas: $('#board'),
   overlay: $('#overlay'),
   prompt: $('#prompt'),
-  hud: $('#hud'),
   meta: $('#hud-meta'),
+  timer: $('#hud-timer'),
   score: $('#hud-score'),
   best: $('#hud-best'),
   mult: $('#hud-mult'),
   chain: $('#chain-bar'),
   effects: $('#effects'),
   mute: $('#btn-mute'),
-  full: $('#btn-full'),
   pause: $('#btn-pause'),
   hint: $('#hint'),
   avisoFoco: $('#aviso-foco'),
@@ -52,7 +51,7 @@ const pincel = el.canvas.getContext('2d', { alpha: false });
 
 function nuevoRegistro() {
   return {
-    best: { classic: 0, frenzy: 0, portals: 0, hunter: 0 },
+    best: { classic: 0, frenzy: 0, portals: 0, hunter: 0, blind: 0, clock: 0, wall: 0 },
     campaign: { unlocked: 1, best: {} },
     sound: true,
     crt: true,
@@ -157,10 +156,11 @@ function ajustarLienzo() {
   // tiramos de la ventana para no quedarnos con un tablero de 0 px
   const anchoCaja = caja.width || window.innerWidth || 480;
   const altoCaja = caja.height || Math.max(240, (window.innerHeight || 720) * 0.6);
-  const lado = Math.max(140, Math.min(anchoCaja, altoCaja) - 2);
-  const celda = Math.max(8, Math.floor(lado / Math.max(COLS, ROWS)));
-  const ancho = celda * COLS;
-  const alto = celda * ROWS;
+  // el tablero ocupa todo el hueco: celdas fraccionarias, sin bordes muertos
+  const lado = Math.max(160, Math.min(anchoCaja, altoCaja) - 2);
+  const celda = lado / Math.max(COLS, ROWS);
+  const ancho = lado;
+  const alto = lado;
 
   el.canvas.style.width = `${ancho}px`;
   el.canvas.style.height = `${alto}px`;
@@ -206,7 +206,7 @@ function pantalla(nombre) {
 }
 
 const PISTAS = {
-  home: '↑↓ elegir · enter jugar · M sonido',
+  home: '↑↓ elegir · ←→ saltar de grupo · enter jugar',
   levels: 'flechas nav · enter jugar · esc menú',
   help: 'esc volver',
   playing: '',
@@ -228,10 +228,9 @@ function actualizarPista() {
 /* ---------------------------------------------------------- marcador */
 
 function actualizarMarcador() {
-  el.hud.hidden = false;
-
   const juego = app.juego;
   if (!juego) {
+    if (el.timer) el.timer.hidden = true;
     actualizarEfectos(null);
     return;
   }
@@ -245,6 +244,16 @@ function actualizarMarcador() {
     meta = `${dosDigitos(app.nivel + 1)} ${nivel.name.toLowerCase()} · ${Math.min(juego.fruits, nivel.goal)}/${nivel.goal}`;
   } else {
     meta = `${MODES[app.modo].name.toLowerCase()} · ${juego.fruits} frutas`;
+  }
+  if (el.timer) {
+    const conReloj = !!(juego.cfg && juego.cfg.timer);
+    el.timer.hidden = !conReloj;
+    if (conReloj) {
+      const segundos = Math.ceil(juego.timeLeft / 1000);
+      const texto = `${segundos} s`;
+      if (el.timer.textContent !== texto) el.timer.textContent = texto;
+      el.timer.classList.toggle('apurado', juego.timeLeft < 8000);
+    }
   }
   if (el.meta.textContent !== meta) el.meta.textContent = meta;
 
@@ -303,6 +312,17 @@ function valorDerecha(modo) {
   return mejor ? String(mejor) : '—';
 }
 
+// izquierda y derecha saltan de grupo
+function grupoDe(modo) {
+  return GROUPS.findIndex((g) => g.modes.includes(modo));
+}
+
+function primerModoDelGrupo(indice) {
+  const total = GROUPS.length;
+  const grupo = GROUPS[((indice % total) + total) % total];
+  return ORDEN.indexOf(grupo.modes[0]);
+}
+
 function nombreModo(modo) {
   if (modo === 'campaign') return 'campaña';
   return MODES[modo].name.toLowerCase();
@@ -321,19 +341,24 @@ function mostrarInicio() {
   app.menuSel = 0;
   app.demoModo = null;
 
-  const filas = ORDEN.map((modo, i) => {
-    return `<button class="row" type="button" data-modo="${modo}" data-i="${i}">
-      <span class="row-idx">${dosDigitos(i + 1)}</span>
-      <span class="row-name">${nombreModo(modo)}<small>${descripcion(modo)}</small></span>
-      <span class="row-right">${valorDerecha(modo)}</span>
-    </button>`;
+  let indice = 0;
+  const filas = GROUPS.map((grupo) => {
+    const botones = grupo.modes.map((modo) => {
+      const i = indice++;
+      return `<button class="row" type="button" data-modo="${modo}" data-i="${i}">
+        <span class="row-idx">${dosDigitos(i + 1)}</span>
+        <span class="row-name">${nombreModo(modo)}<small>${descripcion(modo)}</small></span>
+        <span class="row-right">${valorDerecha(modo)}</span>
+      </button>`;
+    }).join('');
+    return `<p class="grupo">${grupo.name}</p>${botones}`;
   }).join('');
 
   ponerOverlay(`<div class="panel inicio">
     <div class="inicio-texto">
       <header class="inicio-cabeza">
         <h1>snake<span class="dot">.</span></h1>
-        <p class="kicker">rejilla 20×20 · seis formas de morir</p>
+        <p class="kicker">rejilla 20×20 · ${ORDEN.length} modos y una campaña</p>
       </header>
       <nav class="filas">${filas}</nav>
       <p class="pie">
@@ -353,6 +378,7 @@ function mostrarInicio() {
 
   el.score.textContent = '—';
   el.meta.textContent = 'elige un modo';
+  if (el.timer) el.timer.hidden = true;
   el.best.textContent = '';
   el.mult.textContent = '';
   el.chain.style.width = '0%';
@@ -389,6 +415,7 @@ function mostrarNiveles() {
   pintarNiveles();
   el.score.textContent = '—';
   el.meta.textContent = 'campaña';
+  if (el.timer) el.timer.hidden = true;
   el.best.textContent = '';
   el.mult.textContent = '';
   el.chain.style.width = '0%';
@@ -506,6 +533,7 @@ function mostrarAyuda() {
         <tr><th>turbo</th><td>espacio o mayús · toca el tablero</td></tr>
         <tr><th>pausa</th><td>P o esc</td></tr>
         <tr><th>reiniciar</th><td>R</td></tr>
+        <tr><th>menú</th><td>↑↓ elegir · ←→ saltar de grupo</td></tr>
         <tr><th>sonido</th><td>M</td></tr>
         <tr><th>mando</th><td>d-pad y sticks · A turbo · start pausa</td></tr>
       </tbody>
@@ -518,6 +546,9 @@ function mostrarAyuda() {
       <li>en cazador hay una serpiente roja: come los puntos azules y se hace más larga</li>
       <li>si te toca cualquier anillo suyo, o su cabeza, pierdes; con el fantasma la atraviesas</li>
       <li>en los portales, entrar por uno te saca por el otro</li>
+      <li>en ciego sólo ves un círculo a tu alrededor</li>
+      <li>en reloj empiezas con 45 segundos y cada fruta te da 2,6 más</li>
+      <li>en muro el mapa se llena de muros cada tres frutas</li>
       <li>al empezar cada partida el mapa se enciende desde tu cabeza</li>
     </ul>
     <p class="pie"><span>osciladores y ruido en directo · sin ficheros de audio</span></p>
@@ -585,10 +616,13 @@ function eventosJuego(tipo, datos) {
     case 'hunterEat':
       audio.play('hunterEat');
       break;
+    case 'wall':
+      audio.play('wall');
+      break;
     case 'die':
       audio.play('death');
       guardarMarca();
-      app.temporizador = setTimeout(mostrarFin, 430);
+      app.temporizador = setTimeout(mostrarFin, 900);
       break;
     case 'clear':
       audio.play('level');
@@ -747,6 +781,8 @@ function accion(nombre) {
   if (app.pantalla === 'home') {
     if (nombre === 'up') seleccionarModo(app.menuSel - 1);
     else if (nombre === 'down') seleccionarModo(app.menuSel + 1);
+    else if (nombre === 'right') seleccionarModo(primerModoDelGrupo(grupoDe(ORDEN[app.menuSel]) + 1));
+    else if (nombre === 'left') seleccionarModo(primerModoDelGrupo(grupoDe(ORDEN[app.menuSel]) - 1));
     else if (nombre === 'confirm') {
       audio.play('ui');
       elegirModo(ORDEN[app.menuSel]);
@@ -846,14 +882,14 @@ function ejecutar(nombre) {
 
 function borrarRecords() {
   if (!window.confirm('¿borrar récords y progreso?')) return;
-  guardado.best = { classic: 0, frenzy: 0, portals: 0, hunter: 0 };
+  guardado.best = { classic: 0, frenzy: 0, portals: 0, hunter: 0, blind: 0, clock: 0, wall: 0 };
   guardado.campaign = { unlocked: 1, best: {} };
   guardar();
   audio.play('ui');
   mostrarInicio();
 }
 
-/* ---------------------------------------------------------- sonido y pantalla */
+/* ---------------------------------------------------------- sonido */
 
 function aplicarSonido() {
   audio.set(guardado.sound);
@@ -870,18 +906,6 @@ function alternarSonido() {
   if (guardado.sound) audio.play('ui');
 }
 
-function pantallaCompleta() {
-  const doc = document.documentElement;
-  const pedir = doc.requestFullscreen || doc.webkitRequestFullscreen;
-  const salir = document.exitFullscreen || document.webkitExitFullscreen;
-  if (!pedir) {
-    el.full.disabled = true;
-    return;
-  }
-  if (doc.fullscreenElement) salir.call(document).catch(() => {});
-  else pedir.call(doc).catch(() => {});
-}
-
 /* ---------------------------------------------------------- demo del menú */
 
 function configDemo(modo) {
@@ -891,6 +915,8 @@ function configDemo(modo) {
   }
   const base = { ...MODES[modo] };
   base.goal = null;
+  // la vista previa no puede morir de reloj ni cegarse del todo
+  if (base.timer) base.timer = 600000;
   return base;
 }
 
@@ -996,15 +1022,6 @@ setTimeout(() => {
   if (!focoResuelto && el.avisoFoco && incrustado) el.avisoFoco.hidden = false;
 }, 1200);
 
-el.full.addEventListener('click', () => {
-  soltarFoco();
-  pantallaCompleta();
-});
-
-document.addEventListener('fullscreenchange', () => {
-  el.full.classList.toggle('apagado', !!document.fullscreenElement);
-});
-
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && app.pantalla === 'playing') pausar();
 });
@@ -1064,5 +1081,5 @@ try {
 }
 
 if (location.hash === '#debug') {
-  window.__snake = { app, guardado, accion, empezarPartida, mostrarInicio, crearDemo };
+  window.__snake = { app, guardado, accion, empezarPartida, mostrarInicio, crearDemo, mostrarFin };
 }

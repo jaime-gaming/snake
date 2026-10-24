@@ -105,6 +105,10 @@ const SONIDOS = {
   level() {
     [523, 659, 784, 1046].forEach((f, i) => tono(f, 0.12, { vol: 0.2, delay: i * 0.075 }));
   },
+  wall() {
+    tono(150, 0.09, { tipo: 'square', vol: 0.12, fin: 90 });
+    ruido(0.12, { desde: 900, hasta: 200, vol: 0.18 });
+  },
   hunterEat() {
     tono(300, 0.06, { tipo: 'triangle', vol: 0.14, fin: 220 });
   },

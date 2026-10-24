@@ -17,7 +17,7 @@ export class Game {
     this.onEvent = onEvent;
     this.cols = cfg.cols;
     this.rows = cfg.rows;
-    this.walls = cfg.walls || [];
+    this.walls = (cfg.walls || []).slice();
     this.reset();
   }
 
@@ -45,7 +45,11 @@ export class Game {
     this.fruits = 0;
     this.chain = 0;
     this.chainTimer = 0;
-    this.chainWindow = cfg.chainWindow || 2800;
+    this.chainWindow = cfg.chainWindow || 3200;
+    this.timeLeft = cfg.timer || 0;
+    this.hitStop = 0;
+    this.crash = null;
+    this.wallTicks = 0;
     this.fx = { ghost: 0, slow: 0 };
     this.bonus = null;
     this.power = null;
@@ -154,6 +158,12 @@ export class Game {
   update(dtRaw) {
     const dt = Math.min(dtRaw, 120);
     this.time += dt;
+    // golpe congelado: medio segundo de impacto antes de que corran las partículas
+    if (this.hitStop > 0) {
+      this.hitStop = Math.max(0, this.hitStop - dt);
+      this.updateFx(dt * 0.25);
+      return;
+    }
     for (const k of ['ghost', 'slow']) {
       if (this.fx[k] > 0) this.fx[k] = Math.max(0, this.fx[k] - dt);
     }
@@ -177,6 +187,14 @@ export class Game {
         this.power.ttl -= dt;
         if (this.power.ttl <= 0) this.power = null;
       }
+      if (cfg.timer) {
+        this.timeLeft = Math.max(0, this.timeLeft - dt);
+        if (this.timeLeft <= 0) {
+          this.die('tiempo', this.body[0].x, this.body[0].y);
+          this.updateFx(dt);
+          return;
+        }
+      }
       this.acc += dt;
       let guard = 0;
       while (this.state === 'running' && this.acc >= this.interval() && guard++ < 8) {
@@ -189,7 +207,8 @@ export class Game {
 
   updateFx(dt) {
     const k = dt / 1000;
-    if (this.reveal < 1) this.reveal = Math.min(1, this.reveal + dt / 620);
+    if (this.reveal < 1) this.reveal = Math.min(1, this.reveal + dt / 1000);
+    if (this.crash) this.crash.t = Math.min(700, this.crash.t + dt);
     this.shake = Math.max(0, this.shake - dt * 0.05);
     this.flash = Math.max(0, this.flash - dt * 0.004);
     for (let i = this.particles.length - 1; i >= 0; i--) {
@@ -278,6 +297,8 @@ export class Game {
     this.speed = Math.max(cfg.minSpeed, this.speed - (cfg.accelPerFood || 0));
     this.shake = 2.6;
     this.burst(food.x + 0.5, food.y + 0.5, 10, '#ff2b2b', 7);
+    if (cfg.timePerFood) this.timeLeft = Math.min((cfg.timer || 0) * 2, this.timeLeft + cfg.timePerFood);
+    if (cfg.spawnWalls && cfg.wallEvery && this.fruits % cfg.wallEvery === 0) this.raiseWall();
     this.emit('eat', { chain: this.chain, multiplier: this.multiplier });
     this.spawnFood();
     if (cfg.bonusEvery && this.fruits % cfg.bonusEvery === 0) this.spawnBonus();
@@ -323,8 +344,17 @@ export class Game {
     if (this.state !== 'running') return;
     this.state = 'dead';
     this.turbo = false;
-    this.shake = 12;
-    this.burst((x ?? 0) + 0.5, (y ?? 0) + 0.5, 26, '#ffffff', 11);
+    this.shake = 16;
+    this.flash = 1.4;
+    this.hitStop = 160;
+    const cx = (x ?? 0) + 0.5;
+    const cy = (y ?? 0) + 0.5;
+    this.crash = { x: cx, y: cy, t: 0, reason };
+    this.burst(cx, cy, 26, '#ffffff', 11);
+    // la serpiente se deshace en chispas desde la cola
+    this.body.forEach((c, i) => {
+      if (i % 2 === 0) this.burst(c.x + 0.5, c.y + 0.5, 3, '#ffffff', 5);
+    });
     this.emit('die', { reason, score: this.score, fruits: this.fruits });
   }
 
@@ -339,26 +369,121 @@ export class Game {
     return set;
   }
 
-  // piloto automático: se usa en la demo del menú y en las pruebas
-  botTurn() {
-    if (this.state !== 'ready' && this.state !== 'running') return;
-    const head = this.body[0];
-    const blocked = this.blockedSet({ omitTail: true });
-    const wrap = !!this.cfg.wrap || this.ghosting;
-    if (this.food) {
-      const step = bfsStep({ start: head, goal: this.food, blocked, cols: this.cols, rows: this.rows, wrap });
-      if (step) {
-        this.setDirection(step.x, step.y);
-        return;
+  portalExit(x, y) {
+    if (!this.portals) return null;
+    for (const p of this.portals) {
+      if (p.a.x === x && p.a.y === y) return p.b;
+      if (p.b.x === x && p.b.y === y) return p.a;
+    }
+    return null;
+  }
+
+  portalLinks() {
+    const enlaces = new Map();
+    if (!this.portals) return enlaces;
+    for (const p of this.portals) {
+      enlaces.set(K(p.a.x, p.a.y), [K(p.b.x, p.b.y)]);
+      enlaces.set(K(p.b.x, p.b.y), [K(p.a.x, p.a.y)]);
+    }
+    return enlaces;
+  }
+
+  // hueco libre alcanzable desde una casilla (con tope para no gastar)
+  spaceFrom(celda, bloqueado, tope = 260) {
+    const visto = new Set([K(celda.x, celda.y)]);
+    const cola = [celda];
+    let cabeza = 0;
+    while (cabeza < cola.length && visto.size < tope) {
+      const c = cola[cabeza++];
+      for (const [dx, dy] of DIRS) {
+        const nx = c.x + dx;
+        const ny = c.y + dy;
+        if (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows) continue;
+        const k = K(nx, ny);
+        if (visto.has(k) || bloqueado.has(k)) continue;
+        visto.add(k);
+        cola.push({ x: nx, y: ny });
       }
     }
+    return visto.size;
+  }
+
+  // piloto automático: demo del menú y pruebas. no es perfecto, pero no se encierra
+  botTurn() {
+    if (this.state !== 'ready' && this.state !== 'running') return;
+    const cabeza = this.body[0];
+    const wrap = !!this.cfg.wrap || this.ghosting;
+    const ocupado = this.blockedSet({ omitTail: true });
+    const haciaComida = this.food
+      ? bfsStep({
+        start: cabeza,
+        goal: this.food,
+        blocked: ocupado,
+        cols: this.cols,
+        rows: this.rows,
+        wrap,
+        links: this.portalLinks(),
+      })
+      : null;
+
+    // memoria corta: no dar vueltas sobre las mismas casillas
+    if (!this.botTrail) this.botTrail = new Map();
+    for (const [k, v] of this.botTrail) this.botTrail.set(k, v - 1);
+    this.botTrail.set(K(cabeza.x, cabeza.y), 14);
+
+    let mejor = null;
+    let mejorPunto = -Infinity;
+
     for (const [dx, dy] of DIRS) {
-      const nx = head.x + dx;
-      const ny = head.y + dy;
-      if (!wrap && (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows)) continue;
-      const k = K((nx + this.cols) % this.cols, (ny + this.rows) % this.rows);
-      if (blocked.has(k)) continue;
       if (dx === -this.dir.x && dy === -this.dir.y) continue;
+      let nx = cabeza.x + dx;
+      let ny = cabeza.y + dy;
+      if (wrap) {
+        nx = (nx + this.cols) % this.cols;
+        ny = (ny + this.rows) % this.rows;
+      } else if (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows) {
+        continue;
+      }
+      if (ocupado.has(K(nx, ny))) continue;
+      // si es un portal, sales por el otro lado: ahí tampoco puede haber nada
+      const salida = this.portalExit(nx, ny);
+      if (salida && ocupado.has(K(salida.x, salida.y))) continue;
+      const destino = salida || { x: nx, y: ny };
+
+      let puntos = 0;
+      if (haciaComida && dx === haciaComida.x && dy === haciaComida.y) puntos += 100;
+      if (this.food) {
+        puntos -= (Math.abs(destino.x - this.food.x) + Math.abs(destino.y - this.food.y)) * 0.6;
+      }
+      // aire: no meterse en un callejón sin salida
+      const espacio = this.spaceFrom(destino, ocupado);
+      puntos += Math.min(espacio, 120) * 1.1;
+      if (espacio <= this.body.length + 1) puntos -= 900;
+      // el cazador: cuanto más lejos, mejor
+      if (this.hunter) {
+        const jefe = this.hunter.body[0];
+        puntos += Math.min(20, Math.abs(destino.x - jefe.x) + Math.abs(destino.y - jefe.y)) * 1.5;
+      }
+      const visto = this.botTrail.get(K(nx, ny));
+      if (visto > 0) puntos -= visto * 7;
+      if (this.cfg.vision) puntos += Math.random() * 2;
+
+      if (puntos > mejorPunto) {
+        mejorPunto = puntos;
+        mejor = { dx, dy };
+      }
+    }
+
+    if (mejor) {
+      this.setDirection(mejor.dx, mejor.dy);
+      return;
+    }
+    // sin salida: cualquier casilla libre
+    for (const [dx, dy] of DIRS) {
+      const nx = cabeza.x + dx;
+      const ny = cabeza.y + dy;
+      if (!wrap && (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows)) continue;
+      if (ocupado.has(K((nx + this.cols) % this.cols, (ny + this.rows) % this.rows))) continue;
       this.setDirection(dx, dy);
       return;
     }
@@ -406,6 +531,23 @@ export class Game {
     this.power = { ...cell, kind, ttl: 9000 };
   }
 
+  raiseWall() {
+    const cabeza = this.body[0];
+    for (let i = 0; i < 80; i++) {
+      const c = this.freeCell(1);
+      if (!c) return;
+      const lejos = Math.abs(c.x - cabeza.x) + Math.abs(c.y - cabeza.y) >= 5;
+      const hueco = DIRS.some(([dx, dy]) => !this.wallSet.has(K(c.x + dx, c.y + dy)));
+      if (!lejos || !hueco) continue;
+      this.walls.push([c.x, c.y]);
+      this.wallSet.add(K(c.x, c.y));
+      this.burst(c.x + 0.5, c.y + 0.5, 8, 'rgba(255,255,255,0.8)', 4);
+      this.shake = 2;
+      this.emit('wall', { x: c.x, y: c.y });
+      return;
+    }
+  }
+
   placePortals() {
     const a = this.freeCell(2);
     if (!a) return;
@@ -413,7 +555,9 @@ export class Game {
     for (let i = 0; i < 60; i++) {
       const c = this.freeCell(2);
       if (!c) break;
-      if (Math.abs(c.x - a.x) + Math.abs(c.y - a.y) >= 6) {
+      const lejos = Math.abs(c.x - a.x) + Math.abs(c.y - a.y) >= 9;
+      const estorba = Math.abs(c.x - this.body[0].x) + Math.abs(c.y - this.body[0].y) <= 2;
+      if (lejos && !estorba) {
         b = c;
         break;
       }
@@ -479,76 +623,137 @@ export class Game {
     if (sitio) this.pellets.push(sitio);
   }
 
+  // ritmo del cazador: acelera cuando ya es largo y lo tiene cerca
+  hunterCadence() {
+    const h = this.hunter;
+    if (!h) return 2;
+    const cabeza = this.body[0];
+    const jefe = h.body[0];
+    const dist = Math.abs(jefe.x - cabeza.x) + Math.abs(jefe.y - cabeza.y);
+    return h.body.length >= 7 && dist <= 3 ? 1 : 2;
+  }
+
+  // a qué va: a comer si es corta, a cortarte el paso si ya es larga
+  hunterTarget() {
+    const h = this.hunter;
+    const cabeza = this.body[0];
+    if (h.body.length >= 7) {
+      let x = cabeza.x;
+      let y = cabeza.y;
+      for (let i = 0; i < 4; i++) {
+        const nx = x + this.dir.x;
+        const ny = y + this.dir.y;
+        if (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows) break;
+        if (this.wallSet.has(K(nx, ny))) break;
+        x = nx;
+        y = ny;
+      }
+      return { x, y };
+    }
+    const jefe = h.body[0];
+    let mejor = null;
+    let cerca = Infinity;
+    for (const p of this.pellets) {
+      const d = Math.abs(p.x - jefe.x) + Math.abs(p.y - jefe.y);
+      if (d < cerca) {
+        cerca = d;
+        mejor = p;
+      }
+    }
+    return mejor || cabeza;
+  }
+
+  // casillas libres que le quedan desde una posición (con tope, para no gastar)
+  hunterSpace(origen, ocupado, tope = 90) {
+    const visto = new Set([K(origen.x, origen.y)]);
+    const cola = [origen];
+    let cabeza = 0;
+    while (cabeza < cola.length && visto.size < tope) {
+      const c = cola[cabeza++];
+      for (const [dx, dy] of DIRS) {
+        const nx = c.x + dx;
+        const ny = c.y + dy;
+        if (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows) continue;
+        const k = K(nx, ny);
+        if (visto.has(k) || ocupado.has(k)) continue;
+        visto.add(k);
+        cola.push({ x: nx, y: ny });
+      }
+    }
+    return visto.size;
+  }
+
   moveHunter() {
     const h = this.hunter;
     if (!h) return;
-    const every = 2;
     this.hunterTick++;
-    if (this.hunterTick % every !== 0) return;
+    if (this.hunterTick % this.hunterCadence() !== 0) return;
 
     h.prev = h.body.map((p) => ({ ...p }));
     const cabeza = h.body[0];
+    const objetivo = this.hunterTarget();
 
-    const ocupado = new Set(this.wallSet);
-    for (let i = 0; i < h.body.length - 1; i++) ocupado.add(K(h.body[i].x, h.body[i].y));
-    for (const s of this.body) ocupado.add(K(s.x, s.y));
+    const ocupadoCuerpo = new Set();
+    for (let i = 0; i < h.body.length - 1; i++) ocupadoCuerpo.add(K(h.body[i].x, h.body[i].y));
+    const bloqueado = new Set([...this.wallSet, ...ocupadoCuerpo]);
+    const cuerpoJugador = new Set(this.body.map((s) => K(s.x, s.y)));
 
-    // primero los puntos azules; si no queda camino, a por el jugador
-    let objetivo = null;
-    let distancia = Infinity;
-    for (const punto of this.pellets) {
-      const d = Math.abs(punto.x - cabeza.x) + Math.abs(punto.y - cabeza.y);
-      if (d < distancia) {
-        distancia = d;
-        objetivo = punto;
-      }
-    }
-    const haciaJugador = objetivo === null;
-    if (!objetivo) objetivo = this.body[0];
-
-    let paso = bfsStep({
+    // por dónde iría si no hubiera trampas: una casilla más cerca del objetivo
+    const ideal = bfsStep({
       start: cabeza,
       goal: objetivo,
-      blocked: ocupado,
+      blocked: bloqueado,
       cols: this.cols,
       rows: this.rows,
       wrap: false,
     });
-    if (!paso && !haciaJugador) {
-      paso = bfsStep({
-        start: cabeza,
-        goal: this.body[0],
-        blocked: ocupado,
-        cols: this.cols,
-        rows: this.rows,
-        wrap: false,
-      });
-    }
 
-    let siguiente = paso ? { x: cabeza.x + paso.x, y: cabeza.y + paso.y } : null;
-    if (!siguiente || ocupado.has(K(siguiente.x, siguiente.y))) {
-      siguiente = null;
-      for (const [dx, dy] of DIRS) {
-        const nx = cabeza.x + dx;
-        const ny = cabeza.y + dy;
-        if (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows) continue;
-        if (ocupado.has(K(nx, ny))) continue;
-        siguiente = { x: nx, y: ny };
-        break;
+    let elegido = null;
+    let mejorPunto = -Infinity;
+
+    for (const [dx, dy] of DIRS) {
+      const nx = cabeza.x + dx;
+      const ny = cabeza.y + dy;
+      if (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows) continue;
+      const k = K(nx, ny);
+      if (bloqueado.has(k)) continue;
+      const reversa = dx === -h.dir.x && dy === -h.dir.y;
+
+      let puntos = 0;
+      // rematar: si pisa al jugador, gana
+      if (cuerpoJugador.has(k)) puntos += 1200;
+      puntos -= (Math.abs(nx - objetivo.x) + Math.abs(ny - objetivo.y)) * 12;
+      if (ideal && dx === ideal.x && dy === ideal.y) puntos += 46;
+      if (reversa) puntos -= 40;
+
+      const ocupadoDestino = new Set([...bloqueado, ...cuerpoJugador]);
+      ocupadoDestino.delete(K(cabeza.x, cabeza.y));
+      const espacio = this.hunterSpace({ x: nx, y: ny }, ocupadoDestino);
+      puntos += Math.min(espacio, 60) * 0.7;
+      if (espacio < 8) puntos -= 300;
+      // no meterse justo al lado de la cabeza del jugador si aún es corta
+      if (Math.abs(nx - this.body[0].x) + Math.abs(ny - this.body[0].y) === 1 && h.body.length < 5) {
+        puntos -= 60;
+      }
+
+      if (puntos > mejorPunto) {
+        mejorPunto = puntos;
+        elegido = { x: nx, y: ny };
       }
     }
-    if (!siguiente) return;
 
-    h.dir = { x: siguiente.x - cabeza.x, y: siguiente.y - cabeza.y };
-    h.body.unshift(siguiente);
+    if (!elegido) return;
+
+    h.dir = { x: elegido.x - cabeza.x, y: elegido.y - cabeza.y };
+    h.body.unshift(elegido);
     if (h.grow > 0) h.grow--;
     else h.body.pop();
 
-    const indice = this.pellets.findIndex((p) => p.x === siguiente.x && p.y === siguiente.y);
+    const indice = this.pellets.findIndex((p) => p.x === elegido.x && p.y === elegido.y);
     if (indice >= 0) {
       this.pellets.splice(indice, 1);
-      if (h.body.length < 18) h.grow += 1;
-      this.burst(siguiente.x + 0.5, siguiente.y + 0.5, 8, '#3d7bff', 5);
+      if (h.body.length < 16) h.grow += 1;
+      this.burst(elegido.x + 0.5, elegido.y + 0.5, 8, '#3d7bff', 5);
       this.spawnPellet();
       this.emit('hunterEat');
     }
@@ -722,6 +927,59 @@ export class Game {
       );
     }
 
+    // ---- luz ----
+    const cabeza = this.body[0];
+    const centroX = ox + (cabeza.x + 0.5) * cell;
+    const centroY = oy + (cabeza.y + 0.5) * cell;
+
+    // sombra: un solo degradado radial sobre el tablero (suave y barato)
+    const sombra = (cx, cy, dentro, fuera, tramos) => {
+      const radioDentro = Math.max(0, dentro) * cell;
+      const radioFuera = Math.max(radioDentro + cell * 0.5, fuera * cell);
+      const g = ctx.createRadialGradient(cx, cy, radioDentro, cx, cy, radioFuera);
+      for (const [parada, alfa] of tramos) {
+        g.addColorStop(parada, `rgba(0,0,0,${alfa})`);
+      }
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, view.width, view.height);
+    };
+
+    if (this.cfg.vision) {
+      // modo ciego: sólo se ve lo que tienes cerca, y la claridad crece al arrancar
+      const radio = this.cfg.vision * (0.35 + 0.65 * this.reveal);
+      sombra(centroX, centroY, radio * 0.6, radio * 1.25, [
+        [0, 0], [0.45, 0], [0.72, 0.72], [1, 0.97],
+      ]);
+      for (let i = 1; i < Math.min(this.body.length, 7); i++) {
+        const tramo = this.body[i];
+        const opaco = clamp(0.42 - i * 0.06, 0, 1);
+        if (opaco < 0.04) continue;
+        sombra(ox + (tramo.x + 0.5) * cell, oy + (tramo.y + 0.5) * cell, cell * 0.4, cell * 2, [
+          [0, 0], [0.5, opaco * 0.5], [1, opaco],
+        ]);
+      }
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(centroX, centroY, radio * cell, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (this.reveal < 1) {
+      // arranque: una onda de luz enciende el tablero desde la cabeza
+      const alcance = 1.2 + this.reveal * 17;
+      sombra(centroX, centroY, alcance, alcance + 3.2, [
+        [0, 0], [0.55, 0.35], [1, 1],
+      ]);
+
+      const filo = Math.sin(Math.PI * Math.min(1, this.reveal * 1.15));
+      if (filo > 0.03) {
+        ctx.strokeStyle = `rgba(255,255,255,${(filo * 0.5).toFixed(3)})`;
+        ctx.lineWidth = Math.max(1.5, cell * 0.06);
+        ctx.beginPath();
+        ctx.arc(centroX, centroY, alcance * cell, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
     const alpha = this.state === 'running' ? clamp(this.acc / this.interval(), 0, 1) : 1;
     const gap = Math.max(1, Math.round(cell * 0.07));
     const ghost = this.ghosting;
@@ -767,40 +1025,30 @@ export class Game {
       ctx.fillRect(0, 0, view.width, view.height);
     }
 
-    // onda de luz: al empezar, cada casilla se enciende al alcanzarla
-    if (this.reveal < 1) {
-      const cabeza = this.body[0];
-      const radio = this.reveal * (this.cols + this.rows) * 0.8;
-      const borde = 1.15;
-      ctx.save();
-      ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
-      for (let y = 0; y < this.rows; y++) {
-        for (let x = 0; x < this.cols; x++) {
-          const dx = x + 0.5 - (cabeza.x + 0.5);
-          const dy = y + 0.5 - (cabeza.y + 0.5);
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          // lo que queda por delante de la onda sigue a oscuras
-          const oscuro = clamp((dist - radio) / borde, 0, 1);
-          if (oscuro <= 0.01) continue;
-          ctx.fillStyle = `rgba(0,0,0,${oscuro})`;
-          ctx.fillRect(
-            Math.round(ox + x * cell),
-            Math.round(oy + y * cell),
-            Math.ceil(cell),
-            Math.ceil(cell),
-          );
-        }
-      }
-      // el frente de la onda deja un filo blanco un instante
-      const filo = clamp(1 - Math.abs(this.reveal - 0.5) * 3.2, 0, 1) * 0.65;
-      if (filo > 0.02) {
-        ctx.strokeStyle = `rgba(255,255,255,${filo})`;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(ox + (cabeza.x + 0.5) * cell, oy + (cabeza.y + 0.5) * cell, Math.max(1, radio * cell), 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      ctx.restore();
+    // ---- impacto: anillo y cruz donde te la pegaste ----
+    if (this.crash) {
+      const c = this.crash;
+      const avance = clamp(c.t / 460, 0, 1);
+      const radio = cell * (0.4 + avance * 3.2);
+      const alpha = 1 - avance;
+      const cx = ox + (c.x + 0.5) * cell;
+      const cy = oy + (c.y + 0.5) * cell;
+      ctx.strokeStyle = `rgba(255,255,255,${(alpha * 0.9).toFixed(3)})`;
+      ctx.lineWidth = Math.max(1, 3 * (1 - avance));
+      ctx.beginPath();
+      ctx.arc(cx, cy, radio, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255,255,255,${(alpha * 0.45).toFixed(3)})`;
+      ctx.lineWidth = 1;
+      const largo = cell * (0.6 + avance * 1.8);
+      ctx.beginPath();
+      ctx.moveTo(cx - largo, cy);
+      ctx.lineTo(cx + largo, cy);
+      ctx.moveTo(cx, cy - largo);
+      ctx.lineTo(cx, cy + largo);
+      ctx.stroke();
+      ctx.fillStyle = `rgba(255,255,255,${(alpha * alpha * 0.85).toFixed(3)})`;
+      ctx.fillRect(cx - cell * 0.18, cy - cell * 0.18, cell * 0.36, cell * 0.36);
     }
   }
 }
