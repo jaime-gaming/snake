@@ -1,4 +1,4 @@
-import { K } from './grid.js';
+import { K } from './grid.js?v=3';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 

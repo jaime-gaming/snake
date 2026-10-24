@@ -3,21 +3,34 @@
 let ctx = null;
 let master = null;
 let noiseBuf = null;
+let roto = false;
 
 function build() {
   if (ctx) return ctx;
-  const AC = window.AudioContext || window.webkitAudioContext;
-  if (!AC) return null;
-  ctx = new AC();
-  master = ctx.createGain();
-  master.gain.value = audio.enabled ? 0.15 : 0;
-  master.connect(ctx.destination);
+  if (roto) return null;
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) {
+      roto = true;
+      return null;
+    }
+    ctx = new AC();
+    master = ctx.createGain();
+    master.gain.value = audio.enabled ? 0.15 : 0;
+    master.connect(ctx.destination);
 
-  const len = Math.floor(ctx.sampleRate * 0.3);
-  noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
-  const data = noiseBuf.getChannelData(0);
-  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
-  return ctx;
+    const len = Math.floor(ctx.sampleRate * 0.3);
+    noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = noiseBuf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    return ctx;
+  } catch (err) {
+    // sin audio se juega igual
+    roto = true;
+    ctx = null;
+    master = null;
+    return null;
+  }
 }
 
 function tono(freq, dur, opts = {}) {
@@ -107,8 +120,12 @@ export const audio = {
   enabled: true,
 
   unlock() {
-    const c = build();
-    if (c && c.state === 'suspended') c.resume();
+    try {
+      const c = build();
+      if (c && c.state === 'suspended') c.resume().catch(() => {});
+    } catch (err) {
+      /* seguimos sin sonido */
+    }
   },
 
   set(on) {
@@ -123,8 +140,12 @@ export const audio = {
 
   play(nombre, datos) {
     if (!this.enabled) return;
-    if (!build()) return;
-    const fn = SONIDOS[nombre];
-    if (fn) fn(datos || {});
+    try {
+      if (!build()) return;
+      const fn = SONIDOS[nombre];
+      if (fn) fn(datos || {});
+    } catch (err) {
+      /* un sonido que falla no puede parar el juego */
+    }
   },
 };

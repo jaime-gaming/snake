@@ -1,4 +1,4 @@
-name: Deploy a GitHub Pages
+name: publicar en github pages
 
 on:
   push:
@@ -15,7 +15,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  comprobar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: snake.js está al día con js/
+        run: node tools/build.mjs --check
+      - name: comprobaciones del motor
+        run: node tools/check.mjs
+
+  publicar:
+    needs: comprobar
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -23,11 +36,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Preparar el sitio
+      - name: preparar el sitio
         run: |
           mkdir -p _site
-          cp index.html styles.css _site/
-          cp -r js _site/js
+          cp index.html styles.css snake.js _site/
 
       - uses: actions/configure-pages@v5
 

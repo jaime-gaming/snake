@@ -3,16 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Cache-Control" content="no-store">
 <meta name="theme-color" content="#000000">
-<meta name="description" content="Snake de rejilla: campaña de 12 niveles, clásico, frenesí, portales, cazador y duelo a dos mandos.">
+<meta name="description" content="Snake de rejilla: campaña de 12 niveles, clásico, frenesí, portales, cazador y duelo a dos.">
 <title>snake</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Crect x='2' y='7' width='4' height='4' fill='%23fff'/%3E%3Crect x='6' y='7' width='4' height='4' fill='%23fff'/%3E%3Crect x='10' y='7' width='2' height='4' fill='%23fff'/%3E%3Crect x='13' y='2' width='3' height='3' fill='%23ff2b2b'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body data-screen="home">
   <div id="app">
     <header id="topbar">
-      <span class="brand">snake<span class="dot">.</span></span>
+      <span class="brand">snake<span class="dot">.</span><span class="ver" title="versión">v4</span></span>
       <div class="tools">
         <button id="btn-mute" class="tool" type="button" aria-pressed="true" title="sonido (M)">
           <i class="led" aria-hidden="true"></i><span>sonido</span>
@@ -22,9 +23,10 @@
       </div>
     </header>
 
+    <div id="huds">
     <section id="hud" aria-live="off">
       <div class="hud-col">
-        <span class="label" id="hud-meta">elige un modo</span>
+        <span class="label" id="hud-meta">cargando…</span>
         <span class="value" id="hud-score">—</span>
       </div>
       <div class="hud-col right">
@@ -44,6 +46,7 @@
         <span class="value" id="duel-score-1">0</span>
       </div>
     </section>
+    </div>
 
     <main id="stage">
       <canvas id="board" aria-label="tablero"></canvas>
@@ -60,7 +63,66 @@
     </footer>
   </div>
 
-  <noscript>este juego necesita javascript.</noscript>
-  <script type="module" src="js/main.js"></script>
+  <div id="fatal" hidden role="alert">
+    <p class="fatal-title">el juego no ha arrancado</p>
+    <p id="fatal-text" class="fatal-text"></p>
+    <p class="fatal-actions">
+      <button type="button" id="fatal-reload">recargar limpio</button>
+      <span>versión 4</span>
+    </p>
+  </div>
+
+  <noscript>
+    <div id="sin-js">este juego necesita javascript activado.</div>
+  </noscript>
+
+  <script>
+    (function () {
+      var caja = document.getElementById('fatal');
+      var texto = document.getElementById('fatal-text');
+      var arrancado = false;
+
+      function fallo(mensaje) {
+        if (!caja || arrancado) return;
+        texto.textContent = mensaje;
+        caja.hidden = false;
+      }
+
+      window.__snakeFallo = fallo;
+      window.__snakeArrancado = function () {
+        arrancado = true;
+        document.documentElement.dataset.booted = '1';
+        if (caja) caja.hidden = true;
+      };
+
+      window.addEventListener('error', function (evento) {
+        var objetivo = evento.target || {};
+        if (objetivo.tagName === 'SCRIPT' || objetivo.tagName === 'LINK') {
+          fallo('no se pudo cargar ' + (objetivo.src || objetivo.href));
+          return;
+        }
+        var archivo = (evento.filename || '').split('/').pop();
+        fallo((evento.message || 'error de javascript') + (archivo ? ' · ' + archivo + ':' + (evento.lineno || '?') : ''));
+      }, true);
+
+      window.addEventListener('unhandledrejection', function (evento) {
+        var motivo = evento.reason;
+        fallo('promesa rechazada: ' + ((motivo && motivo.message) || motivo));
+      });
+
+      document.getElementById('fatal-reload').addEventListener('click', function () {
+        var destino = location.pathname + '?v=' + Date.now();
+        location.replace(destino);
+      });
+
+      setTimeout(function () {
+        if (!document.documentElement.dataset.booted) {
+          fallo('el juego no ha arrancado en 4 s. si acabas de actualizar, recarga limpio: puede haber una versión vieja en caché.');
+        }
+      }, 4000);
+    })();
+  </script>
+
+  <script src="snake.js?v=4"></script>
 </body>
 </html>

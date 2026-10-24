@@ -1,4 +1,4 @@
-import { K, DIRS, bfsStep } from './grid.js';
+import { K, DIRS, bfsStep } from './grid.js?v=3';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const rand = (n) => Math.floor(Math.random() * n);
@@ -609,10 +609,10 @@ export class Game {
       const px = Math.round(ox + p.x * cell);
       const py = Math.round(oy + p.y * cell);
       if (ghost) {
-        ctx.fillStyle = 'rgba(255,255,255,0.22)';
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
         ctx.fillRect(px + gap, py + gap, cell - gap * 2, cell - gap * 2);
-        ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+        ctx.lineWidth = Math.max(1, cell * 0.05);
         ctx.strokeRect(px + gap + 0.5, py + gap + 0.5, cell - gap * 2 - 1, cell - gap * 2 - 1);
       } else {
         ctx.fillStyle = i === 0 ? '#ffffff' : i < 3 ? '#f0f0f0' : '#d8d8d8';

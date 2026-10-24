@@ -45,6 +45,9 @@ export function attachInput({ stage, actions }) {
 
   stage.addEventListener('pointerdown', (e) => {
     if (e.target.closest('button, #overlay')) return;
+    // al tocar el tablero, el foco vuelve a la página: las teclas llegan siempre
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    if (typeof window.focus === 'function') window.focus();
     activo = true;
     x0 = e.clientX;
     y0 = e.clientY;

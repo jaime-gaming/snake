@@ -1,10 +1,28 @@
-import { Game, POWER_INFO } from './engine.js';
-import { Duel, DUEL_CFG } from './duel.js';
-import { MODES, LEVELS, COLS, ROWS } from './levels.js';
-import { audio } from './audio.js';
-import { attachInput } from './input.js';
+import { Game, POWER_INFO } from './engine.js?v=3';
+import { Duel, DUEL_CFG } from './duel.js?v=3';
+import { MODES, LEVELS, COLS, ROWS } from './levels.js?v=3';
+import { audio } from './audio.js?v=3';
+import { attachInput } from './input.js?v=3';
 
 const $ = (sel) => document.querySelector(sel);
+
+// si algo se rompe, que se vea en pantalla en vez de quedarse en negro
+function avisar(mensaje) {
+  if (typeof window.__snakeFallo === 'function') window.__snakeFallo(mensaje);
+}
+
+function comprobarPiezas() {
+  const faltan = [];
+  if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.portals || !MODES.hunter) faltan.push('modos');
+  if (!Array.isArray(LEVELS) || LEVELS.length !== 12) faltan.push('niveles');
+  if (typeof Game !== 'function') faltan.push('motor');
+  if (typeof Duel !== 'function') faltan.push('duelo');
+  if (faltan.length) {
+    avisar(`faltan piezas (${faltan.join(', ')}). casi seguro hay ficheros viejos en caché: pulsa recargar limpio.`);
+    return false;
+  }
+  return true;
+}
 
 const ORDEN = ['campaign', 'classic', 'frenzy', 'portals', 'hunter', 'duel'];
 const CLAVE = 'snake.v2';
@@ -144,7 +162,11 @@ function pararTemporizador() {
 function ajustarLienzo() {
   const caja = el.stage.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
-  const lado = Math.max(140, Math.min(caja.width || 480, caja.height || 480) - 2);
+  // si el contenedor aún no tiene tamaño (pestaña oculta, iframe recién creado),
+  // tiramos de la ventana para no quedarnos con un tablero de 0 px
+  const anchoCaja = caja.width || window.innerWidth || 480;
+  const altoCaja = caja.height || Math.max(240, (window.innerHeight || 720) * 0.6);
+  const lado = Math.max(140, Math.min(anchoCaja, altoCaja) - 2);
   const celda = Math.max(8, Math.floor(lado / Math.max(COLS, ROWS)));
   const ancho = celda * COLS;
   const alto = celda * ROWS;
@@ -1101,19 +1123,35 @@ function bucle(t) {
 }
 
 function arrancar() {
+  if (!comprobarPiezas()) return;
+
   document.documentElement.classList.toggle('trama', guardado.crt);
   aplicarSonido();
   mostrarInicio();
   ajustarLienzo();
 
-  if (window.ResizeObserver) new ResizeObserver(() => ajustarLienzo()).observe(el.stage);
-  else window.addEventListener('resize', ajustarLienzo);
+  if (window.ResizeObserver) {
+    try {
+      new ResizeObserver(() => ajustarLienzo()).observe(el.stage);
+    } catch (err) {
+      window.addEventListener('resize', ajustarLienzo);
+    }
+  } else {
+    window.addEventListener('resize', ajustarLienzo);
+  }
   window.addEventListener('orientationchange', () => setTimeout(ajustarLienzo, 140));
 
+  app.reloj = 0;
   requestAnimationFrame(bucle);
+  if (typeof window.__snakeArrancado === 'function') window.__snakeArrancado();
 }
 
-arrancar();
+try {
+  arrancar();
+} catch (err) {
+  avisar('error al arrancar: ' + (err && err.message ? err.message : err));
+  throw err;
+}
 
 if (location.hash === '#debug') {
   window.__snake = { app, guardado, accion, empezarPartida, empezarDuelo, mostrarInicio };
