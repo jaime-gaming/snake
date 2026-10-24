@@ -1,61 +1,59 @@
-# SNAKE
+# snake
 
-Snake en blanco y negro, rápido y sin adornos. HTML, CSS y JavaScript sin dependencias ni build: se abre `index.html` y se juega.
+Snake de rejilla, en blanco y negro y sin adornos. HTML, CSS y JavaScript a pelo: no hay dependencias, ni build, ni peticiones de red.
 
-## Modos
+## cómo se juega
 
-- **Campaña** — 12 niveles con muros diseñados a mano. Se desbloquean al superarlos; el progreso se guarda.
-- **Clásico** — muros que matan, velocidad que sube con cada fruta.
-- **Frenesí** — bordes abiertos y aceleración continua: no hay techo.
-- **Portales** — dos portales que reubican cada pocas frutas. Los muros siguen matando.
-
-En todos los modos:
-
-- **Cadena** — come frutas seguidas para subir el multiplicador (×2, ×3, ×4, ×5). La barra inferior es el tiempo que te queda para encadenar.
-- **Bonus** — un rombo rojo aparece cada pocas frutas, caduca, y da puntuación y crecimiento extra.
-- **Turbo** — acelera la serpiente mientras lo mantengas.
-
-## Controles
-
-| Acción | Teclado | Táctil |
+| | teclado | táctil |
 | --- | --- | --- |
-| Girar | Flechas o WASD | Desliza |
-| Turbo | Espacio o Mayús | Toca el tablero |
-| Pausa | P o Esc | Botón PAUSA |
-| Reiniciar | R | Botón |
-| Sonido | M | Botón SONIDO |
-| Elegir / confirmar | Flechas + Enter | Toca |
+| girar | flechas o WASD | desliza |
+| turbo | espacio o mayús | toca el tablero |
+| pausa | P o esc | botón pausa |
+| reiniciar | R | botón |
+| sonido | M | botón sonido |
 
-## Local
+Mando: d-pad y sticks para girar, A para turbo, start para pausar. En el duelo, el segundo mando controla al rival.
 
-Cualquier servidor estático sirve:
+## modos
+
+- **campaña** — 12 niveles con muros dibujados a mano. se desbloquean al superarlos y el récord de cada uno se guarda.
+- **clásico** — muros, sin fin. cada fruta acelera.
+- **frenesí** — bordes abiertos y aceleración continua.
+- **portales** — dos aros que se recolocan cada pocas frutas. entras por uno y sales por el otro.
+- **cazador** — una X te persigue por el laberinto y gana terreno. desaparece cada pocas frutas y vuelve a aparecer lejos.
+- **duelo** — dos serpientes en el mismo tablero: jugador 1 con flechas, jugador 2 con WASD. el marcador de duelos se guarda.
+
+## piezas
+
+- **cadena** — dos frutas seguidas suben el multiplicador hasta ×5. la barra de abajo es el tiempo que te queda para encadenar.
+- **rombo** — aparece cada pocas frutas, caduca y da dos anillos de largo.
+- **poderes** — círculo discontinuo: fantasma, atraviesas muros, bordes y cazador durante cinco segundos. dos barras: lento, todo va más despacio. cuadrado: recorte, pierdes anillos y ganas puntos.
+- **turbo** — 0,62 del intervalo mientras lo mantengas.
+
+## archivos
+
+```
+index.html          marcado, hud y capa de menús
+styles.css          todo el estilo
+js/engine.js        motor de un jugador: rejilla, colisiones, poderes, dibujo
+js/duel.js          motor del duelo a dos
+js/grid.js          bfs y utilidades de rejilla (lo usan el cazador y el piloto automático)
+js/levels.js        modos y los 12 niveles
+js/audio.js         sonido con osciladores, sin ficheros
+js/input.js         teclado, gestos y mando
+js/main.js          pantallas, progreso y bucle
+```
+
+`Game` y `Duel` no tocan el DOM: se pueden instanciar y avanzar desde Node para probar equilibrio o validar niveles. En el navegador, `index.html#debug` deja un `window.__snake` para trastear.
+
+## local
 
 ```sh
 python3 -m http.server 8000
-# http://localhost:8000
 ```
 
-También funciona abriendo `index.html` con doble clic: no hay módulos cargados por red ni peticiones `fetch`. Si el navegador bloquea los módulos ES desde `file://`, usa el servidor.
+Abre `localhost:8000`. Con doble clic en `index.html` también va en la mayoría de navegadores, pero algunos bloquean los módulos ES desde `file://`.
 
-## GitHub Pages
+## publicar
 
-El repositorio incluye `.github/workflows/pages.yml`. Para publicarlo:
-
-1. Settings → Pages → Source: **GitHub Actions**.
-2. Push a `main` (o lanza el workflow a mano desde Actions).
-
-El juego queda en `https://<usuario>.github.io/snake/`.
-
-## Estructura
-
-```
-index.html        marcado y HUD
-styles.css        todo el estilo (blanco y negro, rejilla, monoespaciada)
-js/engine.js      motor: rejilla, colisiones, puntuación, dibujo en canvas
-js/levels.js      definición de modos y de los 12 niveles de campaña
-js/audio.js       sonido sintetizado con WebAudio (sin ficheros)
-js/input.js       teclado y gestos
-js/main.js        pantallas, menús, progreso en localStorage y bucle
-```
-
-El motor es independiente del DOM: `Game` se puede instanciar y avanzar desde Node (útil para probar equilibrio o validar niveles).
+Hay un workflow en `.github/workflows/pages.yml`. En el repositorio: Settings → Pages → Source: GitHub Actions, y luego push a `main`. Queda en `https://<usuario>.github.io/snake/`.

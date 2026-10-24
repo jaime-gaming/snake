@@ -4,26 +4,27 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#000000">
-<meta name="description" content="SNAKE ultra frenético: cuatro modos, campaña de 12 niveles, minimalismo en blanco y negro.">
-<title>SNAKE — ultra frenético</title>
+<meta name="description" content="Snake de rejilla: campaña de 12 niveles, clásico, frenesí, portales, cazador y duelo a dos mandos.">
+<title>snake</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Crect x='2' y='7' width='4' height='4' fill='%23fff'/%3E%3Crect x='6' y='7' width='4' height='4' fill='%23fff'/%3E%3Crect x='10' y='7' width='2' height='4' fill='%23fff'/%3E%3Crect x='13' y='2' width='3' height='3' fill='%23ff2b2b'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body data-screen="home">
   <div id="app">
     <header id="topbar">
-      <span class="brand">SNAKE<span class="dot">.</span></span>
+      <span class="brand">snake<span class="dot">.</span></span>
       <div class="tools">
-        <button id="btn-mute" class="tool" type="button" aria-pressed="false" title="Sonido (M)">
-          <span class="led" aria-hidden="true"></span>SONIDO
+        <button id="btn-mute" class="tool" type="button" aria-pressed="true" title="sonido (M)">
+          <i class="led" aria-hidden="true"></i><span>sonido</span>
         </button>
-        <button id="btn-pause" class="tool" type="button" disabled title="Pausa (P)">PAUSA</button>
+        <button id="btn-full" class="tool" type="button" title="pantalla completa">pantalla</button>
+        <button id="btn-pause" class="tool" type="button" disabled title="pausa (P)">pausa</button>
       </div>
     </header>
 
     <section id="hud" aria-live="off">
       <div class="hud-col">
-        <span class="label" id="hud-meta">ELIGE UN MODO</span>
+        <span class="label" id="hud-meta">elige un modo</span>
         <span class="value" id="hud-score">—</span>
       </div>
       <div class="hud-col right">
@@ -32,9 +33,21 @@
       </div>
     </section>
 
+    <section id="hud-duel" hidden aria-live="off">
+      <div class="side">
+        <span class="label">tú ↑↓←→</span>
+        <span class="value" id="duel-score-0">0</span>
+      </div>
+      <span class="vs">frente a</span>
+      <div class="side right">
+        <span class="label">rival WASD</span>
+        <span class="value" id="duel-score-1">0</span>
+      </div>
+    </section>
+
     <main id="stage">
-      <canvas id="board" aria-label="Tablero de juego"></canvas>
-      <div id="prompt">PULSA UNA DIRECCIÓN</div>
+      <canvas id="board" aria-label="tablero"></canvas>
+      <div id="prompt">pulsa una dirección</div>
       <div id="overlay"></div>
     </main>
 
@@ -42,11 +55,12 @@
       <div id="combo" aria-hidden="true"><div id="chain-bar"></div></div>
       <div class="foot-row">
         <p id="hint"></p>
-        <span id="turbo-label" aria-hidden="true">TURBO</span>
+        <ul id="effects" class="effects"></ul>
       </div>
     </footer>
   </div>
 
+  <noscript>este juego necesita javascript.</noscript>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

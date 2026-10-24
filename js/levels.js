@@ -1,5 +1,4 @@
-// SNAKE — definición de modos y de la campaña.
-// Rejilla de 20x20. Los muros son pares [x, y].
+// modos y niveles. rejilla de 20x20, muros como pares [x, y]
 
 export const COLS = 20;
 export const ROWS = 20;
@@ -23,7 +22,6 @@ const ring = (x, y, w, h) => {
   }
   return out;
 };
-// quita celdas (para abrir huecos en muros)
 const holes = (cells, list) => cells.filter(([x, y]) => !list.some(([hx, hy]) => hx === x && hy === y));
 const diagonal = (x, y, len, dir = 1) => {
   const out = [];
@@ -35,8 +33,7 @@ export const MODES = {
   classic: {
     id: 'classic',
     name: 'CLÁSICO',
-    tag: 'MUROS · SIN FIN',
-    about: 'El de siempre, pero con prisa. Los muros matan.',
+    tag: 'muros, sin fin',
     cols: COLS,
     rows: ROWS,
     walls: [],
@@ -44,14 +41,14 @@ export const MODES = {
     minSpeed: 55,
     accelPerFood: 3,
     wrap: false,
-    goal: null,
     bonusEvery: 5,
+    powerEvery: 6,
+    chainWindow: 2800,
   },
   frenzy: {
     id: 'frenzy',
     name: 'FRENESÍ',
-    tag: 'BORDES ABIERTOS · ACELERA',
-    about: 'Empieza rápido y no deja de acelerar. Atraviesa los bordes.',
+    tag: 'bordes abiertos, acelera',
     cols: COLS,
     rows: ROWS,
     walls: [],
@@ -60,14 +57,14 @@ export const MODES = {
     accelPerFood: 1.5,
     rampPerSec: 1.15,
     wrap: true,
-    goal: null,
     bonusEvery: 4,
+    powerEvery: 7,
+    chainWindow: 2800,
   },
   portals: {
     id: 'portals',
     name: 'PORTALES',
-    tag: 'SALTOS · MUROS',
-    about: 'Dos portales que cambian de sitio. Úsalos o te matan.',
+    tag: 'dos portales que se mueven',
     cols: COLS,
     rows: ROWS,
     walls: [],
@@ -75,10 +72,27 @@ export const MODES = {
     minSpeed: 50,
     accelPerFood: 2.5,
     wrap: false,
-    goal: null,
     portals: true,
     portalEvery: 3,
     bonusEvery: 5,
+    powerEvery: 6,
+    chainWindow: 2800,
+  },
+  hunter: {
+    id: 'hunter',
+    name: 'CAZADOR',
+    tag: 'algo te sigue',
+    cols: COLS,
+    rows: ROWS,
+    walls: [],
+    startSpeed: 118,
+    minSpeed: 58,
+    accelPerFood: 2,
+    wrap: false,
+    hunter: true,
+    bonusEvery: 4,
+    powerEvery: 5,
+    chainWindow: 2800,
   },
 };
 
@@ -90,6 +104,8 @@ const level = (name, goal, speed, walls, extra = {}) => ({
   minSpeed: 58,
   accelPerFood: 2.5,
   bonusEvery: 4,
+  powerEvery: 6,
+  chainWindow: 2600,
   ...extra,
 });
 
