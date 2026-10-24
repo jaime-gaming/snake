@@ -1,10 +1,9 @@
 // comprobaciones del juego, sin navegador.
 //   node tools/check.mjs
 // valida los niveles, deja al piloto automático jugarlos y prueba las reglas
-// básicas del motor y del duelo. sale con código 1 si algo falla.
+// básicas del motor. sale con código 1 si algo falla.
 
 import { Game } from '../js/engine.js';
-import { Duel, DUEL_CFG } from '../js/duel.js';
 import { MODES, LEVELS, COLS, ROWS } from '../js/levels.js';
 
 const K = (x, y) => y * 4096 + x;
@@ -130,31 +129,73 @@ process.stdout.write('reglas\n');
   comprobar(juego.multiplier === 5, 'cadena: el multiplicador no tope a ×5');
 }
 
-// duelo
-process.stdout.write('duelo\n');
+// cazador: serpiente roja que come puntos azules y crece
+process.stdout.write('cazador\n');
 {
-  const duelo = new Duel(DUEL_CFG, () => {});
-  duelo.state = 'running';
-  let pasos = 0;
-  while (duelo.state === 'running' && pasos < 400) {
-    duelo.setDirection(0, 0, -1);
-    duelo.update(60);
-    pasos++;
+  const juego = new Game({ ...MODES.hunter }, () => {});
+  comprobar(!!juego.hunter && juego.hunter.body.length >= 2, 'cazador: no nace como serpiente');
+  comprobar(juego.pellets.length === 2, 'cazador: no hay dos puntos azules al empezar');
+  comprobar(
+    juego.pellets.every((p) => !juego.wallSet.has(K(p.x, p.y))),
+    'cazador: un punto cae dentro de un muro',
+  );
+
+  const nacimiento = juego.hunter.body.length;
+  let comidos = 0;
+  juego.onEvent = (tipo) => {
+    if (tipo === 'hunterEat') comidos++;
+  };
+  juego.state = 'running';
+  juego.setDirection(1, 0);
+  for (let i = 0; i < 600 && juego.state === 'running'; i++) {
+    juego.botTurn();
+    juego.update(40);
   }
-  comprobar(duelo.state === 'over', 'duelo: no termina cuando uno se estrella');
-  comprobar(duelo.winner === 1, 'duelo: gana quien no se estrelló');
+  comprobar(comidos > 0, 'cazador: no llega a comerse ningún punto azul');
+  comprobar(
+    juego.hunter.body.length > nacimiento || comidos > 0,
+    'cazador: come pero no crece',
+  );
+  process.stdout.write(`  cazador: ${comidos} puntos comidos, ${juego.hunter.body.length} anillos\n`);
 }
 {
-  const duelo = new Duel(DUEL_CFG, () => {});
-  duelo.state = 'running';
-  let pasos = 0;
-  while (duelo.state === 'running' && pasos < 400) {
-    duelo.setDirection(0, 1, 0);
-    duelo.setDirection(1, -1, 0);
-    duelo.update(60);
-    pasos++;
-  }
-  comprobar(duelo.state === 'over', 'duelo: el choque frontal no termina');
+  // el jugador muere al tocar cualquier anillo del cazador, no sólo la cabeza
+  const juego = new Game({ ...MODES.hunter }, () => {});
+  juego.state = 'running';
+  const anillo = juego.hunter.body[juego.hunter.body.length - 1];
+  juego.body = [{ x: anillo.x, y: anillo.y - 1 }];
+  juego.dir = { x: 0, y: 1 };
+  juego.queue = [];
+  juego.step();
+  comprobar(juego.state === 'dead', 'cazador: el cuerpo del cazador no mata');
+}
+{
+  // con fantasma se le puede atravesar
+  const juego = new Game({ ...MODES.hunter }, () => {});
+  juego.state = 'running';
+  juego.fx.ghost = 5000;
+  const anillo = juego.hunter.body[juego.hunter.body.length - 1];
+  juego.body = [{ x: anillo.x, y: anillo.y - 1 }];
+  juego.dir = { x: 0, y: 1 };
+  juego.queue = [];
+  juego.step();
+  comprobar(juego.state === 'running', 'cazador: el fantasma no le atraviesa');
+}
+
+// onda de luz al cargar el mapa
+process.stdout.write('revelado\n');
+{
+  const juego = new Game({ ...MODES.classic }, () => {});
+  comprobar(juego.reveal === 0, 'revelado: no empieza a cero');
+  const avanzar = (ms) => {
+    for (let t = 0; t < ms; t += 50) juego.update(50);
+  };
+  avanzar(300);
+  const medio = juego.reveal;
+  comprobar(medio > 0 && medio < 1, 'revelado: no avanza con el tiempo');
+  avanzar(700);
+  comprobar(juego.reveal === 1, 'revelado: no termina');
+  process.stdout.write(`  revelado: ${medio.toFixed(2)} a los 300 ms, ${juego.reveal.toFixed(2)} a los 900 ms\n`);
 }
 
 process.stdout.write(fallos ? `\n${fallos} fallos\n` : '\ntodo en orden\n');

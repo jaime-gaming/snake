@@ -5,10 +5,10 @@ const TECLAS = {
   ArrowDown: 'down',
   ArrowLeft: 'left',
   ArrowRight: 'right',
-  KeyW: 'up2',
-  KeyS: 'down2',
-  KeyA: 'left2',
-  KeyD: 'right2',
+  KeyW: 'up',
+  KeyS: 'down',
+  KeyA: 'left',
+  KeyD: 'right',
   Enter: 'confirm',
   NumpadEnter: 'confirm',
   Space: 'turbo',
@@ -70,24 +70,20 @@ export function attachInput({ stage, actions }) {
     activo = false;
   });
 
-  // mando: dos mandos, el segundo juega como WASD
-  const previo = [{}, {}];
-  let conectados = 0;
+  // mando: estado por frame, sin eventos
+  let previo = {};
+  let conectado = false;
 
   function leerMando() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    const lista = [pads && pads[0], pads && pads[1]];
-    let cuantos = 0;
+    const pad = pads && pads[0];
+    const actual = {};
 
-    lista.forEach((pad, indice) => {
-      const sufijo = indice === 1 ? '2' : '';
-      const actual = {};
-      if (!pad) {
-        if (previo[indice].turbo) fire('turboOff');
-        previo[indice] = actual;
-        return;
+    if (pad) {
+      if (!conectado) {
+        conectado = true;
+        fire('padConectado');
       }
-      cuantos++;
       const UMBRAL = 0.55;
       const ejeX = pad.axes[0] || 0;
       const ejeY = pad.axes[1] || 0;
@@ -95,30 +91,30 @@ export function attachInput({ stage, actions }) {
       if (ejeX > UMBRAL) actual.right = true;
       if (ejeY < -UMBRAL) actual.up = true;
       if (ejeY > UMBRAL) actual.down = true;
-
-      for (const [indiceBoton, nombre] of Object.entries(BOTONES)) {
-        const boton = pad.buttons[indiceBoton];
+      for (const [indice, nombre] of Object.entries(BOTONES)) {
+        const boton = pad.buttons[indice];
         if (boton && (boton.pressed || boton.value > 0.5)) actual[nombre] = true;
       }
       [0, 1].forEach((n) => {
         const boton = pad.buttons[n];
         if (boton && (boton.pressed || boton.value > 0.5)) actual.turbo = true;
       });
-      for (const nombre of ['up', 'down', 'left', 'right']) {
-        if (actual[nombre] && !previo[indice][nombre]) fire(nombre + sufijo);
-      }
-      if (indice === 0) {
-        if (actual.turbo && !previo[0].turbo) fire('turboOn');
-        if (!actual.turbo && previo[0].turbo) fire('turboOff');
-      }
+      [3, 9].forEach((n) => {
+        const boton = pad.buttons[n];
+        if (boton && (boton.pressed || boton.value > 0.5)) actual.aux = true;
+      });
+    } else if (conectado) {
+      conectado = false;
+    }
 
-      previo[indice] = actual;
-    });
+    for (const nombre of ['up', 'down', 'left', 'right']) {
+      if (actual[nombre] && !previo[nombre]) fire(nombre);
+    }
+    if (actual.turbo && !previo.turbo) fire('turboOn');
+    if (!actual.turbo && previo.turbo) fire('turboOff');
+    if (actual.aux && !previo.aux) fire('pause');
 
-    if (cuantos && !conectados) fire('padConectado');
-    if (!cuantos && conectados) conectados = 0;
-    if (cuantos) conectados = cuantos;
-
+    previo = actual;
     requestAnimationFrame(leerMando);
   }
 

@@ -1,13 +1,13 @@
-/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-10-24 · v4).
+/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-10-24 · v5).
    no lo edites a mano: cambia js/*.js y vuelve a ejecutar node tools/build.mjs */
 (function () {
 'use strict';
-const modulos = { grid: {}, levels: {}, audio: {}, input: {}, engine: {}, duel: {}, main: {} };
+const modulos = { grid: {}, levels: {}, audio: {}, input: {}, engine: {}, main: {} };
 
 // ---- grid ----
 (function (modulo) {
 'use strict';
-// utilidades de rejilla compartidas por el motor y el duelo
+// utilidades de rejilla que usan el motor y el piloto automático
 
 const K = (x, y) => y * 4096 + x;
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -152,7 +152,7 @@ const MODES = {
   hunter: {
     id: 'hunter',
     name: 'CAZADOR',
-    tag: 'algo te sigue',
+    tag: 'una serpiente roja te caza',
     cols: COLS,
     rows: ROWS,
     walls: [],
@@ -384,8 +384,8 @@ const SONIDOS = {
   level() {
     [523, 659, 784, 1046].forEach((f, i) => tono(f, 0.12, { vol: 0.2, delay: i * 0.075 }));
   },
-  duelEnd() {
-    [392, 523, 659].forEach((f, i) => tono(f, 0.1, { vol: 0.18, delay: i * 0.06 }));
+  hunterEat() {
+    tono(300, 0.06, { tipo: 'triangle', vol: 0.14, fin: 220 });
   },
   ui() {
     tono(440, 0.03, { vol: 0.1 });
@@ -442,10 +442,10 @@ const TECLAS = {
   ArrowDown: 'down',
   ArrowLeft: 'left',
   ArrowRight: 'right',
-  KeyW: 'up2',
-  KeyS: 'down2',
-  KeyA: 'left2',
-  KeyD: 'right2',
+  KeyW: 'up',
+  KeyS: 'down',
+  KeyA: 'left',
+  KeyD: 'right',
   Enter: 'confirm',
   NumpadEnter: 'confirm',
   Space: 'turbo',
@@ -507,24 +507,20 @@ function attachInput({ stage, actions }) {
     activo = false;
   });
 
-  // mando: dos mandos, el segundo juega como WASD
-  const previo = [{}, {}];
-  let conectados = 0;
+  // mando: estado por frame, sin eventos
+  let previo = {};
+  let conectado = false;
 
   function leerMando() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    const lista = [pads && pads[0], pads && pads[1]];
-    let cuantos = 0;
+    const pad = pads && pads[0];
+    const actual = {};
 
-    lista.forEach((pad, indice) => {
-      const sufijo = indice === 1 ? '2' : '';
-      const actual = {};
-      if (!pad) {
-        if (previo[indice].turbo) fire('turboOff');
-        previo[indice] = actual;
-        return;
+    if (pad) {
+      if (!conectado) {
+        conectado = true;
+        fire('padConectado');
       }
-      cuantos++;
       const UMBRAL = 0.55;
       const ejeX = pad.axes[0] || 0;
       const ejeY = pad.axes[1] || 0;
@@ -532,30 +528,30 @@ function attachInput({ stage, actions }) {
       if (ejeX > UMBRAL) actual.right = true;
       if (ejeY < -UMBRAL) actual.up = true;
       if (ejeY > UMBRAL) actual.down = true;
-
-      for (const [indiceBoton, nombre] of Object.entries(BOTONES)) {
-        const boton = pad.buttons[indiceBoton];
+      for (const [indice, nombre] of Object.entries(BOTONES)) {
+        const boton = pad.buttons[indice];
         if (boton && (boton.pressed || boton.value > 0.5)) actual[nombre] = true;
       }
       [0, 1].forEach((n) => {
         const boton = pad.buttons[n];
         if (boton && (boton.pressed || boton.value > 0.5)) actual.turbo = true;
       });
-      for (const nombre of ['up', 'down', 'left', 'right']) {
-        if (actual[nombre] && !previo[indice][nombre]) fire(nombre + sufijo);
-      }
-      if (indice === 0) {
-        if (actual.turbo && !previo[0].turbo) fire('turboOn');
-        if (!actual.turbo && previo[0].turbo) fire('turboOff');
-      }
+      [3, 9].forEach((n) => {
+        const boton = pad.buttons[n];
+        if (boton && (boton.pressed || boton.value > 0.5)) actual.aux = true;
+      });
+    } else if (conectado) {
+      conectado = false;
+    }
 
-      previo[indice] = actual;
-    });
+    for (const nombre of ['up', 'down', 'left', 'right']) {
+      if (actual[nombre] && !previo[nombre]) fire(nombre);
+    }
+    if (actual.turbo && !previo.turbo) fire('turboOn');
+    if (!actual.turbo && previo.turbo) fire('turboOff');
+    if (actual.aux && !previo.aux) fire('pause');
 
-    if (cuantos && !conectados) fire('padConectado');
-    if (!cuantos && conectados) conectados = 0;
-    if (cuantos) conectados = cuantos;
-
+    previo = actual;
     requestAnimationFrame(leerMando);
   }
 
@@ -622,6 +618,8 @@ class Game {
     this.portals = null;
     this.hunter = null;
     this.hunterTick = 0;
+    this.pellets = [];
+    this.reveal = 0;
     this.turbo = false;
     this.time = 0;
     this.shake = 0;
@@ -630,7 +628,10 @@ class Game {
     this.food = null;
     this.spawnFood();
     if (cfg.portals) this.placePortals();
-    if (cfg.hunter) this.placeHunter();
+    if (cfg.hunter) {
+      this.placeHunter();
+      for (let i = 0; i < 2; i++) this.spawnPellet();
+    }
   }
 
   findStart() {
@@ -754,6 +755,7 @@ class Game {
 
   updateFx(dt) {
     const k = dt / 1000;
+    if (this.reveal < 1) this.reveal = Math.min(1, this.reveal + dt / 620);
     this.shake = Math.max(0, this.shake - dt * 0.05);
     this.flash = Math.max(0, this.flash - dt * 0.004);
     for (let i = this.particles.length - 1; i >= 0; i--) {
@@ -807,7 +809,7 @@ class Game {
     }
 
     if (!ghost && this.wallSet.has(K(hx, hy))) return this.die('muro', hx, hy);
-    if (!ghost && this.hunter && hx === this.hunter.x && hy === this.hunter.y) {
+    if (!ghost && this.hunter && this.hunter.body.some((s) => s.x === hx && s.y === hy)) {
       return this.die('cazador', hx, hy);
     }
 
@@ -897,7 +899,9 @@ class Game {
     if (walls) for (const k of this.wallSet) set.add(k);
     const end = omitTail ? this.body.length - 1 : this.body.length;
     for (let i = 0; i < end; i++) set.add(K(this.body[i].x, this.body[i].y));
-    if (hunter && this.hunter) set.add(K(this.hunter.x, this.hunter.y));
+    if (hunter && this.hunter) {
+      for (const p of this.hunter.body) set.add(K(p.x, p.y));
+    }
     return set;
   }
 
@@ -933,7 +937,8 @@ class Game {
       if (this.food && this.food.x === x && this.food.y === y) return true;
       if (this.bonus && this.bonus.x === x && this.bonus.y === y) return true;
       if (this.power && this.power.x === x && this.power.y === y) return true;
-      if (this.hunter && this.hunter.x === x && this.hunter.y === y) return true;
+      if (this.hunter && this.hunter.body.some((p) => p.x === x && p.y === y)) return true;
+      if (this.pellets.some((p) => p.x === x && p.y === y)) return true;
       if (this.portals && this.portals.some((p) =>
         (p.a.x === x && p.a.y === y) || (p.b.x === x && p.b.y === y))) return true;
       return false;
@@ -984,42 +989,134 @@ class Game {
     this.emit('portals', { a, b });
   }
 
+  // el cazador es una serpiente: empieza con tres anillos y crece comiendo
   placeHunter() {
-    const head = this.body[0];
-    for (let i = 0; i < 200; i++) {
+    const cabeza = this.body[0];
+    const libre = (x, y) =>
+      x >= 0 && y >= 0 && x < this.cols && y < this.rows &&
+      !this.wallSet.has(K(x, y)) &&
+      !this.body.some((s) => s.x === x && s.y === y) &&
+      !this.pellets.some((p) => p.x === x && p.y === y);
+
+    let origen = null;
+    for (let i = 0; i < 300; i++) {
       const c = this.freeCell(1);
       if (!c) break;
-      if (Math.abs(c.x - head.x) + Math.abs(c.y - head.y) >= 8) {
-        this.hunter = c;
-        return;
+      if (Math.abs(c.x - cabeza.x) + Math.abs(c.y - cabeza.y) >= 8) {
+        origen = c;
+        break;
       }
     }
-    this.hunter = this.freeCell(1);
+    if (!origen) origen = this.freeCell(1) || { x: 0, y: 0 };
+
+    const cuerpo = [origen];
+    for (const [dx, dy] of DIRS) {
+      if (cuerpo.length >= 3) break;
+      for (let n = 1; n <= 2; n++) {
+        const x = origen.x + dx * n;
+        const y = origen.y + dy * n;
+        if (!libre(x, y)) break;
+        cuerpo.push({ x, y });
+      }
+    }
+
+    this.hunter = {
+      body: cuerpo,
+      prev: cuerpo.map((p) => ({ ...p })),
+      dir: { x: 0, y: 0 },
+      grow: 0,
+    };
+    this.hunterTick = 0;
+  }
+
+  spawnPellet() {
+    if (!this.hunter) return;
+    const cabeza = this.body[0];
+    let sitio = null;
+    for (let i = 0; i < 120; i++) {
+      const c = this.freeCell(1);
+      if (!c) break;
+      if (Math.abs(c.x - cabeza.x) + Math.abs(c.y - cabeza.y) >= 4) {
+        sitio = c;
+        break;
+      }
+    }
+    if (!sitio) sitio = this.freeCell(1);
+    if (sitio) this.pellets.push(sitio);
   }
 
   moveHunter() {
-    if (!this.hunter) return;
-    const every = Math.max(3, 5 - Math.floor(this.fruits / 8));
+    const h = this.hunter;
+    if (!h) return;
+    const every = 2;
     this.hunterTick++;
     if (this.hunterTick % every !== 0) return;
 
-    const head = this.body[0];
-    const blocked = new Set(this.wallSet);
-    for (const s of this.body) blocked.add(K(s.x, s.y));
-    const step = bfsStep({
-      start: this.hunter,
-      goal: head,
-      blocked,
+    h.prev = h.body.map((p) => ({ ...p }));
+    const cabeza = h.body[0];
+
+    const ocupado = new Set(this.wallSet);
+    for (let i = 0; i < h.body.length - 1; i++) ocupado.add(K(h.body[i].x, h.body[i].y));
+    for (const s of this.body) ocupado.add(K(s.x, s.y));
+
+    // primero los puntos azules; si no queda camino, a por el jugador
+    let objetivo = null;
+    let distancia = Infinity;
+    for (const punto of this.pellets) {
+      const d = Math.abs(punto.x - cabeza.x) + Math.abs(punto.y - cabeza.y);
+      if (d < distancia) {
+        distancia = d;
+        objetivo = punto;
+      }
+    }
+    const haciaJugador = objetivo === null;
+    if (!objetivo) objetivo = this.body[0];
+
+    let paso = bfsStep({
+      start: cabeza,
+      goal: objetivo,
+      blocked: ocupado,
       cols: this.cols,
       rows: this.rows,
       wrap: false,
     });
-    if (step) {
-      this.hunter = { x: this.hunter.x + step.x, y: this.hunter.y + step.y };
-      this.emit('hunter');
+    if (!paso && !haciaJugador) {
+      paso = bfsStep({
+        start: cabeza,
+        goal: this.body[0],
+        blocked: ocupado,
+        cols: this.cols,
+        rows: this.rows,
+        wrap: false,
+      });
     }
-    if (!this.ghosting && this.body.some((s) => s.x === this.hunter.x && s.y === this.hunter.y)) {
-      this.die('cazador', this.hunter.x, this.hunter.y);
+
+    let siguiente = paso ? { x: cabeza.x + paso.x, y: cabeza.y + paso.y } : null;
+    if (!siguiente || ocupado.has(K(siguiente.x, siguiente.y))) {
+      siguiente = null;
+      for (const [dx, dy] of DIRS) {
+        const nx = cabeza.x + dx;
+        const ny = cabeza.y + dy;
+        if (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows) continue;
+        if (ocupado.has(K(nx, ny))) continue;
+        siguiente = { x: nx, y: ny };
+        break;
+      }
+    }
+    if (!siguiente) return;
+
+    h.dir = { x: siguiente.x - cabeza.x, y: siguiente.y - cabeza.y };
+    h.body.unshift(siguiente);
+    if (h.grow > 0) h.grow--;
+    else h.body.pop();
+
+    const indice = this.pellets.findIndex((p) => p.x === siguiente.x && p.y === siguiente.y);
+    if (indice >= 0) {
+      this.pellets.splice(indice, 1);
+      if (h.body.length < 18) h.grow += 1;
+      this.burst(siguiente.x + 0.5, siguiente.y + 0.5, 8, '#3d7bff', 5);
+      this.spawnPellet();
+      this.emit('hunterEat');
     }
   }
 
@@ -1151,23 +1248,44 @@ class Game {
       }
     }
 
+    // puntos azules del cazador
+    for (const punto of this.pellets) {
+      const pad = cell * 0.33;
+      ctx.fillStyle = '#3d7bff';
+      ctx.fillRect(
+        Math.round(ox + punto.x * cell + pad),
+        Math.round(oy + punto.y * cell + pad),
+        Math.round(cell - pad * 2),
+        Math.round(cell - pad * 2),
+      );
+    }
+
+    // el cazador: serpiente roja, crece con los puntos
     if (this.hunter) {
-      const hx = ox + this.hunter.x * cell;
-      const hy = oy + this.hunter.y * cell;
-      const pad = Math.max(1, Math.round(cell * 0.09));
-      const x0 = hx + pad;
-      const y0 = hy + pad;
-      const x1 = hx + cell - pad;
-      const y1 = hy + cell - pad;
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = Math.max(1.5, cell * 0.09);
-      ctx.strokeRect(x0 + 0.5, y0 + 0.5, x1 - x0 - 1, y1 - y0 - 1);
-      ctx.beginPath();
-      ctx.moveTo(x0, y0);
-      ctx.lineTo(x1, y1);
-      ctx.moveTo(x1, y0);
-      ctx.lineTo(x0, y1);
-      ctx.stroke();
+      const ritmo = 2;
+      const hAlpha = ((this.hunterTick % ritmo) + (this.state === 'running' ? clamp(this.acc / this.interval(), 0, 1) : 1)) / ritmo;
+      for (let i = this.hunter.body.length - 1; i >= 0; i--) {
+        const actual = this.hunter.body[i];
+        const previo = this.hunter.prev[i] || actual;
+        const salto = Math.abs(actual.x - previo.x) > 1 || Math.abs(actual.y - previo.y) > 1;
+        const px = Math.round(ox + (salto ? actual.x : previo.x + (actual.x - previo.x) * hAlpha) * cell);
+        const py = Math.round(oy + (salto ? actual.y : previo.y + (actual.y - previo.y) * hAlpha) * cell);
+        const margen = Math.max(1, Math.round(cell * 0.07));
+        ctx.fillStyle = i === 0 ? '#ff2b2b' : '#c91616';
+        ctx.fillRect(px + margen, py + margen, cell - margen * 2, cell - margen * 2);
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px + margen + 0.5, py + margen + 0.5, cell - margen * 2 - 1, cell - margen * 2 - 1);
+      }
+      const cabeza = this.hunter.body[0];
+      const tam = Math.max(2, Math.round(cell * 0.16));
+      ctx.fillStyle = '#000';
+      ctx.fillRect(
+        Math.round(ox + (cabeza.x + 0.5) * cell - tam / 2),
+        Math.round(oy + (cabeza.y + 0.5) * cell - tam / 2),
+        tam,
+        tam,
+      );
     }
 
     const alpha = this.state === 'running' ? clamp(this.acc / this.interval(), 0, 1) : 1;
@@ -1214,364 +1332,52 @@ class Game {
       ctx.fillStyle = `rgba(255,255,255,${this.flash * 0.07})`;
       ctx.fillRect(0, 0, view.width, view.height);
     }
+
+    // onda de luz: al empezar, cada casilla se enciende al alcanzarla
+    if (this.reveal < 1) {
+      const cabeza = this.body[0];
+      const radio = this.reveal * (this.cols + this.rows) * 0.8;
+      const borde = 1.15;
+      ctx.save();
+      ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+      for (let y = 0; y < this.rows; y++) {
+        for (let x = 0; x < this.cols; x++) {
+          const dx = x + 0.5 - (cabeza.x + 0.5);
+          const dy = y + 0.5 - (cabeza.y + 0.5);
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          // lo que queda por delante de la onda sigue a oscuras
+          const oscuro = clamp((dist - radio) / borde, 0, 1);
+          if (oscuro <= 0.01) continue;
+          ctx.fillStyle = `rgba(0,0,0,${oscuro})`;
+          ctx.fillRect(
+            Math.round(ox + x * cell),
+            Math.round(oy + y * cell),
+            Math.ceil(cell),
+            Math.ceil(cell),
+          );
+        }
+      }
+      // el frente de la onda deja un filo blanco un instante
+      const filo = clamp(1 - Math.abs(this.reveal - 0.5) * 3.2, 0, 1) * 0.65;
+      if (filo > 0.02) {
+        ctx.strokeStyle = `rgba(255,255,255,${filo})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(ox + (cabeza.x + 0.5) * cell, oy + (cabeza.y + 0.5) * cell, Math.max(1, radio * cell), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
   }
 }
 
   Object.assign(modulo, { POWER_INFO, Game });
 })(modulos['engine']);
 
-// ---- duel ----
-(function (modulo) {
-'use strict';
-const { K } = modulos['grid'];
-
-const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
-
-const DUEL_CFG = {
-  cols: 20,
-  rows: 20,
-  wrap: false,
-  startSpeed: 118,
-  minSpeed: 74,
-  walls: [[9, 9], [10, 9], [9, 10], [10, 10]],
-};
-
-const START = [
-  { x: 4, y: 6, dir: { x: 1, y: 0 } },
-  { x: 15, y: 13, dir: { x: -1, y: 0 } },
-];
-
-class Duel {
-  constructor(cfg, onEvent = () => {}) {
-    this.cfg = cfg;
-    this.onEvent = onEvent;
-    this.cols = cfg.cols;
-    this.rows = cfg.rows;
-    this.reset();
-  }
-
-  emit(type, data) {
-    this.onEvent(type, data);
-  }
-
-  reset() {
-    this.wallSet = new Set(this.cfg.walls.map(([x, y]) => K(x, y)));
-    this.snakes = START.map((sp) => {
-      const body = [];
-      for (let i = 0; i < 4; i++) body.push({ x: sp.x - sp.dir.x * i, y: sp.y - sp.dir.y * i });
-      return {
-        body,
-        prev: body.map((p) => ({ ...p })),
-        dir: { ...sp.dir },
-        queue: [],
-        grow: 0,
-        score: 0,
-        fruits: 0,
-        alive: true,
-      };
-    });
-    this.speed = this.cfg.startSpeed;
-    this.acc = 0;
-    this.state = 'ready';
-    this.time = 0;
-    this.shake = 0;
-    this.food = null;
-    this.particles = [];
-    this.winner = null;
-    this.spawnFood();
-  }
-
-  interval() {
-    return Math.max(46, this.speed);
-  }
-
-  setDirection(i, dx, dy) {
-    const snake = this.snakes[i];
-    if (!snake || !snake.alive || this.state === 'over') return;
-    if (this.state === 'ready') {
-      this.state = 'running';
-      this.emit('start');
-    }
-    const last = snake.queue.length ? snake.queue[snake.queue.length - 1] : snake.dir;
-    if (dx === -last.x && dy === -last.y) return;
-    if (dx === last.x && dy === last.y) return;
-    if (snake.queue.length < 2) snake.queue.push({ x: dx, y: dy });
-  }
-
-  pause() {
-    if (this.state === 'running' || this.state === 'ready') {
-      this.savedState = this.state;
-      this.state = 'paused';
-    }
-  }
-
-  resume() {
-    if (this.state === 'paused') this.state = this.savedState;
-  }
-
-  update(dtRaw) {
-    const dt = Math.min(dtRaw, 120);
-    this.time += dt;
-    if (this.state === 'running') {
-      this.acc += dt;
-      let guard = 0;
-      while (this.state === 'running' && this.acc >= this.interval() && guard++ < 6) {
-        this.acc -= this.interval();
-        this.step();
-      }
-    }
-    this.shake = Math.max(0, this.shake - dt * 0.05);
-    for (let i = this.particles.length - 1; i >= 0; i--) {
-      const p = this.particles[i];
-      p.x += (p.vx * dt) / 1000;
-      p.y += (p.vy * dt) / 1000;
-      p.vx *= 0.94;
-      p.vy *= 0.94;
-      p.life -= dt;
-      if (p.life <= 0) this.particles.splice(i, 1);
-    }
-  }
-
-  step() {
-    for (const snake of this.snakes) {
-      if (snake.queue.length) {
-        const d = snake.queue.shift();
-        if (!(d.x === -snake.dir.x && d.y === -snake.dir.y)) snake.dir = d;
-      }
-      snake.prev = snake.body.map((p) => ({ ...p }));
-    }
-
-    const next = this.snakes.map((snake) => {
-      let x = snake.body[0].x + snake.dir.x;
-      let y = snake.body[0].y + snake.dir.y;
-      if (this.cfg.wrap) {
-        x = (x + this.cols) % this.cols;
-        y = (y + this.rows) % this.rows;
-      }
-      return { x, y };
-    });
-
-    const dying = [false, false];
-    const eating = [false, false];
-
-    for (let i = 0; i < 2; i++) {
-      const snake = this.snakes[i];
-      if (!snake.alive) continue;
-      const n = next[i];
-      if (n.x < 0 || n.y < 0 || n.x >= this.cols || n.y >= this.rows) {
-        dying[i] = true;
-        continue;
-      }
-      eating[i] = !!(this.food && n.x === this.food.x && n.y === this.food.y);
-      if (this.wallSet.has(K(n.x, n.y))) {
-        dying[i] = true;
-        continue;
-      }
-
-      const growing = snake.grow > 0 || eating[i];
-      for (let j = 0; j < snake.body.length; j++) {
-        if (!growing && j === snake.body.length - 1) continue;
-        if (snake.body[j].x === n.x && snake.body[j].y === n.y) {
-          dying[i] = true;
-          break;
-        }
-      }
-      if (dying[i]) continue;
-
-      const other = this.snakes[1 - i];
-      for (let j = 0; j < other.body.length - 1; j++) {
-        if (other.body[j].x === n.x && other.body[j].y === n.y) {
-          dying[i] = true;
-          break;
-        }
-      }
-    }
-
-    if (next[0].x === next[1].x && next[0].y === next[1].y) dying[0] = dying[1] = true;
-    if (
-      (next[0].x === this.snakes[1].body[0].x && next[0].y === this.snakes[1].body[0].y) &&
-      (next[1].x === this.snakes[0].body[0].x && next[1].y === this.snakes[0].body[0].y)
-    ) {
-      dying[0] = dying[1] = true;
-    }
-
-    for (let i = 0; i < 2; i++) {
-      const snake = this.snakes[i];
-      if (!snake.alive || dying[i]) continue;
-      snake.body.unshift(next[i]);
-      if (snake.grow > 0) snake.grow--;
-      else snake.body.pop();
-      if (eating[i] && this.food) {
-        snake.score += 10;
-        snake.fruits++;
-        snake.grow++;
-        this.speed = Math.max(this.cfg.minSpeed, this.speed - 1.4);
-        this.burst(next[i].x + 0.5, next[i].y + 0.5, 12, '#ff2b2b');
-        this.emit('eat', { player: i, score: snake.score });
-        this.spawnFood();
-      }
-    }
-
-    for (let i = 0; i < 2; i++) {
-      if (!dying[i]) continue;
-      const snake = this.snakes[i];
-      snake.alive = false;
-      this.shake = 10;
-      const head = snake.body[0];
-      this.burst(head.x + 0.5, head.y + 0.5, 22, '#ffffff');
-      this.emit('death', { player: i });
-    }
-
-    if (dying[0] || dying[1]) {
-      this.state = 'over';
-      if (dying[0] && dying[1]) this.winner = null;
-      else this.winner = dying[0] ? 1 : 0;
-      this.emit('over', { winner: this.winner });
-    }
-  }
-
-  freeCell() {
-    const blocked = (x, y) => {
-      if (this.wallSet.has(K(x, y))) return true;
-      if (this.food && this.food.x === x && this.food.y === y) return true;
-      return this.snakes.some((s) =>
-        s.alive && s.body.some((b) => b.x === x && b.y === y));
-    };
-    for (let i = 0; i < 400; i++) {
-      const x = Math.floor(Math.random() * this.cols);
-      const y = Math.floor(Math.random() * this.rows);
-      if (!blocked(x, y)) return { x, y };
-    }
-    return null;
-  }
-
-  spawnFood() {
-    const cell = this.freeCell();
-    if (cell) this.food = cell;
-  }
-
-  burst(x, y, n, color) {
-    for (let i = 0; i < n; i++) {
-      const ang = Math.random() * Math.PI * 2;
-      const sp = 3 + Math.random() * 6;
-      this.particles.push({
-        x,
-        y,
-        vx: Math.cos(ang) * sp,
-        vy: Math.sin(ang) * sp,
-        life: 240 + Math.random() * 280,
-        max: 520,
-        color,
-      });
-    }
-  }
-
-  posAt(snake, i, alpha) {
-    const cur = snake.body[i];
-    if (!cur) return null;
-    const prev = snake.prev[i] || cur;
-    const dx = cur.x - prev.x;
-    const dy = cur.y - prev.y;
-    if (Math.abs(dx) > 1 || Math.abs(dy) > 1) return cur;
-    return { x: prev.x + dx * alpha, y: prev.y + dy * alpha };
-  }
-
-  draw(ctx, view) {
-    const { cell, ox, oy } = view;
-    const W = this.cols * cell;
-    const H = this.rows * cell;
-
-    ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, view.width, view.height);
-
-    ctx.save();
-    if (this.shake > 0.2) {
-      ctx.translate((Math.random() - 0.5) * this.shake, (Math.random() - 0.5) * this.shake);
-    }
-
-    ctx.fillStyle = '#141414';
-    for (let x = 1; x < this.cols; x++) ctx.fillRect(Math.round(ox + x * cell), oy, 1, H);
-    for (let y = 1; y < this.rows; y++) ctx.fillRect(ox, Math.round(oy + y * cell), W, 1);
-
-    const inset = Math.max(1, Math.round(cell * 0.06));
-    for (const [x, y] of this.cfg.walls) {
-      const px = Math.round(ox + x * cell);
-      const py = Math.round(oy + y * cell);
-      ctx.strokeStyle = 'rgba(255,255,255,0.34)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(px + inset + 0.5, py + inset + 0.5, cell - inset * 2 - 1, cell - inset * 2 - 1);
-    }
-
-    if (this.food) {
-      const pad = cell * 0.16;
-      ctx.fillStyle = '#ff2b2b';
-      ctx.fillRect(
-        Math.round(ox + this.food.x * cell + pad),
-        Math.round(oy + this.food.y * cell + pad),
-        Math.round(cell - pad * 2),
-        Math.round(cell - pad * 2),
-      );
-    }
-
-    const alpha = this.state === 'running' ? clamp(this.acc / this.interval(), 0, 1) : 1;
-    const gap = Math.max(1, Math.round(cell * 0.07));
-
-    this.snakes.forEach((snake, idx) => {
-      const filled = idx === 0;
-      for (let i = snake.body.length - 1; i >= 0; i--) {
-        const p = this.posAt(snake, i, alpha);
-        if (!p) continue;
-        const px = Math.round(ox + p.x * cell);
-        const py = Math.round(oy + p.y * cell);
-        if (filled) {
-          ctx.fillStyle = snake.alive ? (i === 0 ? '#ffffff' : '#d8d8d8') : '#3a3a3a';
-          ctx.fillRect(px + gap, py + gap, cell - gap * 2, cell - gap * 2);
-        } else {
-          ctx.strokeStyle = snake.alive ? '#ffffff' : '#3a3a3a';
-          ctx.lineWidth = Math.max(1, cell * 0.1);
-          ctx.strokeRect(
-            px + gap + 0.5,
-            py + gap + 0.5,
-            cell - gap * 2 - 1,
-            cell - gap * 2 - 1,
-          );
-          if (!snake.alive) {
-            ctx.fillStyle = 'rgba(255,255,255,0.06)';
-            ctx.fillRect(px + gap, py + gap, cell - gap * 2, cell - gap * 2);
-          }
-        }
-      }
-      const head = this.posAt(snake, 0, alpha);
-      if (head) {
-        const size = Math.max(2, Math.round(cell * 0.17));
-        const cx = ox + (head.x + 0.5) * cell + snake.dir.x * cell * 0.19;
-        const cy = oy + (head.y + 0.5) * cell + snake.dir.y * cell * 0.19;
-        ctx.fillStyle = filled ? '#000' : '#fff';
-        ctx.fillRect(Math.round(cx - size / 2), Math.round(cy - size / 2), size, size);
-      }
-    });
-
-    ctx.save();
-    for (const p of this.particles) {
-      ctx.globalAlpha = clamp(p.life / p.max, 0, 1);
-      ctx.fillStyle = p.color;
-      ctx.fillRect(Math.round(ox + p.x * cell), Math.round(oy + p.y * cell), 1, 1);
-    }
-    ctx.restore();
-
-    ctx.restore();
-  }
-}
-
-  Object.assign(modulo, { DUEL_CFG, Duel });
-})(modulos['duel']);
-
 // ---- main ----
 (function (modulo) {
 'use strict';
 const { Game, POWER_INFO } = modulos['engine'];
-const { Duel, DUEL_CFG } = modulos['duel'];
 const { MODES, LEVELS, COLS, ROWS } = modulos['levels'];
 const { audio } = modulos['audio'];
 const { attachInput } = modulos['input'];
@@ -1588,7 +1394,6 @@ function comprobarPiezas() {
   if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.portals || !MODES.hunter) faltan.push('modos');
   if (!Array.isArray(LEVELS) || LEVELS.length !== 12) faltan.push('niveles');
   if (typeof Game !== 'function') faltan.push('motor');
-  if (typeof Duel !== 'function') faltan.push('duelo');
   if (faltan.length) {
     avisar(`faltan piezas (${faltan.join(', ')}). casi seguro hay ficheros viejos en caché: pulsa recargar limpio.`);
     return false;
@@ -1596,7 +1401,7 @@ function comprobarPiezas() {
   return true;
 }
 
-const ORDEN = ['campaign', 'classic', 'frenzy', 'portals', 'hunter', 'duel'];
+const ORDEN = ['campaign', 'classic', 'frenzy', 'portals', 'hunter'];
 const CLAVE = 'snake.v2';
 const CLAVE_ANTIGUA = 'snake.frenzy.v1';
 const COLUMNAS_NIVELES = 4;
@@ -1607,13 +1412,10 @@ const el = {
   overlay: $('#overlay'),
   prompt: $('#prompt'),
   hud: $('#hud'),
-  hudDuel: $('#hud-duel'),
   meta: $('#hud-meta'),
   score: $('#hud-score'),
   best: $('#hud-best'),
   mult: $('#hud-mult'),
-  duel0: $('#duel-score-0'),
-  duel1: $('#duel-score-1'),
   chain: $('#chain-bar'),
   effects: $('#effects'),
   mute: $('#btn-mute'),
@@ -1631,7 +1433,6 @@ function nuevoRegistro() {
   return {
     best: { classic: 0, frenzy: 0, portals: 0, hunter: 0 },
     campaign: { unlocked: 1, best: {} },
-    duel: { wins: 0, losses: 0, draws: 0 },
     sound: true,
     crt: true,
   };
@@ -1670,10 +1471,6 @@ function leerGuardado() {
       datos.campaign.best[nivel] = Number(valor) || 0;
     }
   }
-  const duelo = bruto.duel || {};
-  datos.duel.wins = Number(duelo.wins) || 0;
-  datos.duel.losses = Number(duelo.losses) || 0;
-  datos.duel.draws = Number(duelo.draws) || 0;
   if (typeof bruto.sound === 'boolean') datos.sound = bruto.sound;
   if (typeof bruto.crt === 'boolean') datos.crt = bruto.crt;
   return datos;
@@ -1696,8 +1493,8 @@ const app = {
   modo: 'classic',
   nivel: 0,
   juego: null,
-  duelo: null,
   demo: null,
+  demoModo: null,
   demoAcum: 0,
   menuSel: 0,
   nivelSel: 0,
@@ -1795,16 +1592,13 @@ const PISTAS = {
   paused: 'P seguir · R reiniciar · esc menú',
   dead: 'R reintentar · esc menú',
   cleared: 'enter siguiente · esc menú',
-  duelover: 'R revancha · esc menú',
 };
 
 function actualizarPista() {
   if (app.pantalla === 'playing') {
-    el.hint.textContent = app.duelo
-      ? 'p1 flechas · p2 WASD · P pausa'
-      : esTactil()
-        ? 'desliza para girar · toca para turbo'
-        : 'espacio turbo · P pausa · R reiniciar · M sonido';
+    el.hint.textContent = esTactil()
+      ? 'desliza para girar · toca para turbo'
+      : 'espacio turbo · P pausa · R reiniciar · M sonido';
     return;
   }
   el.hint.textContent = PISTAS[app.pantalla] || '';
@@ -1813,23 +1607,7 @@ function actualizarPista() {
 /* ---------------------------------------------------------- marcador */
 
 function actualizarMarcador() {
-  if (app.duelo) {
-    el.hud.hidden = true;
-    el.hudDuel.hidden = false;
-    const [a, b] = app.duelo.snakes;
-    const cero = puntos(a.score);
-    const uno = puntos(b.score);
-    if (el.duel0.textContent !== cero) el.duel0.textContent = cero;
-    if (el.duel1.textContent !== uno) el.duel1.textContent = uno;
-    el.prompt.classList.toggle('visible', app.duelo.state === 'ready');
-    el.pause.textContent = app.pantalla === 'paused' ? 'seguir' : 'pausa';
-    el.pause.disabled = app.pantalla !== 'playing' && app.pantalla !== 'paused';
-    actualizarEfectos(null);
-    return;
-  }
-
   el.hud.hidden = false;
-  el.hudDuel.hidden = true;
 
   const juego = app.juego;
   if (!juego) {
@@ -1900,14 +1678,12 @@ function actualizarEfectos(juego) {
 
 function valorDerecha(modo) {
   if (modo === 'campaign') return `${guardado.campaign.unlocked - 1}/${LEVELS.length}`;
-  if (modo === 'duel') return `${guardado.duel.wins}–${guardado.duel.losses}`;
   const mejor = guardado.best[modo] || 0;
   return mejor ? String(mejor) : '—';
 }
 
 function nombreModo(modo) {
   if (modo === 'campaign') return 'campaña';
-  if (modo === 'duel') return 'duelo';
   return MODES[modo].name.toLowerCase();
 }
 
@@ -1915,16 +1691,14 @@ function descripcion(modo) {
   if (modo === 'campaign') {
     return `campaña: ${LEVELS.length} niveles con muros`;
   }
-  if (modo === 'duel') return 'duelo local a dos manos';
   return MODES[modo].name.toLowerCase() + ': ' + MODES[modo].tag;
 }
 
 function mostrarInicio() {
   pararTemporizador();
   app.juego = null;
-  app.duelo = null;
   app.menuSel = 0;
-  crearDemo();
+  app.demoModo = null;
 
   const filas = ORDEN.map((modo, i) => {
     return `<button class="row" type="button" data-modo="${modo}" data-i="${i}">
@@ -1949,10 +1723,10 @@ function mostrarInicio() {
         <button class="link" type="button" data-accion="wipe">borrar récords</button>
       </p>
     </div>
-    <aside class="inicio-demo" aria-hidden="true">
-      <p class="kicker">en directo · frenesí</p>
-      <canvas id="demo"></canvas>
-      <p class="nota">alguien juega por ti<br>mientras decides</p>
+    <aside class="inicio-demo">
+      <p class="kicker" id="demo-titulo">vista previa</p>
+      <canvas id="demo" aria-label="vista previa del modo elegido"></canvas>
+      <p class="nota" id="demo-nota">así se juega el modo que tienes marcado</p>
     </aside>
   </div>`);
 
@@ -1975,11 +1749,12 @@ function seleccionarModo(i) {
   el.overlay.querySelectorAll('.row').forEach((nodo, j) => {
     nodo.classList.toggle('sel', j === app.menuSel);
   });
+  const modo = ORDEN[app.menuSel];
+  if (app.demoModo !== modo) crearDemo(modo);
 }
 
 function elegirModo(modo) {
   if (modo === 'campaign') mostrarNiveles();
-  else if (modo === 'duel') empezarDuelo();
   else empezarPartida(modo, 0);
 }
 
@@ -1988,7 +1763,6 @@ function elegirModo(modo) {
 function mostrarNiveles() {
   pararTemporizador();
   app.juego = null;
-  app.duelo = null;
   app.demo = null;
   app.nivelSel = Math.min(guardado.campaign.unlocked - 1, LEVELS.length - 1);
   pintarNiveles();
@@ -2112,7 +1886,6 @@ function mostrarAyuda() {
         <tr><th>pausa</th><td>P o esc</td></tr>
         <tr><th>reiniciar</th><td>R</td></tr>
         <tr><th>sonido</th><td>M</td></tr>
-        <tr><th>duelo</th><td>jugador 1 flechas · jugador 2 WASD</td></tr>
         <tr><th>mando</th><td>d-pad y sticks · A turbo · start pausa</td></tr>
       </tbody>
     </table>
@@ -2121,8 +1894,10 @@ function mostrarAyuda() {
       <li>la comida encadena: dos frutas seguidas suben el multiplicador hasta ×5</li>
       <li>el rombo rojo caduca y da dos anillos de largo</li>
       <li>los iconos blancos dan poderes: círculo discontinuo fantasma (atraviesas todo), dos barras lento, cuadrado recorte</li>
-      <li>el recuadro blanco que parpadea es el cazador: te persigue y acelera</li>
+      <li>en cazador hay una serpiente roja: come los puntos azules y se hace más larga</li>
+      <li>si te toca cualquier anillo suyo, o su cabeza, pierdes; con el fantasma la atraviesas</li>
       <li>en los portales, entrar por uno te saca por el otro</li>
+      <li>al empezar cada partida el mapa se enciende desde tu cabeza</li>
     </ul>
     <p class="pie"><span>osciladores y ruido en directo · sin ficheros de audio</span></p>
   </div>`);
@@ -2152,28 +1927,12 @@ function configuracion(modo, nivel) {
 function empezarPartida(modo, nivel = 0) {
   pararTemporizador();
   audio.unlock();
-  app.duelo = null;
   app.demo = null;
   app.modo = modo;
   app.nivel = nivel;
   app.record = false;
   app.juego = new Game(configuracion(modo, nivel), eventosJuego);
   app.marca = mejorActual();
-
-  ponerOverlay(null);
-  pantalla('playing');
-  ajustarLienzo();
-  actualizarMarcador();
-}
-
-function empezarDuelo() {
-  pararTemporizador();
-  audio.unlock();
-  app.juego = null;
-  app.demo = null;
-  app.duelo = new Duel(DUEL_CFG, eventosDuelo);
-  app.modo = 'duel';
-  app.record = false;
 
   ponerOverlay(null);
   pantalla('playing');
@@ -2202,11 +1961,8 @@ function eventosJuego(tipo, datos) {
     case 'turbo':
       audio.play('turbo');
       break;
-    case 'hunter':
-      if (!juego || app.reloj - (juego.ultimoAcecho || 0) > 240) {
-        audio.play('hunter');
-        if (juego) juego.ultimoAcecho = app.reloj;
-      }
+    case 'hunterEat':
+      audio.play('hunterEat');
       break;
     case 'die':
       audio.play('death');
@@ -2223,34 +1979,6 @@ function eventosJuego(tipo, datos) {
       guardar();
       app.temporizador = setTimeout(mostrarNivelSuperado, 540);
       break;
-    default:
-      break;
-  }
-}
-
-function eventosDuelo(tipo, datos) {
-  switch (tipo) {
-    case 'start':
-      audio.play('start');
-      break;
-    case 'eat':
-      audio.play('bite', { multiplier: 1 });
-      break;
-    case 'death':
-      audio.play('death');
-      break;
-    case 'over': {
-      audio.play('duelEnd');
-      const duelo = app.duelo;
-      if (duelo) {
-        if (duelo.winner === 0) guardado.duel.wins++;
-        else if (duelo.winner === 1) guardado.duel.losses++;
-        else guardado.duel.draws++;
-        guardar();
-      }
-      app.temporizador = setTimeout(mostrarFinDuelo, 520);
-      break;
-    }
     default:
       break;
   }
@@ -2317,46 +2045,17 @@ function mostrarNivelSuperado() {
   el.prompt.classList.remove('visible');
 }
 
-function mostrarFinDuelo() {
-  const duelo = app.duelo;
-  if (!duelo || duelo.state !== 'over') return;
-  const [a, b] = duelo.snakes;
-  const titulo = duelo.winner === 0 ? 'gana el jugador 1' : duelo.winner === 1 ? 'gana el jugador 2' : 'empate';
-
-  ponerOverlay(`<div class="panel fin">
-    <div class="fin-cabeza">
-      <p class="kicker">${titulo}</p>
-      <p class="cifra">${a.score}<span class="guion">—</span>${b.score}</p>
-      <p class="nota">duelos ${guardado.duel.wins}–${guardado.duel.losses}${guardado.duel.draws ? ` · ${guardado.duel.draws} empates` : ''}</p>
-    </div>
-    <div class="acciones">
-      <button class="principal" type="button" data-accion="rematch">revancha <kbd>R</kbd></button>
-      <button type="button" data-accion="home">menú <kbd>esc</kbd></button>
-    </div>
-  </div>`);
-  pantalla('duelover');
-  el.pause.disabled = true;
-}
-
 /* ---------------------------------------------------------- pausa */
 
 function pausar() {
-  const enCurso = app.duelo || app.juego;
-  if (!enCurso || app.pantalla !== 'playing') return;
-  enCurso.pause();
-  if (enCurso.state !== 'paused') return;
+  if (!app.juego || app.pantalla !== 'playing') return;
+  app.juego.pause();
+  if (app.juego.state !== 'paused') return;
   audio.play('ui');
 
-  let cifra;
-  let nota;
-  if (app.duelo) {
-    const [a, b] = app.duelo.snakes;
-    cifra = `${a.score}<span class="guion">—</span>${b.score}`;
-    nota = 'duelo en pausa';
-  } else {
-    cifra = puntos(app.juego.score);
-    nota = `${app.juego.fruits} frutas · récord ${Math.max(app.marca, app.juego.score)}`;
-  }
+  const juego = app.juego;
+  const cifra = puntos(juego.score);
+  const nota = `${juego.fruits} frutas · récord ${Math.max(app.marca, juego.score)}`;
 
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
@@ -2366,7 +2065,7 @@ function pausar() {
     </div>
     <div class="acciones">
       <button class="principal" type="button" data-accion="resume">seguir <kbd>P</kbd></button>
-      <button type="button" data-accion="retry">${app.duelo ? 'revancha' : 'reiniciar'} <kbd>R</kbd></button>
+      <button type="button" data-accion="retry">reiniciar <kbd>R</kbd></button>
       <button type="button" data-accion="home">menú <kbd>esc</kbd></button>
     </div>
   </div>`);
@@ -2377,9 +2076,8 @@ function pausar() {
 }
 
 function reanudar() {
-  const enCurso = app.duelo || app.juego;
-  if (!enCurso) return;
-  enCurso.resume();
+  if (!app.juego) return;
+  app.juego.resume();
   ponerOverlay(null);
   pantalla('playing');
   el.pause.textContent = 'pausa';
@@ -2404,9 +2102,6 @@ function accion(nombre) {
     return;
   }
 
-  // WASD en solitario y en menús se comporta como las flechas
-  if (!app.duelo && nombre.endsWith('2')) nombre = nombre.slice(0, -1);
-
   audio.unlock();
 
   if (nombre === 'tap') {
@@ -2426,7 +2121,7 @@ function accion(nombre) {
     return;
   }
 
-  const esDireccion = ['up', 'down', 'left', 'right', 'up2', 'down2', 'left2', 'right2'].includes(nombre);
+  const esDireccion = ['up', 'down', 'left', 'right'].includes(nombre);
 
   if (app.pantalla === 'home') {
     if (nombre === 'up') seleccionarModo(app.menuSel - 1);
@@ -2458,18 +2153,13 @@ function accion(nombre) {
   if (app.pantalla === 'paused') {
     if (nombre === 'pause' || nombre === 'confirm') reanudar();
     else if (nombre === 'back') mostrarInicio();
-    else if (nombre === 'restart') {
-      if (app.duelo) empezarDuelo();
-      else empezarPartida(app.modo, app.nivel);
-    }
+    else if (nombre === 'restart') empezarPartida(app.modo, app.nivel);
     return;
   }
 
-  if (app.pantalla === 'dead' || app.pantalla === 'duelover') {
-    if (nombre === 'confirm' || nombre === 'restart') {
-      if (app.pantalla === 'duelover') empezarDuelo();
-      else empezarPartida(app.modo, app.nivel);
-    } else if (nombre === 'back') mostrarInicio();
+  if (app.pantalla === 'dead') {
+    if (nombre === 'confirm' || nombre === 'restart') empezarPartida(app.modo, app.nivel);
+    else if (nombre === 'back') mostrarInicio();
     return;
   }
 
@@ -2492,35 +2182,23 @@ function accion(nombre) {
     return;
   }
   if (nombre === 'restart') {
-    if (app.duelo) empezarDuelo();
-    else if (app.juego) empezarPartida(app.modo, app.nivel);
+    if (app.juego) empezarPartida(app.modo, app.nivel);
     return;
   }
   if (!esDireccion) return;
 
-  const direcciones = {
-    up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0],
-    up2: [0, -1], down2: [0, 1], left2: [-1, 0], right2: [1, 0],
-  };
+  const direcciones = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
   const [dx, dy] = direcciones[nombre];
-  if (app.duelo) {
-    app.duelo.setDirection(nombre.endsWith('2') ? 1 : 0, dx, dy);
-  } else if (app.juego) {
-    app.juego.setDirection(dx, dy);
-  }
+  if (app.juego) app.juego.setDirection(dx, dy);
 }
 
 function ejecutar(nombre) {
   switch (nombre) {
     case 'retry':
-      if (app.duelo) empezarDuelo();
-      else empezarPartida(app.modo, app.nivel);
+      empezarPartida(app.modo, app.nivel);
       break;
     case 'next':
       empezarPartida('campaign', Math.min(app.nivel + 1, LEVELS.length - 1));
-      break;
-    case 'rematch':
-      empezarDuelo();
       break;
     case 'resume':
       reanudar();
@@ -2549,7 +2227,6 @@ function borrarRecords() {
   if (!window.confirm('¿borrar récords y progreso?')) return;
   guardado.best = { classic: 0, frenzy: 0, portals: 0, hunter: 0 };
   guardado.campaign = { unlocked: 1, best: {} };
-  guardado.duel = { wins: 0, losses: 0, draws: 0 };
   guardar();
   audio.play('ui');
   mostrarInicio();
@@ -2586,13 +2263,39 @@ function pantallaCompleta() {
 
 /* ---------------------------------------------------------- demo del menú */
 
-function crearDemo() {
-  const cfg = { ...MODES.frenzy, startSpeed: 96, rampPerSec: 0.4, goal: null, powerEvery: 4 };
+function configDemo(modo) {
+  if (modo === 'campaign') {
+    const nivel = LEVELS[Math.min(guardado.campaign.unlocked - 1, LEVELS.length - 1)];
+    return { ...configuracion('campaign', LEVELS.indexOf(nivel)), goal: null };
+  }
+  const base = { ...MODES[modo] };
+  base.goal = null;
+  return base;
+}
+
+function crearDemo(modo = app.demoModo || ORDEN[app.menuSel] || 'classic') {
+  const cfg = configDemo(modo);
   const juego = new Game(cfg, () => {});
   juego.state = 'running';
   app.demo = juego;
+  app.demoModo = modo;
   app.demoAcum = 0;
   ajustarLienzo();
+  pintarTituloDemo(modo);
+}
+
+function pintarTituloDemo(modo) {
+  const titulo = document.getElementById('demo-titulo');
+  const nota = document.getElementById('demo-nota');
+  if (!titulo) return;
+  if (modo === 'campaign') {
+    const nivel = LEVELS[Math.min(guardado.campaign.unlocked - 1, LEVELS.length - 1)];
+    titulo.textContent = `vista previa · nivel ${dosDigitos(LEVELS.indexOf(nivel) + 1)} ${nivel.name.toLowerCase()}`;
+    nota.textContent = 'así es el siguiente nivel de la campaña';
+  } else {
+    titulo.textContent = `vista previa · ${nombreModo(modo)}`;
+    nota.textContent = MODES[modo].tag;
+  }
 }
 
 function pasoDemo(dt) {
@@ -2604,7 +2307,7 @@ function pasoDemo(dt) {
     app.demoAcum = 0;
     demo.botTurn();
   }
-  if (demo.state === 'dead' || demo.state === 'cleared') crearDemo();
+  if (demo.state === 'dead' || demo.state === 'cleared') crearDemo(app.demoModo);
 
   const lienzo = document.getElementById('demo');
   if (!lienzo) return;
@@ -2699,10 +2402,6 @@ function bucle(t) {
 
   if (app.pantalla === 'home') {
     pasoDemo(dt);
-  } else if (app.duelo) {
-    app.duelo.update(dt);
-    app.duelo.draw(pincel, vista);
-    actualizarMarcador();
   } else if (app.juego) {
     app.juego.update(dt);
     app.juego.draw(pincel, vista);
@@ -2744,7 +2443,7 @@ try {
 }
 
 if (location.hash === '#debug') {
-  window.__snake = { app, guardado, accion, empezarPartida, empezarDuelo, mostrarInicio };
+  window.__snake = { app, guardado, accion, empezarPartida, mostrarInicio, crearDemo };
 }
 })(modulos['main']);
 })();

@@ -13,7 +13,7 @@ const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SALIDA = path.join(RAIZ, 'snake.js');
 
 // orden de dependencias: cada módulo sólo usa los anteriores
-const ORDEN = ['grid', 'levels', 'audio', 'input', 'engine', 'duel', 'main'];
+const ORDEN = ['grid', 'levels', 'audio', 'input', 'engine', 'main'];
 
 const RE_IMPORT = /^import\s*\{([^}]*)\}\s*from\s*'\.\/([a-z]+)\.js[^']*';?$/gm;
 const RE_EXPORT = /^export\s+(const|let|var|class|function)\s+([A-Za-z_$][\w$]*)/gm;

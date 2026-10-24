@@ -105,8 +105,8 @@ const SONIDOS = {
   level() {
     [523, 659, 784, 1046].forEach((f, i) => tono(f, 0.12, { vol: 0.2, delay: i * 0.075 }));
   },
-  duelEnd() {
-    [392, 523, 659].forEach((f, i) => tono(f, 0.1, { vol: 0.18, delay: i * 0.06 }));
+  hunterEat() {
+    tono(300, 0.06, { tipo: 'triangle', vol: 0.14, fin: 220 });
   },
   ui() {
     tono(440, 0.03, { vol: 0.1 });

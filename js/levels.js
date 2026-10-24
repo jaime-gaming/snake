@@ -81,7 +81,7 @@ export const MODES = {
   hunter: {
     id: 'hunter',
     name: 'CAZADOR',
-    tag: 'algo te sigue',
+    tag: 'una serpiente roja te caza',
     cols: COLS,
     rows: ROWS,
     walls: [],

@@ -12,7 +12,7 @@ Snake de rejilla, en blanco y negro y sin adornos. HTML, CSS y JavaScript a pelo
 | reiniciar | R | botón |
 | sonido | M | botón sonido |
 
-Mando: d-pad y sticks para girar, A para turbo, start para pausar. En el duelo, el segundo mando controla al rival.
+Mando: d-pad y sticks para girar, A para turbo, start para pausar.
 
 ## modos
 
@@ -20,8 +20,7 @@ Mando: d-pad y sticks para girar, A para turbo, start para pausar. En el duelo, 
 - **clásico** — muros, sin fin. cada fruta acelera.
 - **frenesí** — bordes abiertos y aceleración continua.
 - **portales** — dos aros que se recolocan cada pocas frutas. entras por uno y sales por el otro.
-- **cazador** — una X te persigue por el laberinto y gana terreno. desaparece cada pocas frutas y vuelve a aparecer lejos.
-- **duelo** — dos serpientes en el mismo tablero: jugador 1 con flechas, jugador 2 con WASD. el marcador de duelos se guarda.
+- **cazador** — una serpiente roja te persigue por el laberinto. come puntos azules y se hace más larga: cada anillo que gana es una casilla más que te puede tapar. vuelve a nacer lejos cada vez que coges un rombo.
 
 ## piezas
 
@@ -29,6 +28,7 @@ Mando: d-pad y sticks para girar, A para turbo, start para pausar. En el duelo, 
 - **rombo** — aparece cada pocas frutas, caduca y da dos anillos de largo.
 - **poderes** — círculo discontinuo: fantasma, atraviesas muros, bordes y cazador durante cinco segundos. dos barras: lento, todo va más despacio. cuadrado: recorte, pierdes anillos y ganas puntos.
 - **turbo** — 0,62 del intervalo mientras lo mantengas.
+- **arranque** — al empezar cada partida, la cabeza va encendiendo el tablero: una onda de luz revela casillas hasta dejar el mapa entero a la vista.
 
 ## archivos
 
@@ -37,9 +37,8 @@ index.html          marcado, hud, capa de menús y aviso de fallo de carga
 styles.css          todo el estilo
 snake.js            TODO el juego en un fichero (generado, es lo que carga la página)
 js/                 fuentes por módulos, más cómodas de editar
-  engine.js         motor de un jugador: rejilla, colisiones, poderes, dibujo
-  duel.js           motor del duelo a dos
-  grid.js           bfs y utilidades de rejilla
+  engine.js         motor: rejilla, colisiones, poderes, cazador, dibujo
+  grid.js           bfs y utilidades de rejilla (cazador y piloto automático)
   levels.js         modos y los 12 niveles
   audio.js          sonido con osciladores, sin ficheros
   input.js          teclado, gestos y mando
@@ -57,7 +56,7 @@ Se toca `js/`, nunca `snake.js`, y después:
 
 ```sh
 node tools/build.mjs          # regenera snake.js
-node tools/check.mjs          # valida niveles, motor y duelo
+node tools/check.mjs          # valida niveles, motor y reglas
 ```
 
 `node tools/build.mjs --check` comprueba que `snake.js` está al día; el workflow lo hace antes de publicar, así que si te olvidas no se despliega una versión vieja.

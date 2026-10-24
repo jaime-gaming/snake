@@ -1,5 +1,4 @@
 import { Game, POWER_INFO } from './engine.js?v=3';
-import { Duel, DUEL_CFG } from './duel.js?v=3';
 import { MODES, LEVELS, COLS, ROWS } from './levels.js?v=3';
 import { audio } from './audio.js?v=3';
 import { attachInput } from './input.js?v=3';
@@ -16,7 +15,6 @@ function comprobarPiezas() {
   if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.portals || !MODES.hunter) faltan.push('modos');
   if (!Array.isArray(LEVELS) || LEVELS.length !== 12) faltan.push('niveles');
   if (typeof Game !== 'function') faltan.push('motor');
-  if (typeof Duel !== 'function') faltan.push('duelo');
   if (faltan.length) {
     avisar(`faltan piezas (${faltan.join(', ')}). casi seguro hay ficheros viejos en caché: pulsa recargar limpio.`);
     return false;
@@ -24,7 +22,7 @@ function comprobarPiezas() {
   return true;
 }
 
-const ORDEN = ['campaign', 'classic', 'frenzy', 'portals', 'hunter', 'duel'];
+const ORDEN = ['campaign', 'classic', 'frenzy', 'portals', 'hunter'];
 const CLAVE = 'snake.v2';
 const CLAVE_ANTIGUA = 'snake.frenzy.v1';
 const COLUMNAS_NIVELES = 4;
@@ -35,13 +33,10 @@ const el = {
   overlay: $('#overlay'),
   prompt: $('#prompt'),
   hud: $('#hud'),
-  hudDuel: $('#hud-duel'),
   meta: $('#hud-meta'),
   score: $('#hud-score'),
   best: $('#hud-best'),
   mult: $('#hud-mult'),
-  duel0: $('#duel-score-0'),
-  duel1: $('#duel-score-1'),
   chain: $('#chain-bar'),
   effects: $('#effects'),
   mute: $('#btn-mute'),
@@ -59,7 +54,6 @@ function nuevoRegistro() {
   return {
     best: { classic: 0, frenzy: 0, portals: 0, hunter: 0 },
     campaign: { unlocked: 1, best: {} },
-    duel: { wins: 0, losses: 0, draws: 0 },
     sound: true,
     crt: true,
   };
@@ -98,10 +92,6 @@ function leerGuardado() {
       datos.campaign.best[nivel] = Number(valor) || 0;
     }
   }
-  const duelo = bruto.duel || {};
-  datos.duel.wins = Number(duelo.wins) || 0;
-  datos.duel.losses = Number(duelo.losses) || 0;
-  datos.duel.draws = Number(duelo.draws) || 0;
   if (typeof bruto.sound === 'boolean') datos.sound = bruto.sound;
   if (typeof bruto.crt === 'boolean') datos.crt = bruto.crt;
   return datos;
@@ -124,8 +114,8 @@ const app = {
   modo: 'classic',
   nivel: 0,
   juego: null,
-  duelo: null,
   demo: null,
+  demoModo: null,
   demoAcum: 0,
   menuSel: 0,
   nivelSel: 0,
@@ -223,16 +213,13 @@ const PISTAS = {
   paused: 'P seguir · R reiniciar · esc menú',
   dead: 'R reintentar · esc menú',
   cleared: 'enter siguiente · esc menú',
-  duelover: 'R revancha · esc menú',
 };
 
 function actualizarPista() {
   if (app.pantalla === 'playing') {
-    el.hint.textContent = app.duelo
-      ? 'p1 flechas · p2 WASD · P pausa'
-      : esTactil()
-        ? 'desliza para girar · toca para turbo'
-        : 'espacio turbo · P pausa · R reiniciar · M sonido';
+    el.hint.textContent = esTactil()
+      ? 'desliza para girar · toca para turbo'
+      : 'espacio turbo · P pausa · R reiniciar · M sonido';
     return;
   }
   el.hint.textContent = PISTAS[app.pantalla] || '';
@@ -241,23 +228,7 @@ function actualizarPista() {
 /* ---------------------------------------------------------- marcador */
 
 function actualizarMarcador() {
-  if (app.duelo) {
-    el.hud.hidden = true;
-    el.hudDuel.hidden = false;
-    const [a, b] = app.duelo.snakes;
-    const cero = puntos(a.score);
-    const uno = puntos(b.score);
-    if (el.duel0.textContent !== cero) el.duel0.textContent = cero;
-    if (el.duel1.textContent !== uno) el.duel1.textContent = uno;
-    el.prompt.classList.toggle('visible', app.duelo.state === 'ready');
-    el.pause.textContent = app.pantalla === 'paused' ? 'seguir' : 'pausa';
-    el.pause.disabled = app.pantalla !== 'playing' && app.pantalla !== 'paused';
-    actualizarEfectos(null);
-    return;
-  }
-
   el.hud.hidden = false;
-  el.hudDuel.hidden = true;
 
   const juego = app.juego;
   if (!juego) {
@@ -328,14 +299,12 @@ function actualizarEfectos(juego) {
 
 function valorDerecha(modo) {
   if (modo === 'campaign') return `${guardado.campaign.unlocked - 1}/${LEVELS.length}`;
-  if (modo === 'duel') return `${guardado.duel.wins}–${guardado.duel.losses}`;
   const mejor = guardado.best[modo] || 0;
   return mejor ? String(mejor) : '—';
 }
 
 function nombreModo(modo) {
   if (modo === 'campaign') return 'campaña';
-  if (modo === 'duel') return 'duelo';
   return MODES[modo].name.toLowerCase();
 }
 
@@ -343,16 +312,14 @@ function descripcion(modo) {
   if (modo === 'campaign') {
     return `campaña: ${LEVELS.length} niveles con muros`;
   }
-  if (modo === 'duel') return 'duelo local a dos manos';
   return MODES[modo].name.toLowerCase() + ': ' + MODES[modo].tag;
 }
 
 function mostrarInicio() {
   pararTemporizador();
   app.juego = null;
-  app.duelo = null;
   app.menuSel = 0;
-  crearDemo();
+  app.demoModo = null;
 
   const filas = ORDEN.map((modo, i) => {
     return `<button class="row" type="button" data-modo="${modo}" data-i="${i}">
@@ -377,10 +344,10 @@ function mostrarInicio() {
         <button class="link" type="button" data-accion="wipe">borrar récords</button>
       </p>
     </div>
-    <aside class="inicio-demo" aria-hidden="true">
-      <p class="kicker">en directo · frenesí</p>
-      <canvas id="demo"></canvas>
-      <p class="nota">alguien juega por ti<br>mientras decides</p>
+    <aside class="inicio-demo">
+      <p class="kicker" id="demo-titulo">vista previa</p>
+      <canvas id="demo" aria-label="vista previa del modo elegido"></canvas>
+      <p class="nota" id="demo-nota">así se juega el modo que tienes marcado</p>
     </aside>
   </div>`);
 
@@ -403,11 +370,12 @@ function seleccionarModo(i) {
   el.overlay.querySelectorAll('.row').forEach((nodo, j) => {
     nodo.classList.toggle('sel', j === app.menuSel);
   });
+  const modo = ORDEN[app.menuSel];
+  if (app.demoModo !== modo) crearDemo(modo);
 }
 
 function elegirModo(modo) {
   if (modo === 'campaign') mostrarNiveles();
-  else if (modo === 'duel') empezarDuelo();
   else empezarPartida(modo, 0);
 }
 
@@ -416,7 +384,6 @@ function elegirModo(modo) {
 function mostrarNiveles() {
   pararTemporizador();
   app.juego = null;
-  app.duelo = null;
   app.demo = null;
   app.nivelSel = Math.min(guardado.campaign.unlocked - 1, LEVELS.length - 1);
   pintarNiveles();
@@ -540,7 +507,6 @@ function mostrarAyuda() {
         <tr><th>pausa</th><td>P o esc</td></tr>
         <tr><th>reiniciar</th><td>R</td></tr>
         <tr><th>sonido</th><td>M</td></tr>
-        <tr><th>duelo</th><td>jugador 1 flechas · jugador 2 WASD</td></tr>
         <tr><th>mando</th><td>d-pad y sticks · A turbo · start pausa</td></tr>
       </tbody>
     </table>
@@ -549,8 +515,10 @@ function mostrarAyuda() {
       <li>la comida encadena: dos frutas seguidas suben el multiplicador hasta ×5</li>
       <li>el rombo rojo caduca y da dos anillos de largo</li>
       <li>los iconos blancos dan poderes: círculo discontinuo fantasma (atraviesas todo), dos barras lento, cuadrado recorte</li>
-      <li>el recuadro blanco que parpadea es el cazador: te persigue y acelera</li>
+      <li>en cazador hay una serpiente roja: come los puntos azules y se hace más larga</li>
+      <li>si te toca cualquier anillo suyo, o su cabeza, pierdes; con el fantasma la atraviesas</li>
       <li>en los portales, entrar por uno te saca por el otro</li>
+      <li>al empezar cada partida el mapa se enciende desde tu cabeza</li>
     </ul>
     <p class="pie"><span>osciladores y ruido en directo · sin ficheros de audio</span></p>
   </div>`);
@@ -580,28 +548,12 @@ function configuracion(modo, nivel) {
 function empezarPartida(modo, nivel = 0) {
   pararTemporizador();
   audio.unlock();
-  app.duelo = null;
   app.demo = null;
   app.modo = modo;
   app.nivel = nivel;
   app.record = false;
   app.juego = new Game(configuracion(modo, nivel), eventosJuego);
   app.marca = mejorActual();
-
-  ponerOverlay(null);
-  pantalla('playing');
-  ajustarLienzo();
-  actualizarMarcador();
-}
-
-function empezarDuelo() {
-  pararTemporizador();
-  audio.unlock();
-  app.juego = null;
-  app.demo = null;
-  app.duelo = new Duel(DUEL_CFG, eventosDuelo);
-  app.modo = 'duel';
-  app.record = false;
 
   ponerOverlay(null);
   pantalla('playing');
@@ -630,11 +582,8 @@ function eventosJuego(tipo, datos) {
     case 'turbo':
       audio.play('turbo');
       break;
-    case 'hunter':
-      if (!juego || app.reloj - (juego.ultimoAcecho || 0) > 240) {
-        audio.play('hunter');
-        if (juego) juego.ultimoAcecho = app.reloj;
-      }
+    case 'hunterEat':
+      audio.play('hunterEat');
       break;
     case 'die':
       audio.play('death');
@@ -651,34 +600,6 @@ function eventosJuego(tipo, datos) {
       guardar();
       app.temporizador = setTimeout(mostrarNivelSuperado, 540);
       break;
-    default:
-      break;
-  }
-}
-
-function eventosDuelo(tipo, datos) {
-  switch (tipo) {
-    case 'start':
-      audio.play('start');
-      break;
-    case 'eat':
-      audio.play('bite', { multiplier: 1 });
-      break;
-    case 'death':
-      audio.play('death');
-      break;
-    case 'over': {
-      audio.play('duelEnd');
-      const duelo = app.duelo;
-      if (duelo) {
-        if (duelo.winner === 0) guardado.duel.wins++;
-        else if (duelo.winner === 1) guardado.duel.losses++;
-        else guardado.duel.draws++;
-        guardar();
-      }
-      app.temporizador = setTimeout(mostrarFinDuelo, 520);
-      break;
-    }
     default:
       break;
   }
@@ -745,46 +666,17 @@ function mostrarNivelSuperado() {
   el.prompt.classList.remove('visible');
 }
 
-function mostrarFinDuelo() {
-  const duelo = app.duelo;
-  if (!duelo || duelo.state !== 'over') return;
-  const [a, b] = duelo.snakes;
-  const titulo = duelo.winner === 0 ? 'gana el jugador 1' : duelo.winner === 1 ? 'gana el jugador 2' : 'empate';
-
-  ponerOverlay(`<div class="panel fin">
-    <div class="fin-cabeza">
-      <p class="kicker">${titulo}</p>
-      <p class="cifra">${a.score}<span class="guion">—</span>${b.score}</p>
-      <p class="nota">duelos ${guardado.duel.wins}–${guardado.duel.losses}${guardado.duel.draws ? ` · ${guardado.duel.draws} empates` : ''}</p>
-    </div>
-    <div class="acciones">
-      <button class="principal" type="button" data-accion="rematch">revancha <kbd>R</kbd></button>
-      <button type="button" data-accion="home">menú <kbd>esc</kbd></button>
-    </div>
-  </div>`);
-  pantalla('duelover');
-  el.pause.disabled = true;
-}
-
 /* ---------------------------------------------------------- pausa */
 
 function pausar() {
-  const enCurso = app.duelo || app.juego;
-  if (!enCurso || app.pantalla !== 'playing') return;
-  enCurso.pause();
-  if (enCurso.state !== 'paused') return;
+  if (!app.juego || app.pantalla !== 'playing') return;
+  app.juego.pause();
+  if (app.juego.state !== 'paused') return;
   audio.play('ui');
 
-  let cifra;
-  let nota;
-  if (app.duelo) {
-    const [a, b] = app.duelo.snakes;
-    cifra = `${a.score}<span class="guion">—</span>${b.score}`;
-    nota = 'duelo en pausa';
-  } else {
-    cifra = puntos(app.juego.score);
-    nota = `${app.juego.fruits} frutas · récord ${Math.max(app.marca, app.juego.score)}`;
-  }
+  const juego = app.juego;
+  const cifra = puntos(juego.score);
+  const nota = `${juego.fruits} frutas · récord ${Math.max(app.marca, juego.score)}`;
 
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
@@ -794,7 +686,7 @@ function pausar() {
     </div>
     <div class="acciones">
       <button class="principal" type="button" data-accion="resume">seguir <kbd>P</kbd></button>
-      <button type="button" data-accion="retry">${app.duelo ? 'revancha' : 'reiniciar'} <kbd>R</kbd></button>
+      <button type="button" data-accion="retry">reiniciar <kbd>R</kbd></button>
       <button type="button" data-accion="home">menú <kbd>esc</kbd></button>
     </div>
   </div>`);
@@ -805,9 +697,8 @@ function pausar() {
 }
 
 function reanudar() {
-  const enCurso = app.duelo || app.juego;
-  if (!enCurso) return;
-  enCurso.resume();
+  if (!app.juego) return;
+  app.juego.resume();
   ponerOverlay(null);
   pantalla('playing');
   el.pause.textContent = 'pausa';
@@ -832,9 +723,6 @@ function accion(nombre) {
     return;
   }
 
-  // WASD en solitario y en menús se comporta como las flechas
-  if (!app.duelo && nombre.endsWith('2')) nombre = nombre.slice(0, -1);
-
   audio.unlock();
 
   if (nombre === 'tap') {
@@ -854,7 +742,7 @@ function accion(nombre) {
     return;
   }
 
-  const esDireccion = ['up', 'down', 'left', 'right', 'up2', 'down2', 'left2', 'right2'].includes(nombre);
+  const esDireccion = ['up', 'down', 'left', 'right'].includes(nombre);
 
   if (app.pantalla === 'home') {
     if (nombre === 'up') seleccionarModo(app.menuSel - 1);
@@ -886,18 +774,13 @@ function accion(nombre) {
   if (app.pantalla === 'paused') {
     if (nombre === 'pause' || nombre === 'confirm') reanudar();
     else if (nombre === 'back') mostrarInicio();
-    else if (nombre === 'restart') {
-      if (app.duelo) empezarDuelo();
-      else empezarPartida(app.modo, app.nivel);
-    }
+    else if (nombre === 'restart') empezarPartida(app.modo, app.nivel);
     return;
   }
 
-  if (app.pantalla === 'dead' || app.pantalla === 'duelover') {
-    if (nombre === 'confirm' || nombre === 'restart') {
-      if (app.pantalla === 'duelover') empezarDuelo();
-      else empezarPartida(app.modo, app.nivel);
-    } else if (nombre === 'back') mostrarInicio();
+  if (app.pantalla === 'dead') {
+    if (nombre === 'confirm' || nombre === 'restart') empezarPartida(app.modo, app.nivel);
+    else if (nombre === 'back') mostrarInicio();
     return;
   }
 
@@ -920,35 +803,23 @@ function accion(nombre) {
     return;
   }
   if (nombre === 'restart') {
-    if (app.duelo) empezarDuelo();
-    else if (app.juego) empezarPartida(app.modo, app.nivel);
+    if (app.juego) empezarPartida(app.modo, app.nivel);
     return;
   }
   if (!esDireccion) return;
 
-  const direcciones = {
-    up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0],
-    up2: [0, -1], down2: [0, 1], left2: [-1, 0], right2: [1, 0],
-  };
+  const direcciones = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
   const [dx, dy] = direcciones[nombre];
-  if (app.duelo) {
-    app.duelo.setDirection(nombre.endsWith('2') ? 1 : 0, dx, dy);
-  } else if (app.juego) {
-    app.juego.setDirection(dx, dy);
-  }
+  if (app.juego) app.juego.setDirection(dx, dy);
 }
 
 function ejecutar(nombre) {
   switch (nombre) {
     case 'retry':
-      if (app.duelo) empezarDuelo();
-      else empezarPartida(app.modo, app.nivel);
+      empezarPartida(app.modo, app.nivel);
       break;
     case 'next':
       empezarPartida('campaign', Math.min(app.nivel + 1, LEVELS.length - 1));
-      break;
-    case 'rematch':
-      empezarDuelo();
       break;
     case 'resume':
       reanudar();
@@ -977,7 +848,6 @@ function borrarRecords() {
   if (!window.confirm('¿borrar récords y progreso?')) return;
   guardado.best = { classic: 0, frenzy: 0, portals: 0, hunter: 0 };
   guardado.campaign = { unlocked: 1, best: {} };
-  guardado.duel = { wins: 0, losses: 0, draws: 0 };
   guardar();
   audio.play('ui');
   mostrarInicio();
@@ -1014,13 +884,39 @@ function pantallaCompleta() {
 
 /* ---------------------------------------------------------- demo del menú */
 
-function crearDemo() {
-  const cfg = { ...MODES.frenzy, startSpeed: 96, rampPerSec: 0.4, goal: null, powerEvery: 4 };
+function configDemo(modo) {
+  if (modo === 'campaign') {
+    const nivel = LEVELS[Math.min(guardado.campaign.unlocked - 1, LEVELS.length - 1)];
+    return { ...configuracion('campaign', LEVELS.indexOf(nivel)), goal: null };
+  }
+  const base = { ...MODES[modo] };
+  base.goal = null;
+  return base;
+}
+
+function crearDemo(modo = app.demoModo || ORDEN[app.menuSel] || 'classic') {
+  const cfg = configDemo(modo);
   const juego = new Game(cfg, () => {});
   juego.state = 'running';
   app.demo = juego;
+  app.demoModo = modo;
   app.demoAcum = 0;
   ajustarLienzo();
+  pintarTituloDemo(modo);
+}
+
+function pintarTituloDemo(modo) {
+  const titulo = document.getElementById('demo-titulo');
+  const nota = document.getElementById('demo-nota');
+  if (!titulo) return;
+  if (modo === 'campaign') {
+    const nivel = LEVELS[Math.min(guardado.campaign.unlocked - 1, LEVELS.length - 1)];
+    titulo.textContent = `vista previa · nivel ${dosDigitos(LEVELS.indexOf(nivel) + 1)} ${nivel.name.toLowerCase()}`;
+    nota.textContent = 'así es el siguiente nivel de la campaña';
+  } else {
+    titulo.textContent = `vista previa · ${nombreModo(modo)}`;
+    nota.textContent = MODES[modo].tag;
+  }
 }
 
 function pasoDemo(dt) {
@@ -1032,7 +928,7 @@ function pasoDemo(dt) {
     app.demoAcum = 0;
     demo.botTurn();
   }
-  if (demo.state === 'dead' || demo.state === 'cleared') crearDemo();
+  if (demo.state === 'dead' || demo.state === 'cleared') crearDemo(app.demoModo);
 
   const lienzo = document.getElementById('demo');
   if (!lienzo) return;
@@ -1127,10 +1023,6 @@ function bucle(t) {
 
   if (app.pantalla === 'home') {
     pasoDemo(dt);
-  } else if (app.duelo) {
-    app.duelo.update(dt);
-    app.duelo.draw(pincel, vista);
-    actualizarMarcador();
   } else if (app.juego) {
     app.juego.update(dt);
     app.juego.draw(pincel, vista);
@@ -1172,5 +1064,5 @@ try {
 }
 
 if (location.hash === '#debug') {
-  window.__snake = { app, guardado, accion, empezarPartida, empezarDuelo, mostrarInicio };
+  window.__snake = { app, guardado, accion, empezarPartida, mostrarInicio, crearDemo };
 }

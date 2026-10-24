@@ -1,4 +1,4 @@
-// utilidades de rejilla compartidas por el motor y el duelo
+// utilidades de rejilla que usan el motor y el piloto automático
 
 export const K = (x, y) => y * 4096 + x;
 export const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
