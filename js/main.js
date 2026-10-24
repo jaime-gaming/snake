@@ -406,7 +406,7 @@ function showDead() {
 
   setOverlay(`<div class="panel end">
     <p class="kicker">${record ? 'NUEVO RÉCORD' : 'FIN DE LA PARTIDA'}</p>
-    <p class="huge">${score(g.score)}</p>
+    <p class="huge">${g.score}</p>
     <p class="sub">MEJOR ${Math.max(app.prevBest, g.score)} · FRUTAS ${g.fruits}${isCampaign ? ` / ${goal}` : ''}</p>
     <div class="actions">
       <button data-action="retry">REINTENTAR <kbd>R</kbd></button>
@@ -426,7 +426,7 @@ function showCleared() {
 
   setOverlay(`<div class="panel end">
     <p class="kicker">NIVEL ${pad2(app.level + 1)} SUPERADO</p>
-    <p class="huge">${score(g.score)}</p>
+    <p class="huge">${g.score}</p>
     <p class="sub">${last ? 'CAMPAÑA COMPLETA. YA ERES RÁPIDO.' : `SIGUIENTE · ${next.name} · ${next.goal} FRUTAS`}</p>
     <div class="actions">
       ${last ? '' : '<button data-action="next">SIGUIENTE <kbd>↵</kbd></button>'}
@@ -454,7 +454,7 @@ function togglePause() {
     audio.play('ui');
     setOverlay(`<div class="panel pause">
       <p class="kicker">EN PAUSA</p>
-      <p class="huge">${score(g.score)}</p>
+      <p class="huge">${g.score}</p>
       <div class="actions">
         <button data-action="resume">SEGUIR <kbd>P</kbd></button>
         <button data-action="retry">REINICIAR <kbd>R</kbd></button>

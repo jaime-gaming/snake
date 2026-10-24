@@ -22,9 +22,18 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Preparar el sitio
+        run: |
+          mkdir -p _site
+          cp index.html styles.css _site/
+          cp -r js _site/js
+
       - uses: actions/configure-pages@v5
+
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
+
       - id: deployment
         uses: actions/deploy-pages@v4
