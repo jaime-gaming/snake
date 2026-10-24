@@ -32,6 +32,8 @@ const servidor = http.createServer((peticion, respuesta) => {
   }
 
   fs.readFile(destino, (err, datos) => {
+    const marca = new Date().toISOString().slice(11, 19);
+    process.stdout.write(`${marca} ${err ? 404 : 200} ${ruta}${url.search}\n`);
     if (err) {
       respuesta.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('no está');
       return;

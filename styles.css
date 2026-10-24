@@ -71,7 +71,7 @@ button:disabled {
   position: fixed;
   inset: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   gap: clamp(5px, 1.2vh, 12px);
   width: 100%;
   max-width: 900px;
@@ -230,6 +230,19 @@ button:disabled {
 
 #huds {
   min-width: 0;
+  grid-row: 2;
+}
+
+#stage {
+  grid-row: 3;
+}
+
+#aviso-foco {
+  grid-row: 4;
+}
+
+#footer {
+  grid-row: 5;
 }
 
 /* marcador */
@@ -805,6 +818,22 @@ h2 {
 .acciones button.principal kbd {
   color: #4a4a4a;
   border-color: #b9b9b9;
+}
+
+/* aviso de foco, para cuando el juego va dentro de un iframe */
+
+#aviso-foco {
+  margin: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--line2);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: #cfcfcf;
+  text-align: center;
+}
+
+#aviso-foco[hidden] {
+  display: none !important;
 }
 
 /* pie */

@@ -48,6 +48,7 @@ const el = {
   full: $('#btn-full'),
   pause: $('#btn-pause'),
   hint: $('#hint'),
+  avisoFoco: $('#aviso-foco'),
 };
 
 const pincel = el.canvas.getContext('2d', { alpha: false });
@@ -1081,6 +1082,23 @@ el.mute.addEventListener('click', () => {
   soltarFoco();
   alternarSonido();
 });
+
+// dentro de un iframe el teclado no llega hasta que alguien hace clic dentro
+let focoResuelto = false;
+
+function resolverFoco() {
+  if (focoResuelto) return;
+  focoResuelto = true;
+  if (el.avisoFoco) el.avisoFoco.hidden = true;
+}
+
+window.addEventListener('keydown', resolverFoco);
+window.addEventListener('pointerdown', resolverFoco, true);
+
+setTimeout(() => {
+  const incrustado = window.self !== window.top;
+  if (!focoResuelto && el.avisoFoco && incrustado) el.avisoFoco.hidden = false;
+}, 1200);
 
 el.full.addEventListener('click', () => {
   soltarFoco();
