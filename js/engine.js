@@ -458,9 +458,10 @@ export class Game {
     return visto.size;
   }
 
-  // piloto automático: demo del menú y pruebas. no es perfecto, pero no se encierra
+  // piloto automático: demo del menú y bots competitivos con fallos humanos medidos
   botTurn() {
     if (this.state !== 'ready' && this.state !== 'running') return;
+    const competitivo = !!this.cfg.competitive;
     const cabeza = this.body[0];
     const wrap = !!this.cfg.wrap || this.ghosting;
     const ocupado = this.blockedSet({ omitTail: true });
@@ -475,6 +476,41 @@ export class Game {
       })
       : null;
 
+    // el boost sólo pertenece a la IA rival: acelera al tener la comida a mano
+    if (competitivo && this.food) {
+      let dx = Math.abs(cabeza.x - this.food.x);
+      let dy = Math.abs(cabeza.y - this.food.y);
+      if (wrap) {
+        dx = Math.min(dx, this.cols - dx);
+        dy = Math.min(dy, this.rows - dy);
+      }
+      this.setTurbo(dx + dy <= 5);
+    }
+
+    let error = '';
+    if (competitivo) {
+      if (!Number.isFinite(this.botPausaHasta)) this.botPausaHasta = 0;
+      if (!Number.isFinite(this.botSiguienteFallo)) {
+        this.botSiguienteFallo = this.time + 2400 + rand(2600);
+      }
+      if (this.time < this.botPausaHasta) {
+        this.setTurbo(false);
+        return;
+      }
+      if (this.time >= this.botSiguienteFallo) {
+        // una pausa o un mal giro cada varios segundos; el choque es más raro
+        this.botSiguienteFallo = this.time + 2500 + rand(4000);
+        const suerte = Math.random();
+        if (suerte < 0.06) {
+          this.botPausaHasta = this.time + 100 + rand(140);
+          this.setTurbo(false);
+          return;
+        }
+        if (suerte < 0.10) error = 'choque';
+        else if (suerte < 0.25) error = 'giro';
+      }
+    }
+
     // memoria corta: no dar vueltas sobre las mismas casillas
     if (!this.botTrail) this.botTrail = new Map();
     for (const [k, v] of this.botTrail) this.botTrail.set(k, v - 1);
@@ -482,6 +518,8 @@ export class Game {
 
     let mejor = null;
     let mejorPunto = -Infinity;
+    const movimientos = [];
+    const peligrosos = [];
 
     for (const [dx, dy] of DIRS) {
       if (dx === -this.dir.x && dy === -this.dir.y) continue;
@@ -491,9 +529,13 @@ export class Game {
         nx = (nx + this.cols) % this.cols;
         ny = (ny + this.rows) % this.rows;
       } else if (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows) {
+        peligrosos.push({ dx, dy });
         continue;
       }
-      if (ocupado.has(K(nx, ny))) continue;
+      if (ocupado.has(K(nx, ny))) {
+        peligrosos.push({ dx, dy });
+        continue;
+      }
       const destino = { x: nx, y: ny };
 
       let puntos = 0;
@@ -513,17 +555,36 @@ export class Game {
       const visto = this.botTrail.get(K(nx, ny));
       if (visto > 0) puntos -= visto * 7;
 
+      const movimiento = { dx, dy, puntos };
+      movimientos.push(movimiento);
       if (puntos > mejorPunto) {
         mejorPunto = puntos;
-        mejor = { dx, dy };
+        mejor = movimiento;
       }
     }
 
+    // un bot se puede precipitar contra el borde o el cuerpo, como una persona
+    if (error === 'choque' && peligrosos.length) {
+      const mal = peligrosos[rand(peligrosos.length)];
+      this.setTurbo(false);
+      this.setDirection(mal.dx, mal.dy);
+      return;
+    }
+    // también puede elegir una ruta peor, aunque siga teniendo salida
+    if (error === 'giro' && movimientos.length > 1) {
+      const peor = movimientos
+        .filter((m) => m !== mejor)
+        .sort((a, b) => a.puntos - b.puntos)[0];
+      if (peor) {
+        this.setDirection(peor.dx, peor.dy);
+        return;
+      }
+    }
     if (mejor) {
       this.setDirection(mejor.dx, mejor.dy);
       return;
     }
-    // sin salida: cualquier casilla libre
+    // sin salida (o choque sin rumbo peligroso): cualquier casilla libre
     for (const [dx, dy] of DIRS) {
       const nx = cabeza.x + dx;
       const ny = cabeza.y + dy;
@@ -731,6 +792,7 @@ export class Game {
       dir: { x: 0, y: 0 },
       grow: 0,
       aim: null,
+      botSiguienteFallo: 48 + rand(30),
     };
     this.hunterTick = 0;
   }
@@ -760,10 +822,15 @@ export class Game {
     if (h.body.length >= tope) return 1;
     const cabeza = this.body[0];
     const jefe = h.body[0];
-    const dist = Math.abs(jefe.x - cabeza.x) + Math.abs(jefe.y - cabeza.y);
-    if (h.body.length >= this.hunterUmbral() && dist <= 3) return 1;
-    // corto: se toma su tiempo; largo: aprieta
-    return h.body.length >= this.hunterUmbral() ? 2 : 4;
+    const distancia = Math.abs(jefe.x - cabeza.x) + Math.abs(jefe.y - cabeza.y);
+    if (h.body.length >= this.hunterUmbral() && distancia <= 3) return 1;
+
+    const normal = h.body.length >= this.hunterUmbral() ? 2 : 4;
+    const objetivo = this.hunterTarget();
+    const cercaDelObjetivo = Math.abs(jefe.x - objetivo.x) + Math.abs(jefe.y - objetivo.y) <= 2;
+    const cercaDelJugador = this.hunterPelea && distancia <= 5;
+    // impulso: acelera una marcha al ir a por un punto o al cerrar sobre ti
+    return cercaDelObjetivo || cercaDelJugador ? Math.max(1, normal - 1) : normal;
   }
 
   // cuánto lleva andado el cazador hacia su casilla nueva (0 a 1), para que no salte
@@ -845,6 +912,16 @@ export class Game {
     if (h.recarga > 0) return;
     if (this.hunterTick % this.hunterCadence() !== 0) return;
 
+    let error = '';
+    if (this.hunterTick >= h.botSiguienteFallo) {
+      // pequeños titubeos; más raro que elija mal o se estrelle
+      h.botSiguienteFallo = this.hunterTick + 48 + rand(40);
+      const suerte = Math.random();
+      if (suerte < 0.06) return; // se queda pensando y pierde este movimiento
+      if (suerte < 0.10) error = 'choque';
+      else if (suerte < 0.25) error = 'giro';
+    }
+
     h.prev = h.body.map((p) => ({ ...p }));
     h.movido = this.time;
     h.paso = Math.max(1, this.hunterCadence() * this.interval());
@@ -884,13 +961,21 @@ export class Game {
 
     let elegido = null;
     let mejorPunto = -Infinity;
+    const movimientos = [];
+    let puedeChocar = false;
 
     for (const [dx, dy] of DIRS) {
       const nx = cabeza.x + dx;
       const ny = cabeza.y + dy;
-      if (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows) continue;
+      if (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows) {
+        puedeChocar = true;
+        continue;
+      }
       const k = K(nx, ny);
-      if (bloqueado.has(k)) continue;
+      if (bloqueado.has(k)) {
+        puedeChocar = true;
+        continue;
+      }
       const reversa = dx === -h.dir.x && dy === -h.dir.y;
 
       let puntos = 0;
@@ -913,10 +998,21 @@ export class Game {
       // tu cuerpo no le bloquea, pero estrellarse contra él lo revienta
       if (cuerpoJugador.has(k)) puntos -= 400;
 
+      movimientos.push({ x: nx, y: ny, puntos });
       if (puntos > mejorPunto) {
         mejorPunto = puntos;
         elegido = { x: nx, y: ny };
       }
+    }
+
+    if (error === 'choque' && puedeChocar) {
+      // golpea un muro o su propio cuerpo: estalla y vuelve corto, como cuando te muerde
+      this.matarCazador();
+      return;
+    }
+    if (error === 'giro' && movimientos.length > 1) {
+      const peor = movimientos.sort((a, b) => a.puntos - b.puntos)[0];
+      elegido = { x: peor.x, y: peor.y };
     }
 
     if (!elegido) {
@@ -1006,19 +1102,18 @@ export class Game {
     const salida = rumbo.x < 0 ? 'izq' : rumbo.x > 0 ? 'der' : rumbo.y < 0 ? 'arriba' : 'abajo';
     const esSalida = sentido === salida &&
       (sentido === 'arriba' || sentido === 'abajo' ? cx === cabeza.x : cy === cabeza.y);
-    const pulso = Math.floor(this.time / 160) % 2 === 0 ? 0.95 : 0.6;
-    // si darse contra él mata, el borde es una pared y se ve siempre
+    // si darse contra él mata, el borde se ve siempre con contraste suave y estable
     if (!(this.cfg.wrap || this.ghosting)) {
-      return esSalida && dist <= 4 ? pulso : 0.34;
+      return esSalida && dist <= 4 ? 0.58 : 0.28;
     }
-    // si no mata (frenesí, fantasma), sólo se marca al acercarse
+    // si no mata (frenesí, fantasma), sólo se marca al acercarse, sin parpadear
     if (this.reveal < 1) {
       const luz = 1.2 + this.reveal * 17;
       const lejos = Math.max(Math.abs(cx - cabeza.x), Math.abs(cy - cabeza.y));
-      if (lejos <= luz + 1) return 0.26 * (1 - this.reveal);
+      if (lejos <= luz + 1) return 0.22 * (1 - this.reveal);
     }
     if (dist > 4) return 0;
-    return esSalida ? pulso : 0.16;
+    return esSalida ? 0.58 : 0.12;
   }
 
   draw(ctx, view) {
@@ -1039,6 +1134,19 @@ export class Game {
     ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, view.width, view.height);
+
+    // BORRAR-COMPETITIVO · brillo en el fondo que se intensifica al final de la partida
+    if (!mini && this.cfg.fondoBrillo && this.cfg.tiempoTotal) {
+      const quedan = Math.max(0, this.cfg.tiempoTotal - this.time);
+      if (quedan <= 10000) {
+        const brillo = 1 - Math.min(1, quedan / 10000);
+        const alfa = Math.round(brillo * 160) / 1000;
+        if (alfa > 0) {
+          ctx.fillStyle = `rgba(255,255,255,${alfa.toFixed(3)})`;
+          ctx.fillRect(0, 0, view.width, view.height);
+        }
+      }
+    }
 
     ctx.save();
     if (this.shake > 0.2) {

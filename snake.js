@@ -1,4 +1,4 @@
-/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-10-25 · v15).
+/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-10-25 · v16).
    no lo edites a mano: cambia js/*.js y vuelve a ejecutar node tools/build.mjs */
 (function () {
 'use strict';
@@ -522,6 +522,8 @@ function configCompetitivo(mapa, modificador, extra = {}) {
   const cfg = {
     ...MODES.competitive,
     walls: (mapa && mapa.walls ? mapa.walls : []).map((c) => [c[0], c[1]]),
+    tiempoTotal: COMPETITIVE.tiempo,
+    fondoBrillo: true,
     ...extra,
   };
   cfg.goal = null;
@@ -863,8 +865,9 @@ const TECLAS = {
 
 const BOTONES = { 12: 'up', 13: 'down', 14: 'left', 15: 'right' };
 
-function attachInput({ stage, actions }) {
+function attachInput({ stage, actions, canTurbo = () => true }) {
   const fire = (accion) => actions(accion);
+  const turboActivo = () => typeof canTurbo === 'function' && canTurbo();
 
   window.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -872,6 +875,7 @@ function attachInput({ stage, actions }) {
     if (!accion) return;
     if (e.code === 'Space' || e.code === 'Enter' || e.code.startsWith('Arrow')) e.preventDefault();
     if (e.repeat) return;
+    if (accion === 'turbo' && !turboActivo()) return;
     fire(accion === 'turbo' ? 'turboOn' : accion);
   });
 
@@ -900,7 +904,7 @@ function attachInput({ stage, actions }) {
     const dx = e.clientX - x0;
     const dy = e.clientY - y0;
     if (Math.abs(dx) < 18 && Math.abs(dy) < 18) {
-      fire('tap');
+      if (turboActivo()) fire('tap');
       return;
     }
     if (Math.abs(dx) > Math.abs(dy)) fire(dx > 0 ? 'right' : 'left');
@@ -936,10 +940,12 @@ function attachInput({ stage, actions }) {
         const boton = pad.buttons[indice];
         if (boton && (boton.pressed || boton.value > 0.5)) actual[nombre] = true;
       }
-      [0, 1].forEach((n) => {
-        const boton = pad.buttons[n];
-        if (boton && (boton.pressed || boton.value > 0.5)) actual.turbo = true;
-      });
+      if (turboActivo()) {
+        [0, 1].forEach((n) => {
+          const boton = pad.buttons[n];
+          if (boton && (boton.pressed || boton.value > 0.5)) actual.turbo = true;
+        });
+      }
       [3, 9].forEach((n) => {
         const boton = pad.buttons[n];
         if (boton && (boton.pressed || boton.value > 0.5)) actual.aux = true;
@@ -1428,9 +1434,10 @@ class Game {
     return visto.size;
   }
 
-  // piloto automático: demo del menú y pruebas. no es perfecto, pero no se encierra
+  // piloto automático: demo del menú y bots competitivos con fallos humanos medidos
   botTurn() {
     if (this.state !== 'ready' && this.state !== 'running') return;
+    const competitivo = !!this.cfg.competitive;
     const cabeza = this.body[0];
     const wrap = !!this.cfg.wrap || this.ghosting;
     const ocupado = this.blockedSet({ omitTail: true });
@@ -1445,6 +1452,41 @@ class Game {
       })
       : null;
 
+    // el boost sólo pertenece a la IA rival: acelera al tener la comida a mano
+    if (competitivo && this.food) {
+      let dx = Math.abs(cabeza.x - this.food.x);
+      let dy = Math.abs(cabeza.y - this.food.y);
+      if (wrap) {
+        dx = Math.min(dx, this.cols - dx);
+        dy = Math.min(dy, this.rows - dy);
+      }
+      this.setTurbo(dx + dy <= 5);
+    }
+
+    let error = '';
+    if (competitivo) {
+      if (!Number.isFinite(this.botPausaHasta)) this.botPausaHasta = 0;
+      if (!Number.isFinite(this.botSiguienteFallo)) {
+        this.botSiguienteFallo = this.time + 2400 + rand(2600);
+      }
+      if (this.time < this.botPausaHasta) {
+        this.setTurbo(false);
+        return;
+      }
+      if (this.time >= this.botSiguienteFallo) {
+        // una pausa o un mal giro cada varios segundos; el choque es más raro
+        this.botSiguienteFallo = this.time + 2500 + rand(4000);
+        const suerte = Math.random();
+        if (suerte < 0.06) {
+          this.botPausaHasta = this.time + 100 + rand(140);
+          this.setTurbo(false);
+          return;
+        }
+        if (suerte < 0.10) error = 'choque';
+        else if (suerte < 0.25) error = 'giro';
+      }
+    }
+
     // memoria corta: no dar vueltas sobre las mismas casillas
     if (!this.botTrail) this.botTrail = new Map();
     for (const [k, v] of this.botTrail) this.botTrail.set(k, v - 1);
@@ -1452,6 +1494,8 @@ class Game {
 
     let mejor = null;
     let mejorPunto = -Infinity;
+    const movimientos = [];
+    const peligrosos = [];
 
     for (const [dx, dy] of DIRS) {
       if (dx === -this.dir.x && dy === -this.dir.y) continue;
@@ -1461,9 +1505,13 @@ class Game {
         nx = (nx + this.cols) % this.cols;
         ny = (ny + this.rows) % this.rows;
       } else if (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows) {
+        peligrosos.push({ dx, dy });
         continue;
       }
-      if (ocupado.has(K(nx, ny))) continue;
+      if (ocupado.has(K(nx, ny))) {
+        peligrosos.push({ dx, dy });
+        continue;
+      }
       const destino = { x: nx, y: ny };
 
       let puntos = 0;
@@ -1483,17 +1531,36 @@ class Game {
       const visto = this.botTrail.get(K(nx, ny));
       if (visto > 0) puntos -= visto * 7;
 
+      const movimiento = { dx, dy, puntos };
+      movimientos.push(movimiento);
       if (puntos > mejorPunto) {
         mejorPunto = puntos;
-        mejor = { dx, dy };
+        mejor = movimiento;
       }
     }
 
+    // un bot se puede precipitar contra el borde o el cuerpo, como una persona
+    if (error === 'choque' && peligrosos.length) {
+      const mal = peligrosos[rand(peligrosos.length)];
+      this.setTurbo(false);
+      this.setDirection(mal.dx, mal.dy);
+      return;
+    }
+    // también puede elegir una ruta peor, aunque siga teniendo salida
+    if (error === 'giro' && movimientos.length > 1) {
+      const peor = movimientos
+        .filter((m) => m !== mejor)
+        .sort((a, b) => a.puntos - b.puntos)[0];
+      if (peor) {
+        this.setDirection(peor.dx, peor.dy);
+        return;
+      }
+    }
     if (mejor) {
       this.setDirection(mejor.dx, mejor.dy);
       return;
     }
-    // sin salida: cualquier casilla libre
+    // sin salida (o choque sin rumbo peligroso): cualquier casilla libre
     for (const [dx, dy] of DIRS) {
       const nx = cabeza.x + dx;
       const ny = cabeza.y + dy;
@@ -1701,6 +1768,7 @@ class Game {
       dir: { x: 0, y: 0 },
       grow: 0,
       aim: null,
+      botSiguienteFallo: 48 + rand(30),
     };
     this.hunterTick = 0;
   }
@@ -1730,10 +1798,15 @@ class Game {
     if (h.body.length >= tope) return 1;
     const cabeza = this.body[0];
     const jefe = h.body[0];
-    const dist = Math.abs(jefe.x - cabeza.x) + Math.abs(jefe.y - cabeza.y);
-    if (h.body.length >= this.hunterUmbral() && dist <= 3) return 1;
-    // corto: se toma su tiempo; largo: aprieta
-    return h.body.length >= this.hunterUmbral() ? 2 : 4;
+    const distancia = Math.abs(jefe.x - cabeza.x) + Math.abs(jefe.y - cabeza.y);
+    if (h.body.length >= this.hunterUmbral() && distancia <= 3) return 1;
+
+    const normal = h.body.length >= this.hunterUmbral() ? 2 : 4;
+    const objetivo = this.hunterTarget();
+    const cercaDelObjetivo = Math.abs(jefe.x - objetivo.x) + Math.abs(jefe.y - objetivo.y) <= 2;
+    const cercaDelJugador = this.hunterPelea && distancia <= 5;
+    // impulso: acelera una marcha al ir a por un punto o al cerrar sobre ti
+    return cercaDelObjetivo || cercaDelJugador ? Math.max(1, normal - 1) : normal;
   }
 
   // cuánto lleva andado el cazador hacia su casilla nueva (0 a 1), para que no salte
@@ -1815,6 +1888,16 @@ class Game {
     if (h.recarga > 0) return;
     if (this.hunterTick % this.hunterCadence() !== 0) return;
 
+    let error = '';
+    if (this.hunterTick >= h.botSiguienteFallo) {
+      // pequeños titubeos; más raro que elija mal o se estrelle
+      h.botSiguienteFallo = this.hunterTick + 48 + rand(40);
+      const suerte = Math.random();
+      if (suerte < 0.06) return; // se queda pensando y pierde este movimiento
+      if (suerte < 0.10) error = 'choque';
+      else if (suerte < 0.25) error = 'giro';
+    }
+
     h.prev = h.body.map((p) => ({ ...p }));
     h.movido = this.time;
     h.paso = Math.max(1, this.hunterCadence() * this.interval());
@@ -1854,13 +1937,21 @@ class Game {
 
     let elegido = null;
     let mejorPunto = -Infinity;
+    const movimientos = [];
+    let puedeChocar = false;
 
     for (const [dx, dy] of DIRS) {
       const nx = cabeza.x + dx;
       const ny = cabeza.y + dy;
-      if (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows) continue;
+      if (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows) {
+        puedeChocar = true;
+        continue;
+      }
       const k = K(nx, ny);
-      if (bloqueado.has(k)) continue;
+      if (bloqueado.has(k)) {
+        puedeChocar = true;
+        continue;
+      }
       const reversa = dx === -h.dir.x && dy === -h.dir.y;
 
       let puntos = 0;
@@ -1883,10 +1974,21 @@ class Game {
       // tu cuerpo no le bloquea, pero estrellarse contra él lo revienta
       if (cuerpoJugador.has(k)) puntos -= 400;
 
+      movimientos.push({ x: nx, y: ny, puntos });
       if (puntos > mejorPunto) {
         mejorPunto = puntos;
         elegido = { x: nx, y: ny };
       }
+    }
+
+    if (error === 'choque' && puedeChocar) {
+      // golpea un muro o su propio cuerpo: estalla y vuelve corto, como cuando te muerde
+      this.matarCazador();
+      return;
+    }
+    if (error === 'giro' && movimientos.length > 1) {
+      const peor = movimientos.sort((a, b) => a.puntos - b.puntos)[0];
+      elegido = { x: peor.x, y: peor.y };
     }
 
     if (!elegido) {
@@ -1976,19 +2078,18 @@ class Game {
     const salida = rumbo.x < 0 ? 'izq' : rumbo.x > 0 ? 'der' : rumbo.y < 0 ? 'arriba' : 'abajo';
     const esSalida = sentido === salida &&
       (sentido === 'arriba' || sentido === 'abajo' ? cx === cabeza.x : cy === cabeza.y);
-    const pulso = Math.floor(this.time / 160) % 2 === 0 ? 0.95 : 0.6;
-    // si darse contra él mata, el borde es una pared y se ve siempre
+    // si darse contra él mata, el borde se ve siempre con contraste suave y estable
     if (!(this.cfg.wrap || this.ghosting)) {
-      return esSalida && dist <= 4 ? pulso : 0.34;
+      return esSalida && dist <= 4 ? 0.58 : 0.28;
     }
-    // si no mata (frenesí, fantasma), sólo se marca al acercarse
+    // si no mata (frenesí, fantasma), sólo se marca al acercarse, sin parpadear
     if (this.reveal < 1) {
       const luz = 1.2 + this.reveal * 17;
       const lejos = Math.max(Math.abs(cx - cabeza.x), Math.abs(cy - cabeza.y));
-      if (lejos <= luz + 1) return 0.26 * (1 - this.reveal);
+      if (lejos <= luz + 1) return 0.22 * (1 - this.reveal);
     }
     if (dist > 4) return 0;
-    return esSalida ? pulso : 0.16;
+    return esSalida ? 0.58 : 0.12;
   }
 
   draw(ctx, view) {
@@ -2009,6 +2110,19 @@ class Game {
     ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, view.width, view.height);
+
+    // BORRAR-COMPETITIVO · brillo en el fondo que se intensifica al final de la partida
+    if (!mini && this.cfg.fondoBrillo && this.cfg.tiempoTotal) {
+      const quedan = Math.max(0, this.cfg.tiempoTotal - this.time);
+      if (quedan <= 10000) {
+        const brillo = 1 - Math.min(1, quedan / 10000);
+        const alfa = Math.round(brillo * 160) / 1000;
+        if (alfa > 0) {
+          ctx.fillStyle = `rgba(255,255,255,${alfa.toFixed(3)})`;
+          ctx.fillRect(0, 0, view.width, view.height);
+        }
+      }
+    }
 
     ctx.save();
     if (this.shake > 0.2) {
@@ -2432,7 +2546,6 @@ function nuevoRegistro() {
     comp: { rango: 0, dentro: 0, partidas: 0, victorias: 0 },
     sound: true,
     crt: true,
-    ambiente: true, // BORRAR-COMPETITIVO
   };
 }
 
@@ -2479,7 +2592,6 @@ function leerGuardado() {
   };
   if (typeof bruto.sound === 'boolean') datos.sound = bruto.sound;
   if (typeof bruto.crt === 'boolean') datos.crt = bruto.crt;
-  if (typeof bruto.ambiente === 'boolean') datos.ambiente = bruto.ambiente; // BORRAR-COMPETITIVO
   return datos;
 }
 
@@ -2534,6 +2646,10 @@ function esTactil() {
   return window.matchMedia('(pointer: coarse)').matches;
 }
 
+function turboPermitido() {
+  return app.pantalla === 'playing' && app.modo !== 'hunter' && app.modo !== 'competitive';
+}
+
 function pararTemporizador() {
   if (app.temporizador) {
     clearTimeout(app.temporizador);
@@ -2547,11 +2663,10 @@ function pararTemporizador() {
 }
 
 /* ---------------------------------------------------------- rótulo
-   "snake." dibujado con la propia serpiente: las letras son su cuerpo,
-   la cara es la última casilla de la e y cada tanto va a comerse el punto. */
+   "snake." dibujado con cinco serpientes: una por letra, cada una con su
+   cuerpo, su cabeza y un punto que alcanza de vez en cuando. */
 
-// letras de 3x5 bloques. el nombre lo escribe la serpiente: su cuerpo son las
-// letras y la cara va al final de la e, que cada tanto se estira a comerse el punto
+// letras de 3x5 bloques; cada serpiente escribe su carácter y alcanza su punto
 const MARCA_GLIFOS = {
   s: ['.###', '#...', '.##.', '...#', '###.'],
   n: ['#..#', '##.#', '#.##', '#..#', '#..#'],
@@ -2565,27 +2680,34 @@ const COLS_MARCA = 26; // 4 columnas por letra, 1 de hueco y el punto
 const FILAS_MARCA = 5;
 const marca = { t: 0, ancho: 0, alto: 0, dpr: 1 };
 
-// la cara es la última casilla de la e (abajo a la derecha) y el punto va justo al lado
-const MARCA_CARA = { x: 23, y: 4 };
-const MARCA_PUNTO = { x: 25, y: 4 };
-
-// el cuerpo, de la cola a la cabeza
-const MARCA_CUERPO = (() => {
-  const cuerpo = [];
-  for (let i = 0; i < MARCA_PALABRA.length; i++) {
-    const glifo = MARCA_GLIFOS[MARCA_PALABRA[i]];
+// construye una serpiente independiente por cada carácter (una por letra/dígito)
+const serpientesDe = (texto, glifos) => {
+  const serpientes = [];
+  const caracteres = texto.split('');
+  const desplazamiento = Math.max(0, Math.floor((COLS_MARCA - (caracteres.length * 5 + 1)) / 2));
+  caracteres.forEach((letra, i) => {
+    const glifo = glifos[letra];
+    if (!glifo) return;
+    const x0 = desplazamiento + i * 5;
+    const cuerpo = [];
+    let cabeza = null;
     for (let y = 0; y < 5; y++) {
       for (let x = 0; x < ANCHO_GLIFO; x++) {
         if (glifo[y][x] !== '#') continue;
-        const cx = i * (ANCHO_GLIFO + 1) + x;
-        if (cx === MARCA_CARA.x && y === MARCA_CARA.y) continue;
-        cuerpo.push({ x: cx, y });
+        const celda = { x: x0 + x, y };
+        if (cabeza) cuerpo.push(cabeza);
+        cabeza = celda;
       }
     }
-  }
-  cuerpo.push({ ...MARCA_CARA });
-  return cuerpo;
-})();
+    // las cuatro primeras serpientes alcanzan el hueco de su letra; la última, el punto final
+    const ultimo = i === caracteres.length - 1;
+    const objetivo = ultimo ? { x: x0 + 5, y: 4 } : { x: x0 + 4, y: 2 };
+    const punto = ultimo ? { ...objetivo } : null;
+    if (cabeza) serpientes.push({ cuerpo, cabeza, objetivo, punto });
+  });
+  return serpientes;
+};
+const SERPIENTES_NOMBRE = serpientesDe(MARCA_PALABRA, MARCA_GLIFOS);
 
 function ajustarMarca() {
   const lienzo = document.getElementById('marca');
@@ -2624,21 +2746,6 @@ function mejorGlobal() {
   for (const valor of Object.values(guardado.best || {})) mejor = Math.max(mejor, Number(valor) || 0);
   for (const valor of Object.values(guardado.campaign.best || {})) mejor = Math.max(mejor, Number(valor) || 0);
   return Math.round(mejor);
-}
-
-function celdasDeGlifos(texto, glifos, ancho, hueco = 1) {
-  const celdas = [];
-  for (let i = 0; i < texto.length; i++) {
-    const glifo = glifos[texto[i]];
-    if (!glifo) continue;
-    for (let y = 0; y < 5; y++) {
-      for (let x = 0; x < ancho; x++) {
-        if (glifo[y][x] !== '#') continue;
-        celdas.push({ x: i * (ancho + hueco) + x, y });
-      }
-    }
-  }
-  return celdas;
 }
 
 function dibujarMarca(dt) {
@@ -2682,57 +2789,47 @@ function dibujarMarca(dt) {
     }
   };
 
-  if (record > 0 && marca.t >= CICLO_NOMBRE * 2) {
-    // el récord: la serpiente se reescribe sobre la cifra, cubo a cubo, y
-    // acaba con la cara en el último bloque del número
-    const t = marca.t - CICLO_NOMBRE * 2;
-    const cifra = String(record).slice(-5);
-    const ancho = cifra.length * (ANCHO_GLIFO + 1) - 1;
-    const desfase = Math.max(0, Math.floor((COLS_MARCA - ancho) / 2));
-    const celdas = celdasDeGlifos(cifra, MARCA_DIGITOS, ANCHO_GLIFO)
-      .map((c) => ({ x: c.x + desfase, y: c.y }));
-    if (celdas.length < 2) return;
-    const visibles = celdas.slice(-(MARCA_CUERPO.length));
-    const escritos = Math.max(1, Math.min(visibles.length, Math.floor(Math.min(1, t / 900) * visibles.length)));
-    for (let i = 0; i < escritos - 1; i++) {
-      const c = visibles[i];
-      bloque(c.x, c.y, i % 5 === 4 ? '#cfcfcf' : '#e8e8e8');
-    }
-    const cabeza = visibles[escritos - 1];
-    cara(cabeza.x, cabeza.y, 0.16);
-    return;
-  }
+  // dibuja varias serpientes (una por carácter), cada una con su punto,
+  // su propio ciclo y desfazada respecto a las demás
+  const cicloSerpientes = (serpientes, t) => {
+    serpientes.forEach((serp, i) => {
+      const tt = (t + i * 700) % 3200;
+      let avance = 0;
+      let comido = false;
+      if (tt >= 400 && tt < 700) avance = Math.round(((tt - 400) / 300) * 3) / 3;
+      else if (tt >= 700 && tt < 1900) { avance = 1; comido = !!serp.punto; }
+      else if (tt >= 1900 && tt < 2200) avance = Math.round((1 - (tt - 1900) / 300) * 3) / 3;
+
+      serp.cuerpo.forEach((c, k) => {
+        bloque(c.x, c.y, k % 5 === 4 ? '#cfcfcf' : '#e8e8e8');
+      });
+
+      if (serp.punto && !comido) {
+        const m = Math.round(sep * 1.1);
+        ctx.fillStyle = '#ff2b2b';
+        ctx.fillRect(
+          aire + Math.round(serp.punto.x * lado) + m,
+          Math.round(serp.punto.y * lado) + m,
+          lado - m * 2,
+          lado - m * 2,
+        );
+      }
+
+      const base = serp.cabeza;
+      const destino = serp.objetivo || base;
+      const cx = base.x + avance * (destino.x - base.x);
+      const cy = base.y + avance * (destino.y - base.y);
+      cara(cx, cy, avance > 0.05 ? 0.24 : 0.14);
+    });
+  };
 
   const t = marca.t;
-  // la cabeza se estira hacia el punto, lo come y vuelve (todo a bloques)
-  let avance = 0;
-  if (t >= 400 && t < 700) avance = Math.round(((t - 400) / 300) * 3) / 3;
-  else if (t >= 700 && t < 1900) avance = 1;
-  else if (t >= 1900 && t < 2200) avance = Math.round((1 - (t - 1900) / 300) * 3) / 3;
-  const comido = t >= 700 && t < 2200;
-
-  // cuerpo: las letras, de la cola a la cabeza
-  for (let i = 0; i < MARCA_CUERPO.length - 1; i++) {
-    const c = MARCA_CUERPO[i];
-    bloque(c.x, c.y, i % 5 === 4 ? '#cfcfcf' : '#e8e8e8');
+  if (record > 0 && t >= CICLO_NOMBRE * 2) {
+    const cifra = String(record).slice(-5);
+    cicloSerpientes(serpientesDe(cifra, MARCA_DIGITOS), t - CICLO_NOMBRE * 2);
+    return;
   }
-
-  // el punto: la comida del rótulo
-  if (!comido) {
-    const m = Math.round(sep * 1.1);
-    ctx.fillStyle = '#ff2b2b';
-    ctx.fillRect(
-      aire + Math.round(MARCA_PUNTO.x * lado) + m,
-      Math.round(MARCA_PUNTO.y * lado) + m,
-      lado - m * 2,
-      lado - m * 2,
-    );
-  }
-
-  // la cabeza, al final de la e, con los ojos mirando al punto
-  const base = MARCA_CUERPO[MARCA_CUERPO.length - 1];
-  const cx = base.x + avance * (MARCA_PUNTO.x - base.x); // se estira hasta tapar el punto
-  cara(cx, base.y, avance > 0.05 ? 0.24 : 0.14);
+  cicloSerpientes(SERPIENTES_NOMBRE, t);
 }
 
 /* ---------------------------------------------------------- lienzo */
@@ -2894,8 +2991,8 @@ function pantalla(nombre) {
     if (el.minis) el.minis.hidden = true;
     if (el.cuenta) el.cuenta.hidden = true;
     if (el.sorteo) el.sorteo.hidden = true;
-    audio.ambienteParar(); // BORRAR-COMPETITIVO · fuera de la partida no hay pulso
   }
+  if (nombre !== 'playing') audio.ambienteParar(); // BORRAR-COMPETITIVO · pausa/menú/final
   if (antes === 'versus-fin' && nombre !== 'versus-fin') pararFestejo(); // BORRAR-COMPETITIVO
   if (antes !== nombre) taparPantalla();
   actualizarPista();
@@ -2918,9 +3015,12 @@ const PISTAS = {
 
 function actualizarPista() {
   if (app.pantalla === 'playing') {
+    const sinTurbo = app.modo === 'hunter' || app.modo === 'competitive';
     el.hint.textContent = esTactil()
-      ? 'desliza para girar · toca para turbo'
-      : 'espacio turbo · P pausa · R reiniciar · M sonido';
+      ? 'desliza para girar'
+      : sinTurbo
+        ? 'flechas girar · P pausa · R reiniciar · M sonido'
+        : 'flechas girar · espacio turbo · P pausa · R reiniciar · M sonido';
     return;
   }
   el.hint.textContent = PISTAS[app.pantalla] || '';
@@ -2977,7 +3077,7 @@ function actualizarMarcador() {
 
   el.prompt.classList.toggle('visible', juego.state === 'ready');
   el.pause.textContent = app.pantalla === 'paused' ? 'seguir' : 'pausa';
-  el.pause.disabled = app.pantalla !== 'playing' && app.pantalla !== 'paused';
+  el.pause.disabled = (app.pantalla !== 'playing' && app.pantalla !== 'paused') || !!(app.comp && app.comp.fase === 'fin');
 
   actualizarEfectos(juego);
 }
@@ -2987,7 +3087,7 @@ function actualizarEfectos(juego) {
   if (juego) {
     if (juego.fx.ghost > 0) activos.push(['fantasma', juego.fx.ghost / POWER_INFO.ghost.ms]);
     if (juego.fx.slow > 0) activos.push(['lento', juego.fx.slow / POWER_INFO.slow.ms]);
-    if (juego.turbo) activos.push(['turbo', 1]);
+    if (juego.turbo && app.modo !== 'hunter' && app.modo !== 'competitive') activos.push(['turbo', 1]);
     if (juego.cfg && juego.cfg.hunter && juego.hunter && juego.hunterPelea) {
       const tope = juego.cfg.hunterCap || 18;
       const umbral = juego.hunterUmbral();
@@ -3445,31 +3545,21 @@ function mostrarAyuda() {
     </div>
     <table class="tabla">
       <tbody>
-        <tr><th>girar</th><td>flechas o WASD · desliza en móvil</td></tr>
-        <tr><th>turbo</th><td>espacio o mayús · toca el tablero</td></tr>
-        <tr><th>pausa</th><td>P o esc</td></tr>
-        <tr><th>reiniciar</th><td>R</td></tr>
-        <tr><th>menú</th><td>↑↓ grupo o modo · ←→ cambiar de grupo</td></tr>
-        <tr><th>sonido</th><td>M</td></tr>
-        <tr><th>mando</th><td>d-pad y sticks · A turbo · start pausa</td></tr>
+        <tr><th>girar</th><td>flechas o WASD · desliza</td></tr>
+        <tr><th>turbo</th><td>espacio / mayús / A · salvo cazador y competitivo</td></tr>
+        <tr><th>pausa</th><td>P o esc · mando: start</td></tr>
+        <tr><th>reiniciar</th><td>R · sonido M</td></tr>
+        <tr><th>menús</th><td>flechas + enter · ←→ cambia de grupo</td></tr>
       </tbody>
     </table>
-    <p class="kicker">reglas</p>
+    <p class="kicker">en breve</p>
     <ul class="reglas">
-      <li>dos frutas seguidas suben el multiplicador hasta ×5</li>
-      <li>cubo rojo hueco: caduca y alarga dos anillos</li>
-      <li>cuadros blancos: fantasma, lento y recorte</li>
-      <li>el fantasma atraviesa todo, también tu cuerpo</li>
-      <li>el borde que mata se ve siempre</li>
-      <li>campaña: la fruta que cierra el nivel es amarilla</li>
-      <li>clásico: pasadas 30 frutas salen muros</li>
-      <li>frenesí: los bordes dan la vuelta</li>
-      <li>cazador: come puntos hasta 12 anillos y luego te caza</li>
-      <li>cazador: su cuerpo no te mata; si choca contigo, revienta</li>
-      <li>competitivo: 4 cuadrículas, 60 s, gana el que más puntos tiene</li>
-      <li>competitivo: si te matas revives, pero pierdes un 20 %</li>
+      <li>encadena frutas para subir hasta ×5; los cubos dan premios o poderes.</li>
+      <li>campaña: 20 niveles; la fruta final es amarilla.</li>
+      <li>frenesí: los bordes dan la vuelta. cazador: come puntos y después te persigue.</li>
+      <li>cazador: su cabeza te mata; su cuerpo y los puntos son seguros.</li>
+      <li>competitivo: cuatro jugadores, 60 s; al chocar revives con penalización.</li>
     </ul>
-    <p class="pie"><span>osciladores y ruido en directo · sin ficheros de audio</span></p>
   </div>`);
   pantalla('help');
   enfocarPrimero('button[data-accion="home"]');
@@ -3622,9 +3712,9 @@ function pasoFestejo(dt) {
   if (t >= DURACION_FESTEJO) pararFestejo();
 }
 
-// BORRAR-COMPETITIVO · el pulso de fondo sólo suena si está activado y en partida
+// BORRAR-COMPETITIVO · ambiente automático durante el juego, si el sonido está activo
 function empezarAmbiente() {
-  if (!guardado.ambiente) return;
+  if (app.pantalla !== 'playing') return;
   if (!app.comp || !app.comp.activo || app.comp.fase !== 'juego') return;
   audio.ambienteEmpezar();
 }
@@ -3669,10 +3759,7 @@ function mostrarRangos() {
     <div class="escalera" style="--paso:${info.rango}">${iconos}</div>
     <div class="comp-barra"><i style="width:${(info.progreso * 100).toFixed(0)}%"></i></div>
     <p class="nota">${info.siguiente ? `${info.dentro}/${COMPETITIVE.porRango} para ${info.siguiente}` : 'rango máximo'}</p>
-    <p class="pie">
-      <span>1º +3 · 2º +1 · 3º −1 · 4º −2</span>
-      <button class="link" type="button" data-accion="comp-ambiente" aria-pressed="${guardado.ambiente}">ambiente ${guardado.ambiente ? 'sí' : 'no'}</button>
-    </p>
+    <p class="pie"><span>1º +3 · 2º +1 · 3º −1 · 4º −2</span></p>
     <div class="acciones">
       <button class="principal" type="button" data-accion="comp-start">jugar <kbd>enter</kbd></button>
       <button type="button" data-accion="home">menú <kbd>esc</kbd></button>
@@ -3957,9 +4044,29 @@ function pintarCuenta() {
   }
 }
 
+function congelarCompetitivo(c) {
+  if (!c || c.fase === 'fin') return;
+  c.fase = 'fin';
+  c.finRestante = 1000;
+  c.restante = 0;
+  pararTemporizador();
+  audio.ambienteParar();
+  // el último temblor no debe seguir desplazando una pantalla que ya está quieta
+  if (app.juego) app.juego.shake = 0;
+  for (const rival of c.rivales) rival.juego.shake = 0;
+  if (el.minis) el.minis.querySelectorAll('.suma').forEach((nodo) => nodo.classList.remove('suma'));
+}
+
 function pasoCompetitivo(dt) {
   const c = app.comp;
   if (!c || !c.activo) return;
+
+  // al acabarse el reloj, jugador y bots quedan inmóviles un segundo antes del resultado
+  if (c.fase === 'fin') {
+    c.finRestante = Math.max(0, c.finRestante - dt);
+    if (c.finRestante <= 0) finCompetitivo();
+    return;
+  }
 
   // cuenta atrás: nadie se mueve hasta el mismo instante
   if (c.fase === 'cuenta') {
@@ -3990,14 +4097,20 @@ function pasoCompetitivo(dt) {
     }
   }
   pintarReloj();
-  if (c.restante <= 0) finCompetitivo();
+  if (c.restante <= 0) {
+    congelarCompetitivo(c);
+    pintarReloj();
+  }
 }
 
 function finCompetitivo() {
   const c = app.comp;
   if (!c || !c.activo) return;
+  if (c.fase !== 'fin') {
+    congelarCompetitivo(c);
+    return;
+  }
   c.activo = false;
-  pararTemporizador();
 
   const filas = tablaCompetitivo(c).map((f, i) => ({ ...f, puesto: i + 1 }));
   const yo = filas.find((f) => f.yo) || { puesto: filas.length };
@@ -4275,6 +4388,7 @@ function animarCifra(nodo, total) {
 
 function pausar() {
   if (!app.juego || app.pantalla !== 'playing') return;
+  if (app.comp && app.comp.fase === 'fin') return;
   app.juego.pause();
   if (app.juego.state !== 'paused') return;
   audio.play('ui');
@@ -4336,12 +4450,14 @@ function accion(nombre) {
 
   audio.unlock();
 
+  if (app.pantalla === 'playing' && app.comp && app.comp.fase === 'fin') return;
+
   if (nombre === 'tap') {
-    if (app.pantalla === 'playing' && app.juego) app.juego.toggleTurbo();
+    if (turboPermitido() && app.juego) app.juego.toggleTurbo();
     return;
   }
   if (nombre === 'turboOn') {
-    if (app.pantalla === 'playing' && app.juego) app.juego.setTurbo(true);
+    if (turboPermitido() && app.juego) app.juego.setTurbo(true);
     return;
   }
   if (nombre === 'turboOff') {
@@ -4539,18 +4655,6 @@ function ejecutar(nombre) {
     case 'comp-again':
       mostrarRangos();
       break;
-    case 'comp-ambiente': {
-      // el pulso de fondo del competitivo se enciende y apaga sin salir de aquí
-      guardado.ambiente = !guardado.ambiente;
-      guardar();
-      const boton = el.overlay.querySelector('button[data-accion="comp-ambiente"]');
-      if (boton) {
-        boton.textContent = `ambiente ${guardado.ambiente ? 'sí' : 'no'}`;
-        boton.setAttribute('aria-pressed', String(guardado.ambiente));
-      }
-      audio.play('ui');
-      break;
-    }
     default:
       break;
   }
@@ -4739,7 +4843,7 @@ window.addEventListener('blur', () => {
   if (app.pantalla === 'playing') pausar();
 });
 
-attachInput({ stage: el.stage, actions: accion });
+attachInput({ stage: el.stage, actions: accion, canTurbo: turboPermitido });
 
 /* ---------------------------------------------------------- bucle */
 
@@ -4756,8 +4860,8 @@ function bucle(t) {
     dibujarMarca(dt);
   } else if (app.juego) {
     // BORRAR-COMPETITIVO · con partida de competitivo corren también los tres bots
-    if (app.comp && app.comp.activo) {
-      if (app.pantalla === 'playing') pasoCompetitivo(dt);
+    if (app.comp) {
+      if (app.comp.activo && app.pantalla === 'playing') pasoCompetitivo(dt);
     } else {
       app.juego.update(dt);
     }
@@ -4806,12 +4910,14 @@ if (location.hash === '#debug') {
   window.__snake.mostrarRangos = mostrarRangos;
   // rótulo y festejo: para poder mirarlos desde las pruebas
   window.__snake.marca = marca;
+  window.__snake.serpientesMarca = SERPIENTES_NOMBRE;
   window.__snake.mejorGlobal = mejorGlobal;
   window.__snake.festejar = festejar;
   window.__snake.dibujarMarca = dibujarMarca;
   window.__snake.sorteoCompetitivo = sorteoCompetitivo;
   window.__snake.empezarCompetitivo = empezarCompetitivo;
   window.__snake.finCompetitivo = finCompetitivo;
+  window.__snake.pasoCompetitivo = pasoCompetitivo;
 }
 })(modulos['main']);
 })();

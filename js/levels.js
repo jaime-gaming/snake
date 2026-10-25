@@ -447,6 +447,8 @@ export function configCompetitivo(mapa, modificador, extra = {}) {
   const cfg = {
     ...MODES.competitive,
     walls: (mapa && mapa.walls ? mapa.walls : []).map((c) => [c[0], c[1]]),
+    tiempoTotal: COMPETITIVE.tiempo,
+    fondoBrillo: true,
     ...extra,
   };
   cfg.goal = null;

@@ -22,8 +22,9 @@ const TECLAS = {
 
 const BOTONES = { 12: 'up', 13: 'down', 14: 'left', 15: 'right' };
 
-export function attachInput({ stage, actions }) {
+export function attachInput({ stage, actions, canTurbo = () => true }) {
   const fire = (accion) => actions(accion);
+  const turboActivo = () => typeof canTurbo === 'function' && canTurbo();
 
   window.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -31,6 +32,7 @@ export function attachInput({ stage, actions }) {
     if (!accion) return;
     if (e.code === 'Space' || e.code === 'Enter' || e.code.startsWith('Arrow')) e.preventDefault();
     if (e.repeat) return;
+    if (accion === 'turbo' && !turboActivo()) return;
     fire(accion === 'turbo' ? 'turboOn' : accion);
   });
 
@@ -59,7 +61,7 @@ export function attachInput({ stage, actions }) {
     const dx = e.clientX - x0;
     const dy = e.clientY - y0;
     if (Math.abs(dx) < 18 && Math.abs(dy) < 18) {
-      fire('tap');
+      if (turboActivo()) fire('tap');
       return;
     }
     if (Math.abs(dx) > Math.abs(dy)) fire(dx > 0 ? 'right' : 'left');
@@ -95,10 +97,12 @@ export function attachInput({ stage, actions }) {
         const boton = pad.buttons[indice];
         if (boton && (boton.pressed || boton.value > 0.5)) actual[nombre] = true;
       }
-      [0, 1].forEach((n) => {
-        const boton = pad.buttons[n];
-        if (boton && (boton.pressed || boton.value > 0.5)) actual.turbo = true;
-      });
+      if (turboActivo()) {
+        [0, 1].forEach((n) => {
+          const boton = pad.buttons[n];
+          if (boton && (boton.pressed || boton.value > 0.5)) actual.turbo = true;
+        });
+      }
       [3, 9].forEach((n) => {
         const boton = pad.buttons[n];
         if (boton && (boton.pressed || boton.value > 0.5)) actual.aux = true;

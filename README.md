@@ -7,7 +7,7 @@ Snake de rejilla, en blanco y negro y sin adornos. HTML, CSS y JavaScript a pelo
 | | teclado | táctil |
 | --- | --- | --- |
 | girar | flechas o WASD | desliza |
-| turbo | espacio o mayús | toca el tablero |
+| turbo | espacio o mayús | toca el tablero (no cazador ni competitivo) |
 | pausa | P o esc | botón pausa |
 | reiniciar | R | botón |
 | sonido | M | botón sonido |
@@ -15,7 +15,7 @@ Snake de rejilla, en blanco y negro y sin adornos. HTML, CSS y JavaScript a pelo
 
 Todo lo que sale en pantalla (grupos, modos, niveles, pausa, fin, ayuda) se maneja con las **flechas** y **enter**: el botón enfocado lleva un marco de 2 px. En la rejilla de niveles `↑↓` saltan de fila.
 
-Mando: d-pad y sticks para girar, A para turbo, start para pausar.
+Mando: d-pad y sticks para girar, A para turbo (salvo cazador y competitivo), start para pausar.
 
 ## modos
 
@@ -33,7 +33,7 @@ El menú son tres grupos y cada uno abre su propia subpágina con sus modos: `�
 
 **competitivo**
 
-- **competitivo** — 1 vs 1 vs 1 vs 1 contra tres bots (`pulso`, `ruido` y `onda`) y **60 segundos**, con una **cuenta atrás 3-2-1** para que los cuatro empiecen a la vez. desde el menú entra directo a la pantalla de **rangos** (los siete iconos, tu posición y la barra), y de ahí se le da a jugar. al darle a jugar hay un **sorteo animado** en el propio tablero: el mapa y el modificador van girando y se quedan fijados (mapa entre 5 arenas o cualquiera de los 20 niveles; modificador entre `sin muros`, `muros`, `rápido`, `lento`, `hambre` y `sin premios`). tu tablero va a la izquierda y las **tres cuadrículas rivales a la derecha, en directo**, con el nombre y los puntos de cada uno. el reloj va centrado arriba. siete rangos con **icono SVG** (hierro, cobre, bronce, plata, oro, platino y obsidiana): 1º +3, 2º +1, 3º −1, 4º −2. **si te matas revives** en el centro con 1,4 s de gracia, conservas las frutas y pagas un 20 % de tus puntos (mínimo 40).
+- **competitivo** — 1 vs 1 vs 1 vs 1 contra tres bots (`pulso`, `ruido` y `onda`), **60 segundos** y cuenta atrás 3-2-1. Entras por la pantalla de rangos y luego hay un sorteo animado de mapa y modificador. Tu tablero y las tres cuadrículas rivales se ven en directo. Los bots se aceleran cerca de la comida y, de vez en cuando, dudan, giran mal o chocan. No hay turbo para el jugador. Al agotarse el reloj, todos quedan quietos durante un segundo y después aparece la clasificación. Si mueres, revives con 1,4 s de gracia y pierdes un 20 % de los puntos (mínimo 40).
 
 los modos que sobraban (portales, reloj, muro y ciego) se han ido: sus reglas no aportaban nada que la campaña y el clásico no dieran ya, y cada uno era una forma más de romper el juego.
 
@@ -52,13 +52,13 @@ eso señala los trozos de `js/levels.js` (modo, grupo, rangos, mapas y modificad
 - **cadena** — dos frutas seguidas suben el multiplicador hasta ×5. la barra de abajo es el tiempo que te queda para encadenar, y comer con la barra por encima del 62% paga un extra de 5 × multiplicador. cada subida de multiplicador da un destello y marca el marcador.
 - **premio** — un cubo rojo hueco aparece cada pocas frutas, caduca y da dos anillos de largo.
 - **poderes** — todo son cubos: contorno discontinuo, fantasma (atraviesas muros, bordes, cazador **y tu propio cuerpo** durante cinco segundos, así que con el fantasma puesto no te puedes matar tú); raya en medio, lento; cuadro relleno, recorte (pierdes anillos y ganas puntos). el fantasma no se corta de golpe: en el último segundo y medio se apaga en cuatro escalones y los cubos se van rellenando hasta volver a ser sólidos.
-- **turbo** — 0,68 del intervalo mientras lo mantengas.
+- **turbo** — 0,68 del intervalo mientras lo mantengas; no está disponible para el jugador en cazador ni en competitivo. Los bots del competitivo aceleran cerca de la comida; el cazador también da una arrancada cuando la tiene a mano o te persigue de cerca.
 - **choque** — al morir la casilla del golpe queda marcada y tres marcos cuadrados se abren desde ella mientras la serpiente se deshace de la cabeza a la cola. la cifra final sube de 0 al total en medio segundo.
-- **borde** — si chocar con él te mata, el borde se ve **siempre**: es una pared, no un adorno. donde hay muro va más marcado. con el fantasma puesto (o en frenesí, donde los bordes dan la vuelta y no matan) se apaga y sólo se marca al acercarte. el bloque por el que vas a salir se enciende en blanco.
+- **borde** — se dibuja con contraste suave, sin parpadeo: el borde mortal siempre se ve y la salida se destaca al acercarte. con fantasma o en frenesí, sólo se marca cerca.
 - **última fruta** — en la campaña, la fruta que cierra el nivel sale amarilla con el centro negro: es el último punto de la barra de progreso.
 - **arranque** — al empezar cada partida, la luz enciende el tablero por bloques, un escalón por casilla, hasta dejar el mapa entero a la vista. el borde se enciende con él, porque se dibuja dentro del tablero.
-- **rótulo** — el nombre de la portada lo escribe la propia serpiente: las letras son su cuerpo, la cara va al final de la `e` y cada tres segundos se estira a comerse el punto rojo.
-- **sonidos** — todo sintetizado con osciladores: tic por cada giro del sorteo, acorde al fijarse, nota distinta en cada segundo de la cuenta atrás, arpegio al revivir, escala que sube o baja según el rango y saltos secos al comer. En competitivo suena un pulso de fondo que se acelera en los últimos diez segundos; se enciende y apaga desde la pantalla de rangos sin salir del modo.
+- **rótulo** — cinco serpientes separadas escriben `snake.`, una por letra; cada una tiene cuerpo y cabeza, y de vez en cuando alcanza su punto rojo.
+- **ambiente** — el pulso de fondo del competitivo se acelera hacia los últimos diez segundos y el brillo del tablero aumenta; el audio ambiente está activo mientras el sonido general esté encendido, sin interruptor aparte.
 - **transiciones** — cambiar de pantalla barre la vieja con cubos en escalera; al subir de rango caen cubos y el nuevo icono se dibuja bloque a bloque.
 - **velocidad** — la campaña va de 155 a 106 ms por casilla y los infinitos arrancan entre 124 y 146, con suelo de 42 a 86 ms. cuesta más acelerar que antes, así que las partidas duran más.
 

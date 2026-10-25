@@ -335,6 +335,69 @@ process.stdout.write('choque\n');
 // el cazador va a por los puntos que tiene cerca
 process.stdout.write('ia del cazador\n');
 {
+  const impulso = new Game({ ...MODES.hunter }, () => {});
+  impulso.state = 'running';
+  impulso.hunter.body = [{ x: 3, y: 3 }, { x: 2, y: 3 }, { x: 1, y: 3 }];
+  impulso.pellets = [{ x: 4, y: 3 }];
+  const lejos = impulso.hunterCadence();
+  impulso.pellets = [{ x: 16, y: 16 }];
+  const normal = impulso.hunterCadence();
+  comprobar(lejos < normal, 'ia del cazador: no acelera al ir por un punto cercano');
+
+  // una duda dura exactamente una oportunidad de movimiento
+  impulso.hunterTick = 3;
+  impulso.hunter.botSiguienteFallo = 0;
+  impulso.hunter.body = [{ x: 3, y: 3 }, { x: 2, y: 3 }, { x: 1, y: 3 }];
+  impulso.pellets = [{ x: 16, y: 16 }];
+  const antes = impulso.hunter.body.map((c) => ({ ...c }));
+  const randomOriginal = Math.random;
+  Math.random = () => 0.01;
+  try {
+    impulso.moveHunter();
+  } finally {
+    Math.random = randomOriginal;
+  }
+  comprobar(impulso.hunter.body.every((c, i) => c.x === antes[i].x && c.y === antes[i].y),
+    'ia del cazador: no titubea de vez en cuando');
+
+  // un mal giro le aparta del camino más corto al punto
+  const malGirado = new Game({ ...MODES.hunter }, () => {});
+  malGirado.state = 'running';
+  malGirado.hunter.body = [{ x: 5, y: 5 }, { x: 4, y: 5 }, { x: 3, y: 5 }];
+  malGirado.hunter.dir = { x: 1, y: 0 };
+  malGirado.hunterTick = 3;
+  malGirado.hunter.botSiguienteFallo = 0;
+  malGirado.pellets = [{ x: 10, y: 5 }];
+  const randomAntesGiro = Math.random;
+  const secuenciaGiro = [0.5, 0.2];
+  Math.random = () => secuenciaGiro.shift() ?? 0.5;
+  try {
+    malGirado.moveHunter();
+  } finally {
+    Math.random = randomAntesGiro;
+  }
+  comprobar(malGirado.hunter.body[0].x !== 6 || malGirado.hunter.body[0].y !== 5,
+    'ia del cazador: nunca se equivoca de giro');
+
+  // si elige un hueco bloqueado puede chocarse y volver más corto
+  const choque = new Game({ ...MODES.hunter }, () => {});
+  choque.state = 'running';
+  choque.hunter.body = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }];
+  choque.hunter.dir = { x: 0, y: -1 };
+  choque.hunterTick = 3;
+  choque.hunter.botSiguienteFallo = 0;
+  choque.pellets = [{ x: 16, y: 16 }];
+  const randomAntesChoque = Math.random;
+  const secuenciaChoque = [0, 0.08];
+  Math.random = () => secuenciaChoque.shift() ?? 0;
+  try {
+    choque.moveHunter();
+  } finally {
+    Math.random = randomAntesChoque;
+  }
+  comprobar(choque.hunter.recarga > 0, 'ia del cazador: nunca choca por error');
+}
+{
   const distanciaAPunto = (juego) => {
     const jefe = juego.hunter.body[0];
     let mejor = Infinity;
@@ -588,6 +651,9 @@ process.stdout.write('borde\n');
   comprobar(juego.alfaBorde(19, 10, 'der') >= 0.5, 'borde: no enciende la salida al acercarse');
   comprobar(juego.alfaBorde(19, 4, 'der') > 0 && juego.alfaBorde(19, 4, 'der') < 0.5,
     'borde: marca la salida donde no toca');
+  const fijo = juego.alfaBorde(19, 10, 'der');
+  juego.time += 1200;
+  comprobar(juego.alfaBorde(19, 10, 'der') === fijo, 'borde: parpadea al acercarse');
 
   // con muro, siempre marcado
   juego.body = [{ x: 10, y: 10 }, { x: 9, y: 10 }];
@@ -797,8 +863,45 @@ const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
     comprobar(cfg.minSpeed <= cfg.startSpeed, `competitivo: ${mod.nombre} deja el mínimo por encima del inicio`);
     comprobar(!cfg.goal, `competitivo: ${mod.nombre} pone meta`);
     comprobar(cfg.competitive === true, `competitivo: ${mod.nombre} pierde la marca del modo`);
+    comprobar(cfg.tiempoTotal === COMPETITIVE.tiempo && cfg.fondoBrillo,
+      `competitivo: ${mod.nombre} pierde el brillo de fondo temporizado`);
   }
   process.stdout.write(`  ${COMPETITIVE.modificadores.length} modificadores y ${COMPETITIVE.arenas.length} arenas\n`);
+
+  // los bots aceleran cerca de la comida, pero su error no se aplica a la campaña
+  {
+    const bot = new Game(configCompetitivo({ nombre: 'abierta', walls: [] }, null), () => {});
+    bot.state = 'running';
+    bot.body = [{ x: 5, y: 5 }, { x: 4, y: 5 }, { x: 3, y: 5 }, { x: 2, y: 5 }];
+    bot.prevBody = bot.body.map((c) => ({ ...c }));
+    bot.dir = { x: 1, y: 0 };
+    bot.food = { x: 8, y: 5 };
+    bot.botTurn();
+    comprobar(bot.turbo, 'bot competitivo: no usa el boost al acercarse a la comida');
+    bot.food = { x: 17, y: 17 };
+    bot.botTurn();
+    comprobar(!bot.turbo, 'bot competitivo: deja el boost encendido lejos de la comida');
+
+    // reproducible: forzar un fallo poco frecuente hacia una pared y comprobar el choque
+    const distraido = new Game(configCompetitivo({ nombre: 'abierta', walls: [] }, null), () => {});
+    distraido.state = 'running';
+    distraido.body = [{ x: 10, y: 0 }, { x: 9, y: 0 }, { x: 8, y: 0 }, { x: 7, y: 0 }];
+    distraido.prevBody = distraido.body.map((c) => ({ ...c }));
+    distraido.dir = { x: 1, y: 0 };
+    distraido.food = { x: 17, y: 10 };
+    distraido.botPausaHasta = 0;
+    distraido.botSiguienteFallo = 0;
+    const randomOriginal = Math.random;
+    const secuencia = [0, 0.08, 0];
+    Math.random = () => secuencia.shift() ?? 0;
+    try {
+      distraido.botTurn();
+    } finally {
+      Math.random = randomOriginal;
+    }
+    distraido.step();
+    comprobar(distraido.state === 'dead', 'bot competitivo: no puede cometer un choque ocasional');
+  }
 
   // cada jugador recibe su propia cuadrícula: cambiar una no toca las demás
   const mapa = mapaDePartida(azar(0.5));
@@ -894,6 +997,20 @@ const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   // poco texto: la ayuda no puede volver a llenarse de párrafos
   {
     const fuente = fs.readFileSync(path.join(RAIZ, 'js/main.js'), 'utf8');
+    const entrada = fs.readFileSync(path.join(RAIZ, 'js/input.js'), 'utf8');
+    const pagina = fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8');
+    comprobar(fuente.includes('const SERPIENTES_NOMBRE = serpientesDe(MARCA_PALABRA, MARCA_GLIFOS)')
+      && fuente.includes('cuerpo, cabeza, objetivo, punto'), 'marca: no hay una serpiente independiente por letra');
+    comprobar(pagina.includes('snake.js?v=16') && pagina.includes('styles.css?v=16'),
+      'caché: falta la versión v16 en la página');
+    const preferenciaAmbiente = ['guardado', 'ambiente'].join('.');
+    const accionAmbiente = ['comp', 'ambiente'].join('-');
+    comprobar(!fuente.includes(preferenciaAmbiente) && !fuente.includes(accionAmbiente),
+      'ambiente: sigue siendo configurable desde la pantalla de rangos');
+    comprobar(fuente.includes("app.modo !== 'hunter' && app.modo !== 'competitive'")
+      && entrada.includes('canTurbo'), 'turbo: no está bloqueado en cazador y competitivo');
+    comprobar(fuente.includes('finRestante = 1000') && fuente.includes("c.fase === 'fin'"),
+      'competitivo: falta el segundo de congelación antes de la tabla');
     const bloque = fuente.slice(fuente.indexOf('<ul class="reglas">'), fuente.indexOf('</ul>', fuente.indexOf('<ul class="reglas">')));
     const reglas = [...bloque.matchAll(/<li>([^<]+)<\/li>/g)].map((m) => m[1]);
     comprobar(reglas.length > 4 && reglas.length <= 12, `minimalismo: ${reglas.length} reglas en la ayuda`);
