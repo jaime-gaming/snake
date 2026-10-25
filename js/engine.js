@@ -893,6 +893,14 @@ export class Game {
     const cabeza = this.body[0] || { x: 0, y: 0 };
     const dist = Math.abs(cx - cabeza.x) + Math.abs(cy - cabeza.y);
     if (this.wallSet.has(K(cx, cy))) return 0.5;
+    // la onda de arranque enciende el borde a su paso, igual que el resto del tablero
+    if (this.reveal < 1) {
+      const luz = this.cfg.vision
+        ? this.cfg.vision * (0.35 + 0.65 * this.reveal)
+        : 1.2 + this.reveal * 17;
+      const lejos = Math.max(Math.abs(cx - cabeza.x), Math.abs(cy - cabeza.y));
+      if (lejos <= luz + 1) return 0.26 * (1 - this.reveal);
+    }
     if (dist > 4) return 0;
     const rumbo = this.dir || { x: 1, y: 0 };
     const salida = rumbo.x < 0 ? 'izq' : rumbo.x > 0 ? 'der' : rumbo.y < 0 ? 'arriba' : 'abajo';

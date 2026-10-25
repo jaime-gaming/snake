@@ -576,6 +576,7 @@ process.stdout.write('borde\n');
   const juego = new Game({ ...MODES.classic }, () => {});
   juego.walls = [];
   juego.wallSet.clear();
+  juego.reveal = 1;
   juego.body = [{ x: 10, y: 10 }, { x: 9, y: 10 }];
   juego.dir = { x: 1, y: 0 };
   comprobar(juego.alfaBorde(2, 0, 'arriba') === 0, 'borde: se marca lejos sin muro');
@@ -593,6 +594,15 @@ process.stdout.write('borde\n');
   juego.walls.push([5, 0]);
   juego.wallSet.add(K(5, 0));
   comprobar(juego.alfaBorde(5, 0, 'arriba') === 0.5, 'borde: no marca donde hay muro');
+  // la onda de arranque sí lo enciende a su paso
+  juego.wallSet.clear();
+  juego.reveal = 0.4;
+  juego.body = [{ x: 10, y: 4 }, { x: 10, y: 5 }];
+  juego.dir = { x: 0, y: -1 };
+  const conLuz = juego.alfaBorde(8, 0, 'arriba');
+  comprobar(conLuz > 0 && conLuz < 0.26, 'borde: la luz de arranque no lo ilumina');
+  juego.reveal = 1;
+  comprobar(juego.alfaBorde(8, 0, 'arriba') !== conLuz, 'borde: sigue iluminado con el mapa ya encendido');
   process.stdout.write('  borde: mudo lejos, avisa cerca y enciende la salida\n');
 }
 
