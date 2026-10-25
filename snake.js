@@ -2663,10 +2663,10 @@ function pararTemporizador() {
 }
 
 /* ---------------------------------------------------------- rótulo
-   "snake." dibujado con cinco serpientes: una por letra, cada una con su
-   cuerpo, su cabeza y un punto que alcanza de vez en cuando. */
+   "snake." dibujado con cinco serpientes: una por letra. Sólo la de la e tiene
+   manzana y estira el último tramo del cuerpo para alcanzarla. */
 
-// letras de 3x5 bloques; cada serpiente escribe su carácter y alcanza su punto
+// glifos de bloques; cada letra tiene cuerpo y cabeza independientes
 const MARCA_GLIFOS = {
   s: ['.###', '#...', '.##.', '...#', '###.'],
   n: ['#..#', '##.#', '#.##', '#..#', '#..#'],
@@ -2699,9 +2699,9 @@ const serpientesDe = (texto, glifos) => {
         cabeza = celda;
       }
     }
-    // las cuatro primeras serpientes alcanzan el hueco de su letra; la última, el punto final
+    // las otras letras se quedan en su sitio; sólo la e va a por la manzana final
     const ultimo = i === caracteres.length - 1;
-    const objetivo = ultimo ? { x: x0 + 5, y: 4 } : { x: x0 + 4, y: 2 };
+    const objetivo = ultimo ? { x: x0 + 5, y: 4 } : cabeza;
     const punto = ultimo ? { ...objetivo } : null;
     if (cabeza) serpientes.push({ cuerpo, cabeza, objetivo, punto });
   });
@@ -2789,16 +2789,17 @@ function dibujarMarca(dt) {
     }
   };
 
-  // dibuja varias serpientes (una por carácter), cada una con su punto,
-  // su propio ciclo y desfazada respecto a las demás
+  // cinco serpientes, pero sólo la última tiene manzana y anima la mordida
   const cicloSerpientes = (serpientes, t) => {
     serpientes.forEach((serp, i) => {
       const tt = (t + i * 700) % 3200;
       let avance = 0;
       let comido = false;
-      if (tt >= 400 && tt < 700) avance = Math.round(((tt - 400) / 300) * 3) / 3;
-      else if (tt >= 700 && tt < 1900) { avance = 1; comido = !!serp.punto; }
-      else if (tt >= 1900 && tt < 2200) avance = Math.round((1 - (tt - 1900) / 300) * 3) / 3;
+      if (serp.punto) {
+        if (tt >= 400 && tt < 700) avance = Math.round(((tt - 400) / 300) * 3) / 3;
+        else if (tt >= 700 && tt < 1900) { avance = 1; comido = true; }
+        else if (tt >= 1900 && tt < 2200) avance = Math.round((1 - (tt - 1900) / 300) * 3) / 3;
+      }
 
       serp.cuerpo.forEach((c, k) => {
         bloque(c.x, c.y, k % 5 === 4 ? '#cfcfcf' : '#e8e8e8');
@@ -2819,6 +2820,16 @@ function dibujarMarca(dt) {
       const destino = serp.objetivo || base;
       const cx = base.x + avance * (destino.x - base.x);
       const cy = base.y + avance * (destino.y - base.y);
+
+      // el último bloque sale de la e y se alarga en cubos hasta la manzana
+      if (serp.punto && avance > 0) {
+        const pasos = Math.floor(Math.hypot(cx - base.x, cy - base.y));
+        const dx = Math.sign(destino.x - base.x);
+        const dy = Math.sign(destino.y - base.y);
+        for (let paso = 0; paso < pasos; paso++) {
+          bloque(base.x + dx * paso, base.y + dy * paso, '#cfcfcf');
+        }
+      }
       cara(cx, cy, avance > 0.05 ? 0.24 : 0.14);
     });
   };

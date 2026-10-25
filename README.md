@@ -57,7 +57,7 @@ eso señala los trozos de `js/levels.js` (modo, grupo, rangos, mapas y modificad
 - **borde** — se dibuja con contraste suave, sin parpadeo: el borde mortal siempre se ve y la salida se destaca al acercarte. con fantasma o en frenesí, sólo se marca cerca.
 - **última fruta** — en la campaña, la fruta que cierra el nivel sale amarilla con el centro negro: es el último punto de la barra de progreso.
 - **arranque** — al empezar cada partida, la luz enciende el tablero por bloques, un escalón por casilla, hasta dejar el mapa entero a la vista. el borde se enciende con él, porque se dibuja dentro del tablero.
-- **rótulo** — cinco serpientes separadas escriben `snake.`, una por letra; cada una tiene cuerpo y cabeza, y de vez en cuando alcanza su punto rojo.
+- **rótulo** — cinco serpientes separadas escriben `snake.`, una por letra; sólo la `e` tiene manzana: se desprende un bloque de su cuerpo y se estira en cubos para alcanzarla.
 - **ambiente** — el pulso de fondo del competitivo se acelera hacia los últimos diez segundos y el brillo del tablero aumenta; el audio ambiente está activo mientras el sonido general esté encendido, sin interruptor aparte.
 - **transiciones** — cambiar de pantalla barre la vieja con cubos en escalera; al subir de rango caen cubos y el nuevo icono se dibuja bloque a bloque.
 - **velocidad** — la campaña va de 155 a 106 ms por casilla y los infinitos arrancan entre 124 y 146, con suelo de 42 a 86 ms. cuesta más acelerar que antes, así que las partidas duran más.

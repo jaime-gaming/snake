@@ -1001,6 +1001,14 @@ const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
     const pagina = fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8');
     comprobar(fuente.includes('const SERPIENTES_NOMBRE = serpientesDe(MARCA_PALABRA, MARCA_GLIFOS)')
       && fuente.includes('cuerpo, cabeza, objetivo, punto'), 'marca: no hay una serpiente independiente por letra');
+    comprobar(fuente.includes('const ultimo = i === caracteres.length - 1;')
+      && fuente.includes('const punto = ultimo ? { ...objetivo } : null;')
+      && fuente.includes('const objetivo = ultimo ? { x: x0 + 5, y: 4 } : cabeza;'),
+    'marca: sólo la última serpiente debe tener manzana');
+    comprobar(fuente.includes('if (serp.punto && avance > 0)')
+      && fuente.includes('const pasos = Math.floor(Math.hypot(cx - base.x, cy - base.y));')
+      && fuente.includes("bloque(base.x + dx * paso, base.y + dy * paso, '#cfcfcf');"),
+    'marca: el cuerpo de la e no se estira para alcanzar la manzana');
     comprobar(pagina.includes('snake.js?v=16') && pagina.includes('styles.css?v=16'),
       'caché: falta la versión v16 en la página');
     const preferenciaAmbiente = ['guardado', 'ambiente'].join('.');
