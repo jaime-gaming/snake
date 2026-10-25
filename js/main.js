@@ -747,12 +747,17 @@ function mostrarAyuda() {
     <ul class="reglas">
       <li>la comida encadena: dos frutas seguidas suben el multiplicador hasta ×5</li>
       <li>el cubo rojo hueco caduca y da dos anillos de largo</li>
+      <li>comer sin dejar que se enfríe la barra suma un extra por cadena</li>
       <li>los cuadros blancos dan poderes: contorno discontinuo fantasma (atraviesas todo), raya en medio lento, cuadro relleno recorte</li>
       <li>la campaña son 20 niveles: se abre uno cada vez que cierras el anterior</li>
       <li>clásico: pasadas 30 frutas empiezan a salir muros sueltos</li>
       <li>frenesí: los bordes dan la vuelta y la velocidad sube sola</li>
-      <li>portales: entrar por un aro te saca por el otro, y cambian de sitio</li>
-      <li>cazador: la serpiente roja come puntos azules y crece; si te toca, pierdes</li>
+      <li>portales: entrar por un cubo te saca por el otro, y sales sin chocar</li>
+      <li>a partir de 15 frutas, los portales son dos parejas</li>
+      <li>cazador: la serpiente roja come puntos azules y crece; si su cabeza te pisa, pierdes</li>
+      <li>los puntos azules también te valen: cómetelos y el cazador no crece</li>
+      <li>el cubo rojo fino marca por dónde va a cortar el cazador</li>
+      <li>los muros avisan 700 ms antes: el cubo hueco dice dónde van a salir</li>
       <li>cuando el cazador está lleno va directo a por ti y se mueve al doble</li>
       <li>en ciego sólo ves un cuadrado de luz, y se abre poco a poco según comes</li>
       <li>en reloj sales con 45 segundos, cada fruta suma 2,6 y el cubo hueco 4 más</li>
@@ -828,6 +833,16 @@ function eventosJuego(tipo, datos) {
     case 'wall':
       audio.play('wall');
       break;
+    case 'wallSoon':
+      audio.play('alerta');
+      break;
+    case 'pellet':
+      audio.play('pellet');
+      parpadear(el.mult);
+      break;
+    case 'combo':
+      parpadear(el.mult);
+      break;
     case 'die':
       audio.play('death');
       guardarMarca();
@@ -872,7 +887,7 @@ function mostrarFin() {
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
       <p class="kicker">${app.record ? 'récord nuevo' : 'fin'}</p>
-      <p class="cifra">${puntos(juego.score)}</p>
+      <p class="cifra" data-cifra>${puntos(juego.score)}</p>
       <p class="nota">${meta}</p>
     </div>
     <div class="acciones">
@@ -881,6 +896,7 @@ function mostrarFin() {
     </div>
   </div>`);
   pantalla('dead');
+  animarCifra(el.overlay.querySelector('[data-cifra]'), juego.score);
   enfocarPrimero('button[data-accion="retry"]');
   el.pause.disabled = true;
   el.prompt.classList.remove('visible');
@@ -896,7 +912,7 @@ function mostrarNivelSuperado() {
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
       <p class="kicker">nivel ${dosDigitos(app.nivel + 1)} superado</p>
-      <p class="cifra">${puntos(juego.score)}</p>
+      <p class="cifra" data-cifra>${puntos(juego.score)}</p>
       <p class="nota">${ultimo ? 'campaña completa · ya no hay margen' : `siguiente · ${siguiente.name.toLowerCase()} · ${siguiente.goal} frutas`}</p>
     </div>
     <div class="acciones">
@@ -906,9 +922,40 @@ function mostrarNivelSuperado() {
     </div>
   </div>`);
   pantalla('cleared');
+  animarCifra(el.overlay.querySelector('[data-cifra]'), juego.score);
   enfocarPrimero('button.principal');
   el.pause.disabled = true;
   el.prompt.classList.remove('visible');
+}
+
+// un parpadeo corto para dar feedback sin llenar la pantalla
+function parpadear(nodo) {
+  if (!nodo) return;
+  nodo.classList.remove('golpe');
+  void nodo.offsetWidth;
+  nodo.classList.add('golpe');
+  clearTimeout(nodo._golpe);
+  nodo._golpe = setTimeout(() => nodo.classList.remove('golpe'), 260);
+}
+
+// la cifra final sube hasta el marcador: se lee mejor y da un segundo de premio
+function animarCifra(nodo, total) {
+  if (!nodo) return;
+  const objetivo = Math.max(0, Math.round(total || 0));
+  const inicio = performance.now();
+  const duracion = 520;
+  const paso = (ahora) => {
+    const t = Math.min(1, (ahora - inicio) / duracion);
+    const suave = 1 - Math.pow(1 - t, 3);
+    nodo.textContent = puntos(objetivo * suave);
+    if (t < 1 && nodo.isConnected) requestAnimationFrame(paso);
+  };
+  nodo.textContent = '0';
+  requestAnimationFrame(paso);
+  // si el navegador no repinta (pestaña oculta), al menos queda la cifra buena
+  setTimeout(() => {
+    if (nodo.isConnected) nodo.textContent = puntos(objetivo);
+  }, duracion + 80);
 }
 
 /* ---------------------------------------------------------- pausa */

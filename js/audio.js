@@ -109,6 +109,14 @@ const SONIDOS = {
     tono(150, 0.09, { tipo: 'square', vol: 0.12, fin: 90 });
     ruido(0.12, { desde: 900, hasta: 200, vol: 0.18 });
   },
+  pellet() {
+    tono(760, 0.05, { tipo: 'triangle', vol: 0.18 });
+    tono(1010, 0.06, { tipo: 'triangle', vol: 0.14, delay: 0.05 });
+  },
+  alerta() {
+    tono(210, 0.05, { vol: 0.09 });
+    tono(180, 0.05, { vol: 0.07, delay: 0.09 });
+  },
   hunterEat() {
     tono(300, 0.06, { tipo: 'triangle', vol: 0.14, fin: 220 });
   },

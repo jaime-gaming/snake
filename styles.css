@@ -152,6 +152,19 @@ button:disabled {
   color: var(--fg);
 }
 
+/* destello de un cuarto de segundo al subir la cadena o robar un punto */
+.mult.golpe {
+  background: var(--fg);
+  color: #000;
+  outline: 2px solid #ffffff;
+  outline-offset: 1px;
+}
+
+.best.vivo {
+  color: var(--fg);
+  font-weight: 600;
+}
+
 .best {
   margin-left: auto;
   padding-left: 10px;
@@ -270,6 +283,16 @@ button:disabled {
   width: 100%;
   max-width: 760px;
   margin: auto;
+  animation: aparecer 130ms ease-out;
+}
+
+@keyframes aparecer {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .kicker {

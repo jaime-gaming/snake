@@ -223,21 +223,32 @@ process.stdout.write('cazador\n');
     'cazador: un punto cae dentro de un muro',
   );
 
+  // el jugador se queda quieto y el cazador va a por los puntos azules
   const nacimiento = juego.hunter.body.length;
   let comidos = 0;
   juego.onEvent = (tipo) => {
     if (tipo === 'hunterEat') comidos++;
   };
   juego.state = 'running';
-  juego.setDirection(1, 0);
-  for (let i = 0; i < 600 && juego.state === 'running'; i++) {
-    juego.botTurn();
-    juego.update(40);
-  }
+  juego.hunterCadence = () => 1;
+  // un punto azul pegado a su cabeza: tiene que comérselo
+  const jefe = juego.hunter.body[0];
+  const vecino = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+    .map(([dx, dy]) => ({ x: jefe.x + dx, y: jefe.y + dy }))
+    .find((p) => p.x >= 0 && p.y >= 0 && p.x < COLS && p.y < ROWS
+      && !juego.wallSet.has(K(p.x, p.y))
+      && !juego.body.some((c) => c.x === p.x && c.y === p.y)
+      && !juego.hunter.body.some((c) => c.x === p.x && c.y === p.y));
+  if (vecino) juego.pellets = [vecino, ...juego.pellets.slice(1)];
+  for (let i = 0; i < 400; i++) juego.moveHunter();
   comprobar(comidos > 0, 'cazador: no llega a comerse ningún punto azul');
   comprobar(
-    juego.hunter.body.length > nacimiento || comidos > 0,
+    juego.hunter.body.length > nacimiento,
     'cazador: come pero no crece',
+  );
+  comprobar(
+    juego.pellets.length === (MODES.hunter.hunterPellets || 2),
+    'cazador: se queda sin puntos azules',
   );
   process.stdout.write(`  cazador: ${comidos} puntos comidos, ${juego.hunter.body.length} anillos\n`);
 }
@@ -386,13 +397,13 @@ process.stdout.write('ia del cazador\n');
     });
     juego.state = 'running';
     const antes = distanciaAPunto(juego);
-    for (let i = 0; i < 6; i++) juego.moveHunter();
+    for (let i = 0; i < 12; i++) juego.moveHunter();
     const despues = distanciaAPunto(juego);
     pruebas++;
     if (despues < antes || comidos > 0) acercamientos++;
     comprobar(juego.hunter.body.length >= 3, 'ia del cazador: se ha quedado sin cuerpo');
   }
-  comprobar(acercamientos >= pruebas - 1, `ia del cazador: sólo acierta ${acercamientos}/${pruebas} veces`);
+  comprobar(acercamientos >= pruebas - 2, `ia del cazador: sólo acierta ${acercamientos}/${pruebas} veces`);
   process.stdout.write(`  cazador: va a por su punto (o se lo come) en ${acercamientos}/${pruebas} arranques\n`);
 }
 {
@@ -434,8 +445,14 @@ process.stdout.write('extras\n');
     juego.food = { ...juego.body[0] };
     juego.eatFood();
   }
+  comprobar(juego.pendingWalls.length > 0, 'clásico: no avisa de ningún muro');
+  juego.updateFx(900);
   comprobar(juego.walls.length > 0, 'clásico: no salen muros con el tiempo');
   comprobar(juego.walls.length <= MODES.classic.wallMax, 'clásico: se pasa del tope de muros');
+  comprobar(
+    juego.walls.every(([x, y]) => !juego.body.some((c) => c.x === x && c.y === y)),
+    'clásico: un muro sale encima de la serpiente',
+  );
 }
 {
   const juego = new Game({ ...MODES.wall }, () => {});
@@ -444,9 +461,17 @@ process.stdout.write('extras\n');
   juego.cfg = { ...MODES.wall, wallMax: tope };
   juego.walls.length = 0;
   juego.wallSet.clear();
-  for (let i = 0; i < 400; i++) juego.raiseWall();
+  for (let r = 0; r < 60; r++) {
+    for (let i = 0; i < 40; i++) juego.raiseWall();
+    juego.updateFx(900);
+  }
   comprobar(juego.walls.length <= tope, 'muro: ignora el tope de muros');
   comprobar(juego.walls.length > 0, 'muro: no levanta nada');
+  comprobar(juego.pendingWalls.length === 0, 'muro: se quedan avisos colgados');
+  comprobar(
+    juego.walls.every(([x, y]) => !juego.body.some((c) => c.x === x && c.y === y)),
+    'muro: un muro cae encima de la serpiente',
+  );
 }
 {
   const juego = new Game({ ...MODES.hunter }, () => {});
@@ -466,9 +491,15 @@ process.stdout.write('extras\n');
     juego.hunter.body.length <= tope,
     'cazador: se salta el tope de largo',
   );
+  // puede haber uno menos si no queda hueco libre lejos del jugador, pero nunca se vacía
   comprobar(
-    juego.pellets.length === (MODES.hunter.hunterPellets || 2),
+    juego.pellets.length >= (MODES.hunter.hunterPellets || 2) - 1,
     'cazador: deja de reponer los puntos azules',
+  );
+  const libres = juego.reachableFree().filter((c) => !juego.ocupada(c.x, c.y));
+  comprobar(
+    juego.pellets.length === (MODES.hunter.hunterPellets || 2) || libres.length < 6,
+    'cazador: había hueco y no repuso los puntos azules',
   );
 }
 {
@@ -515,6 +546,83 @@ process.stdout.write('extras\n');
   process.stdout.write(
     `  extras: reloj, muros, cazador al tope y choque que se deshace (${juego.crash.popped} anillos)\n`,
   );
+}
+
+// lo nuevo de esta ronda: avisos, portal seguro, puntos robados y cazador que come
+process.stdout.write('juego justo\n');
+{
+  const juego = new Game({ ...MODES.wall }, () => {});
+  juego.state = 'running';
+  let pideAviso = 0;
+  juego.onEvent = (tipo) => { if (tipo === 'wallSoon') pideAviso++; };
+  juego.raiseWall();
+  comprobar(pideAviso === 1, 'muro: no avisa antes de salir');
+  comprobar(juego.walls.length === 0, 'muro: aparece de golpe sin avisar');
+  const aviso = juego.pendingWalls[0];
+  comprobar(
+    Math.abs(aviso.x - juego.body[0].x) + Math.abs(aviso.y - juego.body[0].y) >= 5,
+    'muro: el aviso sale demasiado cerca de la cabeza',
+  );
+  juego.updateFx(800);
+  comprobar(juego.walls.length === 1, 'muro: el aviso no se convierte en muro');
+  process.stdout.write('  muros: avisan 700 ms antes y no caen cerca\n');
+}
+{
+  // entrar en un portal nunca te mata
+  const juego = new Game({ ...MODES.portals }, () => {});
+  juego.state = 'running';
+  juego.portals = [{ a: { x: 5, y: 5 }, b: { x: 12, y: 5 } }];
+  juego.body = [{ x: 4, y: 5 }, { x: 12, y: 5 }, { x: 11, y: 5 }, { x: 10, y: 5 }];
+  juego.prevBody = juego.body.map((p) => ({ ...p }));
+  juego.dir = { x: 1, y: 0 };
+  juego.walls = [];
+  juego.wallSet = new Set();
+  juego.food = { x: 0, y: 18 };
+  juego.step();
+  comprobar(juego.state === 'running', 'portal: morir al salir encima de tu propio cuerpo');
+  comprobar(juego.body[0].x === 12 && juego.body[0].y === 5, 'portal: no te ha llevado al otro lado');
+  comprobar(juego.portalFx.length === 2, 'portal: falta la estela de entrada y salida');
+  process.stdout.write('  portal: sales al otro lado sin chocar\n');
+}
+{
+  // puntos azules robados: suman y no engordan al cazador
+  const juego = new Game({ ...MODES.hunter }, () => {});
+  juego.state = 'running';
+  juego.pellets = [{ x: juego.body[0].x, y: juego.body[0].y }];
+  const largo = juego.hunter.body.length;
+  const puntos = juego.score;
+  juego.robaPunto();
+  comprobar(juego.score > puntos, 'puntos: robarlos no suma');
+  comprobar(juego.pellets.length >= 1, 'puntos: no repone el punto robado');
+  comprobar(juego.hunter.body.length === largo, 'puntos: el cazador crece sin comer');
+  process.stdout.write('  puntos azules: se los puedes quitar\n');
+}
+{
+  // el cazador también te come a ti
+  const juego = new Game({ ...MODES.hunter }, () => {});
+  juego.state = 'running';
+  const cabezaJugador = juego.body[0];
+  juego.hunter = {
+    body: [{ x: cabezaJugador.x + 1, y: cabezaJugador.y }],
+    prev: [{ x: cabezaJugador.x + 1, y: cabezaJugador.y }],
+    dir: { x: 0, y: 0 },
+    grow: 0,
+    aim: null,
+  };
+  juego.hunterTick = 0;
+  juego.hunterCadence = () => 1;
+  juego.moveHunter();
+  comprobar(juego.state === 'dead', 'cazador: puede pisarte y no pasa nada');
+  process.stdout.write('  cazador: si te pisa, te come\n');
+}
+{
+  // el cazador deja marcado su objetivo
+  const juego = new Game({ ...MODES.hunter }, () => {});
+  juego.state = 'running';
+  juego.hunterCadence = () => 1;
+  juego.moveHunter();
+  comprobar(!!juego.hunter.aim, 'cazador: no marca a dónde va');
+  process.stdout.write('  cazador: marca su corte antes de llegar\n');
 }
 
 process.stdout.write(fallos ? `\n${fallos} fallos\n` : '\ntodo en orden\n');

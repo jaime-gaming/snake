@@ -58,6 +58,10 @@ export class Game {
     this.hunterTick = 0;
     this.pellets = [];
     this.reveal = 0;
+    this.chomp = 0;
+    this.fase = 0;
+    this.pendingWalls = [];
+    this.portalFx = [];
     this.turbo = false;
     this.time = 0;
     this.shake = 0;
@@ -209,6 +213,20 @@ export class Game {
   updateFx(dt) {
     const k = dt / 1000;
     if (this.reveal < 1) this.reveal = Math.min(1, this.reveal + dt / 1000);
+    if (this.chomp > 0) this.chomp = Math.max(0, this.chomp - dt / 150);
+    if (this.fase > 0) this.fase = Math.max(0, this.fase - dt);
+    for (let i = this.portalFx.length - 1; i >= 0; i--) {
+      this.portalFx[i].t += dt;
+      if (this.portalFx[i].t > 320) this.portalFx.splice(i, 1);
+    }
+    for (let i = this.pendingWalls.length - 1; i >= 0; i--) {
+      const w = this.pendingWalls[i];
+      w.t += dt;
+      if (w.t >= w.dur) {
+        this.pendingWalls.splice(i, 1);
+        this.levantarMuro(w);
+      }
+    }
     if (this.crash) {
       this.crash.t = Math.min(1600, this.crash.t + dt);
       // la serpiente se deshace de la cabeza a la cola, un anillo cada 18 ms
@@ -253,27 +271,28 @@ export class Game {
       return this.die('borde', clamp(hx, 0, this.cols - 1), clamp(hy, 0, this.rows - 1));
     }
 
+    // el portal te deja salir sin chocar: el paso entero es intangible
+    let saltado = false;
     if (!ghost && this.portals) {
+      const entrada = { x: hx, y: hy };
       for (const p of this.portals) {
-        if (hx === p.a.x && hy === p.a.y) {
-          hx = p.b.x;
-          hy = p.b.y;
-          this.emit('portal', { x: hx, y: hy });
-          this.flash = 0.6;
-          break;
-        }
-        if (hx === p.b.x && hy === p.b.y) {
-          hx = p.a.x;
-          hy = p.a.y;
-          this.emit('portal', { x: hx, y: hy });
-          this.flash = 0.6;
-          break;
-        }
+        let salida = null;
+        if (hx === p.a.x && hy === p.a.y) salida = p.b;
+        else if (hx === p.b.x && hy === p.b.y) salida = p.a;
+        if (!salida) continue;
+        hx = salida.x;
+        hy = salida.y;
+        saltado = true;
+        this.emit('portal', { x: hx, y: hy });
+        this.flash = 0.6;
+        this.fase = 240;
+        this.portalFx.push({ x: entrada.x, y: entrada.y, t: 0 }, { x: hx, y: hy, t: 0 });
+        break;
       }
     }
 
-    if (!ghost && this.wallSet.has(K(hx, hy))) return this.die('muro', hx, hy);
-    if (!ghost && this.hunter && this.hunter.body.some((s) => s.x === hx && s.y === hy)) {
+    if (!ghost && !saltado && this.wallSet.has(K(hx, hy))) return this.die('muro', hx, hy);
+    if (!ghost && !saltado && this.hunter && this.hunter.body.some((s) => s.x === hx && s.y === hy)) {
       return this.die('cazador', hx, hy);
     }
 
@@ -284,6 +303,7 @@ export class Game {
 
     for (let i = 0; i < this.body.length; i++) {
       if (!willGrow && i === this.body.length - 1) continue;
+      if (saltado) break;
       if (this.body[i].x === hx && this.body[i].y === hy) return this.die('cola', hx, hy);
     }
 
@@ -294,7 +314,10 @@ export class Game {
     if (eats) this.eatFood();
     if (takesBonus) this.eatBonus();
     if (takesPower) this.takePower();
-    if (this.cfg.hunter) this.moveHunter();
+    if (this.cfg.hunter) {
+      this.robaPunto();
+      this.moveHunter();
+    }
   }
 
   eatFood() {
@@ -302,12 +325,19 @@ export class Game {
     const food = this.food;
     this.fruits++;
     this.grow += 1;
+    const rapido = this.chainTimer > this.chainWindow * 0.62;
     this.chain = Math.min(this.chain + 1, 30);
     this.chainTimer = this.chainWindow;
-    this.score += 10 * this.multiplier;
+    this.score += 10 * this.multiplier + (rapido ? 5 * this.multiplier : 0);
     this.speed = Math.max(cfg.minSpeed, this.speed - (cfg.accelPerFood || 0));
     this.shake = 2.6;
-    this.burst(food.x + 0.5, food.y + 0.5, 10, '#ff2b2b', 7);
+    this.chomp = 1;
+    const sube = this.multiplier > 1 && this.chain % 2 === 0;
+    if (sube) {
+      this.flash = Math.max(this.flash, 0.45);
+      this.emit('combo', { multiplier: this.multiplier });
+    }
+    this.burst(food.x + 0.5, food.y + 0.5, sube ? 16 : 10, '#ff2b2b', 7);
     if (cfg.timePerFood) this.timeLeft = Math.min((cfg.timer || 0) * 2, this.timeLeft + cfg.timePerFood);
     if (cfg.spawnWalls && cfg.wallEvery && this.fruits % cfg.wallEvery === 0) this.raiseWall();
     // clásico: pasada la mitad de la partida empiezan a salir muros sueltos
@@ -324,6 +354,22 @@ export class Game {
       this.state = 'cleared';
       this.emit('clear', { fruits: this.fruits, score: this.score });
     }
+  }
+
+  // los puntos azules también son para ti: quitaselo y el cazador no crece
+  robaPunto() {
+    const indice = this.pellets.findIndex((p) => p.x === this.body[0].x && p.y === this.body[0].y);
+    if (indice < 0) return;
+    this.pellets.splice(indice, 1);
+    this.grow += 1;
+    this.score += 15 * this.multiplier;
+    this.chain = Math.min(this.chain + 1, 30);
+    this.chainTimer = this.chainWindow;
+    this.shake = 3;
+    this.chomp = 1;
+    this.burst(this.body[0].x + 0.5, this.body[0].y + 0.5, 12, '#3d7bff', 6);
+    this.spawnPellet();
+    this.emit('pellet', { score: this.score });
   }
 
   eatBonus() {
@@ -551,6 +597,7 @@ export class Game {
       if (this.pellets.some((p) => p.x === x && p.y === y)) return true;
       if (this.portals && this.portals.some((p) =>
         (p.a.x === x && p.a.y === y) || (p.b.x === x && p.b.y === y))) return true;
+      if (this.pendingWalls.some((w) => w.x === x && w.y === y)) return true;
       return false;
     };
     for (let i = 0; i < 600; i++) {
@@ -587,41 +634,62 @@ export class Game {
     this.power = { ...cell, kind, ttl: 9000 };
   }
 
+  // el muro avisa antes de cerrarse: enseña dónde va a salir y da tiempo a apartarse
   raiseWall() {
-    if (this.cfg.wallMax && this.walls.length >= this.cfg.wallMax) return;
+    const tope = this.cfg.wallMax || 999;
+    if (this.walls.length + this.pendingWalls.length >= tope) return;
     const cabeza = this.body[0];
+    const cercaDeSerpiente = (c) =>
+      this.body.some((s) => Math.abs(s.x - c.x) + Math.abs(s.y - c.y) <= 2);
     for (let i = 0; i < 80; i++) {
       const c = this.freeCell(1);
       if (!c) return;
       const lejos = Math.abs(c.x - cabeza.x) + Math.abs(c.y - cabeza.y) >= 5;
       const hueco = DIRS.some(([dx, dy]) => !this.wallSet.has(K(c.x + dx, c.y + dy)));
-      if (!lejos || !hueco) continue;
-      this.walls.push([c.x, c.y]);
-      this.wallSet.add(K(c.x, c.y));
-      this.burst(c.x + 0.5, c.y + 0.5, 8, 'rgba(255,255,255,0.8)', 4);
-      this.shake = 2;
-      this.emit('wall', { x: c.x, y: c.y });
+      if (!lejos || !hueco || cercaDeSerpiente(c)) continue;
+      this.pendingWalls.push({ x: c.x, y: c.y, t: 0, dur: 700 });
+      this.emit('wallSoon', { x: c.x, y: c.y });
       return;
     }
   }
 
+  levantarMuro(c) {
+    if (this.wallSet.has(K(c.x, c.y))) return;
+    if (this.body.some((s) => s.x === c.x && s.y === c.y)) return;
+    if (this.food && this.food.x === c.x && this.food.y === c.y) return;
+    if (this.hunter && this.hunter.body.some((p) => p.x === c.x && p.y === c.y)) return;
+    this.walls.push([c.x, c.y]);
+    this.wallSet.add(K(c.x, c.y));
+    this.burst(c.x + 0.5, c.y + 0.5, 8, 'rgba(255,255,255,0.8)', 4);
+    this.shake = 2;
+    this.emit('wall', { x: c.x, y: c.y });
+  }
+
   placePortals() {
-    const a = this.freeCell(2);
-    if (!a) return;
-    let b = null;
-    for (let i = 0; i < 60; i++) {
-      const c = this.freeCell(2);
-      if (!c) break;
-      const lejos = Math.abs(c.x - a.x) + Math.abs(c.y - a.y) >= 9;
-      const estorba = Math.abs(c.x - this.body[0].x) + Math.abs(c.y - this.body[0].y) <= 2;
-      if (lejos && !estorba) {
-        b = c;
-        break;
+    const parejas = this.fruits >= 15 ? 2 : 1;
+    const nuevo = [];
+    for (let n = 0; n < parejas; n++) {
+      const a = this.freeCell(2);
+      if (!a) break;
+      let b = null;
+      for (let i = 0; i < 60; i++) {
+        const c = this.freeCell(2);
+        if (!c) break;
+        const lejos = Math.abs(c.x - a.x) + Math.abs(c.y - a.y) >= 9;
+        const estorba = Math.abs(c.x - this.body[0].x) + Math.abs(c.y - this.body[0].y) <= 2;
+        const repetido = nuevo.some((p) => [p.a, p.b].some((q) =>
+          Math.abs(q.x - c.x) + Math.abs(q.y - c.y) <= 1));
+        if (lejos && !estorba && !repetido) {
+          b = c;
+          break;
+        }
       }
+      if (!b) break;
+      nuevo.push({ a, b });
     }
-    if (!b) return;
-    this.portals = [{ a, b }];
-    this.emit('portals', { a, b });
+    if (!nuevo.length) return;
+    this.portals = nuevo;
+    this.emit('portals', { parejas: nuevo.length });
   }
 
   // el cazador es una serpiente: empieza con tres anillos y crece comiendo
@@ -660,6 +728,7 @@ export class Game {
       prev: cuerpo.map((p) => ({ ...p })),
       dir: { x: 0, y: 0 },
       grow: 0,
+      aim: null,
     };
     this.hunterTick = 0;
   }
@@ -672,7 +741,13 @@ export class Game {
     const libres = this.reachableFree().filter((c) => !this.ocupada(c.x, c.y));
     const lejos = libres.filter((c) => Math.abs(c.x - cabeza.x) + Math.abs(c.y - cabeza.y) >= 4);
     const donde = lejos.length ? lejos : libres;
-    if (donde.length) this.pellets.push({ ...donde[rand(donde.length)] });
+    if (donde.length) {
+      this.pellets.push({ ...donde[rand(donde.length)] });
+      return;
+    }
+    // acorralado: cualquier casilla libre vale, aunque quede cerca
+    const c = this.freeCell(0);
+    if (c) this.pellets.push({ ...c });
   }
 
   // ritmo del cazador: acelera cuando ya es largo, cuando lo tiene cerca y del todo al estar lleno
@@ -684,7 +759,9 @@ export class Game {
     const cabeza = this.body[0];
     const jefe = h.body[0];
     const dist = Math.abs(jefe.x - cabeza.x) + Math.abs(jefe.y - cabeza.y);
-    return h.body.length >= 7 && dist <= 3 ? 1 : 2;
+    if (h.body.length >= 7 && dist <= 3) return 1;
+    // corto: se toma su tiempo; largo: aprieta
+    return h.body.length >= 7 ? 2 : 3;
   }
 
   // a qué va: a comer si es corta, a cortarte el paso si es larga y a por ti si ya está llena
@@ -807,10 +884,20 @@ export class Game {
       return;
     }
 
+    // marca a dónde va: el aviso se ve antes de que llegue
+    h.aim = { x: objetivo.x, y: objetivo.y };
+
     h.dir = { x: elegido.x - cabeza.x, y: elegido.y - cabeza.y };
     h.body.unshift(elegido);
     if (h.grow > 0) h.grow--;
     else h.body.pop();
+
+    // te muerde sólo si su cabeza cae sobre la tuya; su cuerpo te bloquea, no te mata
+    if (this.state === 'running' && !this.ghosting && this.fase <= 0 &&
+      this.body[0].x === elegido.x && this.body[0].y === elegido.y) {
+      this.die('cazador', elegido.x, elegido.y);
+      return;
+    }
 
     const indice = this.pellets.findIndex((p) => p.x === elegido.x && p.y === elegido.y);
     if (indice >= 0) {
@@ -819,7 +906,7 @@ export class Game {
       if (h.body.length < tope) h.grow += 1;
       this.burst(elegido.x + 0.5, elegido.y + 0.5, 8, '#3d7bff', 5);
       const cuantos = Math.max(2, this.cfg.hunterPellets || 2);
-      while (this.pellets.length < cuantos) this.spawnPellet();
+      for (let n = 0; n < cuantos + 2 && this.pellets.length < cuantos; n++) this.spawnPellet();
       this.emit('hunterEat', { largo: h.body.length, lleno: h.body.length >= tope });
     }
   }
@@ -889,6 +976,26 @@ export class Game {
       ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
     }
 
+    // muros que van a salir: un cubo hueco que parpadea y se cierra
+    for (const w of this.pendingWalls) {
+      const avance = clamp(w.t / w.dur, 0, 1);
+      const [px, py, w2] = caja(w.x, w.y, Math.round(cell * 0.16), lado - Math.round(cell * 0.32));
+      ctx.strokeStyle = `rgba(255,255,255,${(0.3 + avance * 0.55).toFixed(2)})`;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(px + 0.5, py + 0.5, w2 - 1, w2 - 1);
+      // el punto del centro crece: cuando llena la casilla, el muro ya está
+      const punto = Math.max(2, Math.round(w2 * avance));
+      if (punto > 2) {
+        ctx.fillStyle = `rgba(255,255,255,${(0.25 + avance * 0.55).toFixed(2)})`;
+        ctx.fillRect(
+          Math.round(px + (w2 - punto) / 2),
+          Math.round(py + (w2 - punto) / 2),
+          punto,
+          punto,
+        );
+      }
+    }
+
     // portales: dos cubos huecos que laten
     if (this.portals) {
       const pulso = Math.floor(((this.time / 420) % 2)) * Math.max(1, Math.round(cell * 0.06));
@@ -953,6 +1060,19 @@ export class Game {
         ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
         ctx.fillStyle = '#fff';
         ctx.fillRect(Math.round(px + w * 0.36), Math.round(py + w * 0.36), Math.max(2, Math.round(w * 0.28)), Math.max(2, Math.round(w * 0.28)));
+      }
+    }
+
+    // el cazador avisa de por dónde va a cortar
+    if (this.hunter && this.hunter.aim) {
+      const aim = this.hunter.aim;
+      const dist = Math.abs(aim.x - this.body[0].x) + Math.abs(aim.y - this.body[0].y);
+      if (dist <= (this.cfg.hunterAimShow || 7) && Math.floor(this.time / 110) % 2 === 0) {
+        const m = Math.round(cell * 0.2);
+        const [px, py, w] = caja(aim.x, aim.y, m, lado - m * 2);
+        ctx.strokeStyle = 'rgba(255,43,43,0.85)';
+        ctx.lineWidth = Math.max(1, Math.round(cell * 0.07));
+        ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
       }
     }
 
@@ -1049,11 +1169,15 @@ export class Game {
     const alpha = this.state === 'running' ? clamp(this.acc / this.interval(), 0, 1) : 1;
     const hueco = Math.max(1, Math.round(cell * 0.1));
     const tamano = lado - hueco * 2;
+    // al comer, la cabeza da un mordisco: crece un pelín y vuelve
+    const huecoCabeza = Math.max(0, hueco - Math.round(this.chomp * cell * 0.07));
+    const tamanoCabeza = lado - huecoCabeza * 2;
     const fantasma = this.ghosting;
     const visibles = this.crash ? Math.max(0, this.body.length - this.crash.popped) : this.body.length;
 
     ctx.save();
     if (this.crash) ctx.globalAlpha = clamp(1 - (this.crash.t - 120) / 520, 0.12, 1);
+    else if (this.fase > 0) ctx.globalAlpha = Math.floor(this.fase / 80) % 2 === 0 ? 0.45 : 1;
     for (let i = visibles - 1; i >= 0; i--) {
       const p = this.posAt(i, alpha);
       if (!p) continue;
@@ -1075,27 +1199,43 @@ export class Game {
     // cabeza: el mismo cubo, con dos ojos cuadrados mirando hacia donde vas
     const punta = visibles > 0 ? this.posAt(0, alpha) : null;
     if (punta) {
-      const x0 = Math.round(ox + punta.x * cell) + hueco;
-      const y0 = Math.round(oy + punta.y * cell) + hueco;
+      const x0 = Math.round(ox + punta.x * cell) + huecoCabeza;
+      const y0 = Math.round(oy + punta.y * cell) + huecoCabeza;
       if (fantasma) {
         ctx.fillStyle = 'rgba(255,255,255,0.16)';
-        ctx.fillRect(x0, y0, tamano, tamano);
+        ctx.fillRect(x0, y0, tamanoCabeza, tamanoCabeza);
         ctx.strokeStyle = 'rgba(255,255,255,0.95)';
         ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
-        ctx.strokeRect(x0 + 0.5, y0 + 0.5, tamano - 1, tamano - 1);
+        ctx.strokeRect(x0 + 0.5, y0 + 0.5, tamanoCabeza - 1, tamanoCabeza - 1);
       } else {
         ctx.fillStyle = '#ffffff';
-        ctx.fillRect(x0, y0, tamano, tamano);
+        ctx.fillRect(x0, y0, tamanoCabeza, tamanoCabeza);
       }
-      const ojo = Math.max(2, Math.round(tamano * 0.2));
+      const ojo = Math.max(2, Math.round(tamanoCabeza * 0.2));
       const dx = this.dir.x;
       const dy = this.dir.y;
       ctx.fillStyle = fantasma ? '#ffffff' : '#000000';
       for (const s of [-1, 1]) {
-        const ex = x0 + tamano / 2 + dx * tamano * 0.18 + (dy !== 0 ? s * tamano * 0.2 : 0);
-        const ey = y0 + tamano / 2 + dy * tamano * 0.18 + (dx !== 0 ? s * tamano * 0.2 : 0);
+        const ex = x0 + tamanoCabeza / 2 + dx * tamanoCabeza * 0.18 + (dy !== 0 ? s * tamanoCabeza * 0.2 : 0);
+        const ey = y0 + tamanoCabeza / 2 + dy * tamanoCabeza * 0.18 + (dx !== 0 ? s * tamanoCabeza * 0.2 : 0);
         ctx.fillRect(Math.round(ex - ojo / 2), Math.round(ey - ojo / 2), ojo, ojo);
       }
+    }
+
+    // estela del portal: dos marcos que se abren donde entras y donde sales
+    for (const f of this.portalFx) {
+      const avance = clamp(f.t / 320, 0, 1);
+      const crece = lado * (0.5 + avance * 1.6);
+      const alfa = (1 - avance) * 0.85;
+      if (alfa < 0.03) continue;
+      ctx.strokeStyle = `rgba(255,255,255,${alfa.toFixed(2)})`;
+      ctx.lineWidth = Math.max(1, Math.round(cell * 0.08 * (1 - avance)));
+      ctx.strokeRect(
+        Math.round(ox + (f.x + 0.5) * cell - crece / 2) + 0.5,
+        Math.round(oy + (f.y + 0.5) * cell - crece / 2) + 0.5,
+        Math.round(crece),
+        Math.round(crece),
+      );
     }
 
     // chispas: también cuadradas
