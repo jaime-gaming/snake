@@ -131,17 +131,6 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
-.timer {
-  font-size: 13px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-}
-
-.timer.apurado {
-  color: var(--accent);
-}
-
 .mult {
   font-size: 11px;
   font-weight: 600;
@@ -226,11 +215,11 @@ button:disabled {
   overflow: hidden;
 }
 
+/* el marco lo dibuja el motor a bloques: aquí no hay borde fijo */
 #board {
   display: block;
   background: #000;
   touch-action: none;
-  box-shadow: 0 0 0 1px var(--line2);
 }
 
 #prompt {

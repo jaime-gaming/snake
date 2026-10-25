@@ -37,8 +37,8 @@ const slit = (x, y, alto) => vline(x, y, alto);
 // grupos del menú: cada uno es una subpágina con sus modos
 export const GROUPS = [
   { name: 'progreso', tag: 'campaña de 20 niveles', modes: ['campaign'] },
-  { name: 'infinitos', tag: 'puntuación sin final', modes: ['classic', 'frenzy', 'portals', 'hunter'] },
-  { name: 'especiales', tag: 'una regla rara cada vez', modes: ['blind', 'clock', 'wall'] },
+  { name: 'infinitos', tag: 'puntuación sin final', modes: ['classic', 'frenzy', 'hunter'] },
+  { name: 'especiales', tag: 'una regla rara cada vez', modes: ['blind'] },
 ];
 
 export const MODE_ORDER = GROUPS.flatMap((g) => g.modes);
@@ -78,17 +78,6 @@ export const MODES = {
     bonusEvery: 4,
     powerEvery: 5,
   },
-  portals: {
-    ...base,
-    id: 'portals',
-    name: 'PORTALES',
-    tag: 'dos aros que cambian de sitio cada tres frutas',
-    startSpeed: 138,
-    minSpeed: 78,
-    accelPerFood: 1.4,
-    portals: true,
-    portalEvery: 3,
-  },
   hunter: {
     ...base,
     id: 'hunter',
@@ -116,32 +105,6 @@ export const MODES = {
     visionGain: 0.07,
     visionMax: 6.4,
     chainWindow: 3600,
-  },
-  clock: {
-    ...base,
-    id: 'clock',
-    name: 'RELOJ',
-    tag: '45 segundos de salida, cada fruta suma 2,6',
-    startSpeed: 136,
-    minSpeed: 80,
-    accelPerFood: 1.3,
-    timer: 45000,
-    timePerFood: 2600,
-    bonusTime: 4000,
-    bonusEvery: 4,
-  },
-  wall: {
-    ...base,
-    id: 'wall',
-    name: 'MURO',
-    tag: 'un muro nuevo cada tres frutas',
-    startSpeed: 146,
-    minSpeed: 86,
-    accelPerFood: 1.3,
-    spawnWalls: true,
-    wallEvery: 3,
-    wallMax: 30,
-    powerEvery: 4,
   },
 };
 

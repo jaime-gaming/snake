@@ -1,4 +1,4 @@
-/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-10-25 · v10).
+/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-10-25 · v11).
    no lo edites a mano: cambia js/*.js y vuelve a ejecutar node tools/build.mjs */
 (function () {
 'use strict';
@@ -16,9 +16,8 @@ function inBounds(x, y, cols, rows) {
   return x >= 0 && y >= 0 && x < cols && y < rows;
 }
 
-// primer paso (en celdas, signo) desde start hasta goal esquivando blocked.
-// links: pares [[origen, destino], ...] en clave K, para portales
-function bfsStep({ start, goal, blocked, cols, rows, wrap, links }) {
+// primer paso (en celdas, signo) desde start hasta goal esquivando blocked
+function bfsStep({ start, goal, blocked, cols, rows, wrap }) {
   const startK = K(start.x, start.y);
   const goalK = K(goal.x, goal.y);
   if (startK === goalK) return null;
@@ -30,7 +29,6 @@ function bfsStep({ start, goal, blocked, cols, rows, wrap, links }) {
 
   while (head < queue.length) {
     const cell = queue[head++];
-    const saltos = links && links.get ? links.get(K(cell.x, cell.y)) : null;
     const vecinos = [];
     for (const [dx, dy] of DIRS) {
       let nx = cell.x + dx;
@@ -44,11 +42,6 @@ function bfsStep({ start, goal, blocked, cols, rows, wrap, links }) {
       const nk = K(nx, ny);
       if (blocked.has(nk) && nk !== goalK) continue;
       vecinos.push({ nx, ny, nk });
-    }
-    if (saltos) {
-      for (const destino of saltos) {
-        vecinos.push({ nx: destino % 4096, ny: Math.floor(destino / 4096), nk: destino });
-      }
     }
     for (const { nx, ny, nk } of vecinos) {
       if (seen.has(nk)) continue;
@@ -119,8 +112,8 @@ const slit = (x, y, alto) => vline(x, y, alto);
 // grupos del menú: cada uno es una subpágina con sus modos
 const GROUPS = [
   { name: 'progreso', tag: 'campaña de 20 niveles', modes: ['campaign'] },
-  { name: 'infinitos', tag: 'puntuación sin final', modes: ['classic', 'frenzy', 'portals', 'hunter'] },
-  { name: 'especiales', tag: 'una regla rara cada vez', modes: ['blind', 'clock', 'wall'] },
+  { name: 'infinitos', tag: 'puntuación sin final', modes: ['classic', 'frenzy', 'hunter'] },
+  { name: 'especiales', tag: 'una regla rara cada vez', modes: ['blind'] },
 ];
 
 const MODE_ORDER = GROUPS.flatMap((g) => g.modes);
@@ -160,17 +153,6 @@ const MODES = {
     bonusEvery: 4,
     powerEvery: 5,
   },
-  portals: {
-    ...base,
-    id: 'portals',
-    name: 'PORTALES',
-    tag: 'dos aros que cambian de sitio cada tres frutas',
-    startSpeed: 138,
-    minSpeed: 78,
-    accelPerFood: 1.4,
-    portals: true,
-    portalEvery: 3,
-  },
   hunter: {
     ...base,
     id: 'hunter',
@@ -198,32 +180,6 @@ const MODES = {
     visionGain: 0.07,
     visionMax: 6.4,
     chainWindow: 3600,
-  },
-  clock: {
-    ...base,
-    id: 'clock',
-    name: 'RELOJ',
-    tag: '45 segundos de salida, cada fruta suma 2,6',
-    startSpeed: 136,
-    minSpeed: 80,
-    accelPerFood: 1.3,
-    timer: 45000,
-    timePerFood: 2600,
-    bonusTime: 4000,
-    bonusEvery: 4,
-  },
-  wall: {
-    ...base,
-    id: 'wall',
-    name: 'MURO',
-    tag: 'un muro nuevo cada tres frutas',
-    startSpeed: 146,
-    minSpeed: 86,
-    accelPerFood: 1.3,
-    spawnWalls: true,
-    wallEvery: 3,
-    wallMax: 30,
-    powerEvery: 4,
   },
 };
 
@@ -543,9 +499,6 @@ const SONIDOS = {
     tono(820, 0.07, { vol: 0.2, delay: 0.06 });
     tono(1040, 0.09, { vol: 0.18, delay: 0.12 });
   },
-  portal() {
-    tono(900, 0.06, { tipo: 'triangle', vol: 0.16, fin: 1400 });
-  },
   power() {
     tono(480, 0.08, { tipo: 'triangle', vol: 0.2 });
     tono(720, 0.1, { tipo: 'triangle', vol: 0.16, delay: 0.07 });
@@ -804,22 +757,18 @@ class Game {
     this.chain = 0;
     this.chainTimer = 0;
     this.chainWindow = cfg.chainWindow || 3200;
-    this.timeLeft = cfg.timer || 0;
     this.hitStop = 0;
     this.crash = null;
     this.wallTicks = 0;
     this.fx = { ghost: 0, slow: 0 };
     this.bonus = null;
     this.power = null;
-    this.portals = null;
     this.hunter = null;
     this.hunterTick = 0;
     this.pellets = [];
     this.reveal = 0;
     this.chomp = 0;
-    this.fase = 0;
     this.pendingWalls = [];
-    this.portalFx = [];
     this.turbo = false;
     this.time = 0;
     this.shake = 0;
@@ -827,7 +776,6 @@ class Game {
     this.particles = [];
     this.food = null;
     this.spawnFood();
-    if (cfg.portals) this.placePortals();
     if (cfg.hunter) {
       this.placeHunter();
       const cuantos = Math.max(2, cfg.hunterPellets || 2);
@@ -950,14 +898,6 @@ class Game {
         this.power.ttl -= dt;
         if (this.power.ttl <= 0) this.power = null;
       }
-      if (cfg.timer) {
-        this.timeLeft = Math.max(0, this.timeLeft - dt);
-        if (this.timeLeft <= 0) {
-          this.die('tiempo', this.body[0].x, this.body[0].y);
-          this.updateFx(dt);
-          return;
-        }
-      }
       this.acc += dt;
       let guard = 0;
       while (this.state === 'running' && this.acc >= this.interval() && guard++ < 8) {
@@ -972,11 +912,6 @@ class Game {
     const k = dt / 1000;
     if (this.reveal < 1) this.reveal = Math.min(1, this.reveal + dt / 1000);
     if (this.chomp > 0) this.chomp = Math.max(0, this.chomp - dt / 150);
-    if (this.fase > 0) this.fase = Math.max(0, this.fase - dt);
-    for (let i = this.portalFx.length - 1; i >= 0; i--) {
-      this.portalFx[i].t += dt;
-      if (this.portalFx[i].t > 320) this.portalFx.splice(i, 1);
-    }
     for (let i = this.pendingWalls.length - 1; i >= 0; i--) {
       const w = this.pendingWalls[i];
       w.t += dt;
@@ -1029,29 +964,21 @@ class Game {
       return this.die('borde', clamp(hx, 0, this.cols - 1), clamp(hy, 0, this.rows - 1));
     }
 
-    // el portal te deja salir sin chocar: el paso entero es intangible
-    let saltado = false;
-    if (!ghost && this.portals) {
-      const entrada = { x: hx, y: hy };
-      for (const p of this.portals) {
-        let salida = null;
-        if (hx === p.a.x && hy === p.a.y) salida = p.b;
-        else if (hx === p.b.x && hy === p.b.y) salida = p.a;
-        if (!salida) continue;
-        hx = salida.x;
-        hy = salida.y;
-        saltado = true;
-        this.emit('portal', { x: hx, y: hy });
-        this.flash = 0.6;
-        this.fase = 240;
-        this.portalFx.push({ x: entrada.x, y: entrada.y, t: 0 }, { x: hx, y: hy, t: 0 });
-        break;
+    if (!ghost && this.wallSet.has(K(hx, hy))) return this.die('muro', hx, hy);
+    // el cuerpo del cazador no te mata: le muerdes el anillo y sigues.
+    // sólo su cabeza puede comerte (y sólo si cae sobre la tuya)
+    if (!ghost && this.hunter) {
+      const golpe = this.hunter.body.findIndex((c) => c.x === hx && c.y === hy);
+      if (golpe === 0) return this.die('cazador', hx, hy);
+      if (golpe > 0) {
+        this.hunter.body.splice(golpe, 1);
+        this.hunter.prev.splice(golpe, 1);
+        this.burst(hx + 0.5, hy + 0.5, 10, '#c21414', 5);
+        this.score += 20;
+        this.shake = Math.max(this.shake, 3);
+        this.chomp = 1;
+        this.emit('bite', { x: hx, y: hy });
       }
-    }
-
-    if (!ghost && !saltado && this.wallSet.has(K(hx, hy))) return this.die('muro', hx, hy);
-    if (!ghost && !saltado && this.hunter && this.hunter.body.some((s) => s.x === hx && s.y === hy)) {
-      return this.die('cazador', hx, hy);
     }
 
     const eats = this.food && hx === this.food.x && hy === this.food.y;
@@ -1061,7 +988,6 @@ class Game {
 
     for (let i = 0; i < this.body.length; i++) {
       if (!willGrow && i === this.body.length - 1) continue;
-      if (saltado) break;
       if (this.body[i].x === hx && this.body[i].y === hy) return this.die('cola', hx, hy);
     }
 
@@ -1096,8 +1022,6 @@ class Game {
       this.emit('combo', { multiplier: this.multiplier });
     }
     this.burst(food.x + 0.5, food.y + 0.5, sube ? 16 : 10, '#ff2b2b', 7);
-    if (cfg.timePerFood) this.timeLeft = Math.min((cfg.timer || 0) * 2, this.timeLeft + cfg.timePerFood);
-    if (cfg.spawnWalls && cfg.wallEvery && this.fruits % cfg.wallEvery === 0) this.raiseWall();
     // clásico: pasada la mitad de la partida empiezan a salir muros sueltos
     if (cfg.wallFrom && this.fruits > cfg.wallFrom && cfg.wallEvery &&
       this.fruits % cfg.wallEvery === 0 && this.walls.length < (cfg.wallMax || 999)) {
@@ -1107,7 +1031,6 @@ class Game {
     this.spawnFood();
     if (cfg.bonusEvery && this.fruits % cfg.bonusEvery === 0) this.spawnBonus();
     if (cfg.powerEvery && this.fruits % cfg.powerEvery === 0) this.spawnPower();
-    if (cfg.portalEvery && this.portals && this.fruits % cfg.portalEvery === 0) this.placePortals();
     if (cfg.goal && this.fruits >= cfg.goal) {
       this.state = 'cleared';
       this.emit('clear', { fruits: this.fruits, score: this.score });
@@ -1139,9 +1062,6 @@ class Game {
     this.score += 50 * this.multiplier;
     this.shake = 5;
     this.burst(b.x + 0.5, b.y + 0.5, 18, '#ffffff', 9);
-    if (this.cfg.bonusTime && this.cfg.timer) {
-      this.timeLeft = Math.min((this.cfg.timer || 0) * 2, this.timeLeft + this.cfg.bonusTime);
-    }
     if (this.cfg.hunter) this.placeHunter();
     this.emit('bonus', { score: this.score });
   }
@@ -1188,25 +1108,6 @@ class Game {
     return set;
   }
 
-  portalExit(x, y) {
-    if (!this.portals) return null;
-    for (const p of this.portals) {
-      if (p.a.x === x && p.a.y === y) return p.b;
-      if (p.b.x === x && p.b.y === y) return p.a;
-    }
-    return null;
-  }
-
-  portalLinks() {
-    const enlaces = new Map();
-    if (!this.portals) return enlaces;
-    for (const p of this.portals) {
-      enlaces.set(K(p.a.x, p.a.y), [K(p.b.x, p.b.y)]);
-      enlaces.set(K(p.b.x, p.b.y), [K(p.a.x, p.a.y)]);
-    }
-    return enlaces;
-  }
-
   // hueco libre alcanzable desde una casilla (con tope para no gastar)
   spaceFrom(celda, bloqueado, tope = 260) {
     const visto = new Set([K(celda.x, celda.y)]);
@@ -1241,7 +1142,6 @@ class Game {
         cols: this.cols,
         rows: this.rows,
         wrap,
-        links: this.portalLinks(),
       })
       : null;
 
@@ -1264,10 +1164,7 @@ class Game {
         continue;
       }
       if (ocupado.has(K(nx, ny))) continue;
-      // si es un portal, sales por el otro lado: ahí tampoco puede haber nada
-      const salida = this.portalExit(nx, ny);
-      if (salida && ocupado.has(K(salida.x, salida.y))) continue;
-      const destino = salida || { x: nx, y: ny };
+      const destino = { x: nx, y: ny };
 
       let puntos = 0;
       if (haciaComida && dx === haciaComida.x && dy === haciaComida.y) puntos += 100;
@@ -1339,8 +1236,6 @@ class Game {
     if (this.power && this.power.x === x && this.power.y === y) return true;
     if (this.hunter && this.hunter.body.some((p) => p.x === x && p.y === y)) return true;
     if (this.pellets.some((p) => p.x === x && p.y === y)) return true;
-    if (this.portals && this.portals.some((p) =>
-      (p.a.x === x && p.a.y === y) || (p.b.x === x && p.b.y === y))) return true;
     return false;
   }
 
@@ -1353,8 +1248,6 @@ class Game {
       if (this.power && this.power.x === x && this.power.y === y) return true;
       if (this.hunter && this.hunter.body.some((p) => p.x === x && p.y === y)) return true;
       if (this.pellets.some((p) => p.x === x && p.y === y)) return true;
-      if (this.portals && this.portals.some((p) =>
-        (p.a.x === x && p.a.y === y) || (p.b.x === x && p.b.y === y))) return true;
       if (this.pendingWalls.some((w) => w.x === x && w.y === y)) return true;
       return false;
     };
@@ -1421,33 +1314,6 @@ class Game {
     this.burst(c.x + 0.5, c.y + 0.5, 8, 'rgba(255,255,255,0.8)', 4);
     this.shake = 2;
     this.emit('wall', { x: c.x, y: c.y });
-  }
-
-  placePortals() {
-    const parejas = this.fruits >= 15 ? 2 : 1;
-    const nuevo = [];
-    for (let n = 0; n < parejas; n++) {
-      const a = this.freeCell(2);
-      if (!a) break;
-      let b = null;
-      for (let i = 0; i < 60; i++) {
-        const c = this.freeCell(2);
-        if (!c) break;
-        const lejos = Math.abs(c.x - a.x) + Math.abs(c.y - a.y) >= 9;
-        const estorba = Math.abs(c.x - this.body[0].x) + Math.abs(c.y - this.body[0].y) <= 2;
-        const repetido = nuevo.some((p) => [p.a, p.b].some((q) =>
-          Math.abs(q.x - c.x) + Math.abs(q.y - c.y) <= 1));
-        if (lejos && !estorba && !repetido) {
-          b = c;
-          break;
-        }
-      }
-      if (!b) break;
-      nuevo.push({ a, b });
-    }
-    if (!nuevo.length) return;
-    this.portals = nuevo;
-    this.emit('portals', { parejas: nuevo.length });
   }
 
   // el cazador es una serpiente: empieza con tres anillos y crece comiendo
@@ -1517,9 +1383,19 @@ class Game {
     const cabeza = this.body[0];
     const jefe = h.body[0];
     const dist = Math.abs(jefe.x - cabeza.x) + Math.abs(jefe.y - cabeza.y);
-    if (h.body.length >= 7 && dist <= 3) return 1;
+    if (h.body.length >= this.hunterUmbral() && dist <= 3) return 1;
     // corto: se toma su tiempo; largo: aprieta
-    return h.body.length >= 7 ? 2 : 3;
+    return h.body.length >= this.hunterUmbral() ? 2 : 4;
+  }
+
+  // ya te está cazando (antes sólo comía puntos)
+  get hunterPelea() {
+    return !!this.hunter && this.hunter.body.length >= this.hunterUmbral();
+  }
+
+  // cuándo deja de comer y empieza a cazarte: dos tercios de su tope
+  hunterUmbral() {
+    return Math.max(6, Math.round((this.cfg.hunterCap || 18) * 0.66));
   }
 
   // a qué va: a comer si es corta, a cortarte el paso si es larga y a por ti si ya está llena
@@ -1528,7 +1404,7 @@ class Game {
     const cabeza = this.body[0];
     const tope = this.cfg.hunterCap || 18;
     if (h.body.length >= tope) return { x: cabeza.x, y: cabeza.y };
-    if (h.body.length >= 7) {
+    if (h.body.length >= this.hunterUmbral()) {
       const vista = Math.max(2, this.cfg.hunterSight || 4);
       let x = cabeza.x;
       let y = cabeza.y;
@@ -1584,11 +1460,26 @@ class Game {
     h.prev = h.body.map((p) => ({ ...p }));
     const cabeza = h.body[0];
     const objetivo = this.hunterTarget();
+    // primer aviso: acaba de pasar de comer a cazarte
+    if (this.hunterPelea && !h.cazando) {
+      h.cazando = true;
+      this.flash = 0.6;
+      this.shake = 4;
+      this.emit('hunterHunt', { x: cabeza.x, y: cabeza.y });
+    }
 
     const ocupadoCuerpo = new Set();
     for (let i = 0; i < h.body.length - 1; i++) ocupadoCuerpo.add(K(h.body[i].x, h.body[i].y));
-    const bloqueado = new Set([...this.wallSet, ...ocupadoCuerpo]);
-    const cuerpoJugador = new Set(this.body.map((s) => K(s.x, s.y)));
+    // tu cuerpo también le estorba: no se te puede meter encima, tiene que rodearlo.
+    // la cabeza y la cola no cuentan: la cola se mueve y la cabeza es a lo que va.
+    const cuerpoJugador = new Set(
+      this.body.slice(1, -1).map((s) => K(s.x, s.y)),
+    );
+    // corto va a comer y no te toca: tu cabeza tampoco es paso para él.
+    // a partir de siete anillos ya te caza, y ahí sí puede caer sobre ti
+    const agresivo = this.hunterPelea;
+    const bloqueado = new Set([...this.wallSet, ...ocupadoCuerpo, ...cuerpoJugador]);
+    if (!agresivo) bloqueado.add(K(this.body[0].x, this.body[0].y));
 
     // por dónde iría si no hubiera trampas: una casilla más cerca del objetivo
     const ideal = bfsStep({
@@ -1598,7 +1489,6 @@ class Game {
       cols: this.cols,
       rows: this.rows,
       wrap: false,
-      links: this.portalLinks(),
     });
 
     let elegido = null;
@@ -1613,13 +1503,14 @@ class Game {
       const reversa = dx === -h.dir.x && dy === -h.dir.y;
 
       let puntos = 0;
-      // rematar: si pisa al jugador, gana
-      if (cuerpoJugador.has(k)) puntos += 1200;
+      // rematar: si cae sobre tu cabeza, gana (sólo cuando ya te caza)
+      const sobreCabeza = this.body[0].x === nx && this.body[0].y === ny;
+      if (sobreCabeza && agresivo) puntos += 1200;
       puntos -= (Math.abs(nx - objetivo.x) + Math.abs(ny - objetivo.y)) * 12;
       if (ideal && dx === ideal.x && dy === ideal.y) puntos += 46;
       if (reversa) puntos -= 40;
 
-      const ocupadoDestino = new Set([...bloqueado, ...cuerpoJugador]);
+      const ocupadoDestino = new Set([...bloqueado]);
       ocupadoDestino.delete(K(cabeza.x, cabeza.y));
       const espacio = this.hunterSpace({ x: nx, y: ny }, ocupadoDestino);
       puntos += Math.min(espacio, 60) * 0.7;
@@ -1651,7 +1542,7 @@ class Game {
     else h.body.pop();
 
     // te muerde sólo si su cabeza cae sobre la tuya; su cuerpo te bloquea, no te mata
-    if (this.state === 'running' && !this.ghosting && this.fase <= 0 &&
+    if (this.state === 'running' && !this.ghosting &&
       this.body[0].x === elegido.x && this.body[0].y === elegido.y) {
       this.die('cazador', elegido.x, elegido.y);
       return;
@@ -1696,6 +1587,32 @@ class Game {
     return { x: prev.x + dx * alpha, y: prev.y + dy * alpha };
   }
 
+  // el fantasma se apaga en cuatro escalones durante el último 1,6 s
+  get ghostPaso() {
+    if (!this.ghosting) return 0;
+    return Math.min(1, Math.ceil((this.fx.ghost / 1600) * 4) / 4);
+  }
+
+  // la fruta que cierra el nivel
+  get ultimaFruta() {
+    return !!this.cfg.goal && this.fruits >= this.cfg.goal - 1;
+  }
+
+  // el borde no es un marco fijo: donde hay muro se marca, y donde no,
+  // sólo aparece cuando te acercas. el bloque por el que vas a salir se enciende
+  alfaBorde(cx, cy, sentido) {
+    const cabeza = this.body[0] || { x: 0, y: 0 };
+    const dist = Math.abs(cx - cabeza.x) + Math.abs(cy - cabeza.y);
+    if (this.wallSet.has(K(cx, cy))) return 0.5;
+    if (dist > 4) return 0;
+    const rumbo = this.dir || { x: 1, y: 0 };
+    const salida = rumbo.x < 0 ? 'izq' : rumbo.x > 0 ? 'der' : rumbo.y < 0 ? 'arriba' : 'abajo';
+    const esSalida = sentido === salida &&
+      (sentido === 'arriba' || sentido === 'abajo' ? cx === cabeza.x : cy === cabeza.y);
+    if (!esSalida) return 0.16;
+    return Math.floor(this.time / 160) % 2 === 0 ? 0.92 : 0.5;
+  }
+
   draw(ctx, view) {
     const { cell, ox, oy } = view;
     const W = this.cols * cell;
@@ -1722,6 +1639,24 @@ class Game {
     ctx.fillStyle = '#141414';
     for (let x = 1; x < this.cols; x++) ctx.fillRect(Math.round(ox + x * cell), oy, 1, H);
     for (let y = 1; y < this.rows; y++) ctx.fillRect(ox, Math.round(oy + y * cell), W, 1);
+
+    // ---- borde: bloques. donde hay muro se marca; donde no, sólo al acercarte,
+    // y el bloque por el que vas a salir se enciende (aviso de salida)
+    const grosor = Math.max(2, Math.round(cell * 0.2));
+    const tramoBorde = (x0, y0, w, h, cx, cy, sentido) => {
+      const alfa = this.alfaBorde(cx, cy, sentido);
+      if (alfa < 0.02) return;
+      ctx.fillStyle = `rgba(255,255,255,${alfa.toFixed(2)})`;
+      ctx.fillRect(Math.round(x0), Math.round(y0), Math.round(w), Math.round(h));
+    };
+    for (let i = 0; i < this.cols; i++) {
+      tramoBorde(ox + i * cell, oy, cell, grosor, i, 0, 'arriba');
+      tramoBorde(ox + i * cell, oy + H - grosor, cell, grosor, i, this.rows - 1, 'abajo');
+    }
+    for (let j = 0; j < this.rows; j++) {
+      tramoBorde(ox, oy + j * cell, grosor, cell, 0, j, 'izq');
+      tramoBorde(ox + W - grosor, oy + j * cell, grosor, cell, this.cols - 1, j, 'der');
+    }
 
     // muros: cubo hueco
     const inset = Math.max(1, Math.round(cell * 0.08));
@@ -1754,35 +1689,19 @@ class Game {
       }
     }
 
-    // portales: dos cubos huecos que laten
-    if (this.portals) {
-      const pulso = Math.floor(((this.time / 420) % 2)) * Math.max(1, Math.round(cell * 0.06));
-      for (const p of this.portals) {
-        for (const c of [p.a, p.b]) {
-          const m = inset + pulso;
-          const [px, py, w] = caja(c.x, c.y, m, lado - m * 2);
-          ctx.strokeStyle = '#fff';
-          ctx.lineWidth = Math.max(1, Math.round(cell * 0.07));
-          ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
-          const centro = Math.max(2, Math.round(w * 0.22));
-          ctx.fillStyle = '#fff';
-          ctx.fillRect(
-            Math.round(px + (w - centro) / 2),
-            Math.round(py + (w - centro) / 2),
-            centro,
-            centro,
-          );
-        }
-      }
-    }
-
-    // comida: cubo rojo que respira
+    // comida: cubo rojo que respira. la que cierra el nivel va en amarillo
     if (this.food) {
+      const ultima = this.ultimaFruta;
       const pulso = Math.floor((0.5 + 0.5 * Math.sin(this.time / 220)) * 3);
       const m = Math.round(cell * 0.16) + pulso;
       const [px, py, w] = caja(this.food.x, this.food.y, m, lado - m * 2);
-      ctx.fillStyle = '#ff2b2b';
+      ctx.fillStyle = ultima ? '#ffd21e' : '#ff2b2b';
       ctx.fillRect(px, py, w, w);
+      if (ultima) {
+        const hueco = Math.max(2, Math.round(w * 0.34));
+        ctx.fillStyle = '#000';
+        ctx.fillRect(px + Math.round((w - hueco) / 2), py + Math.round((w - hueco) / 2), hueco, hueco);
+      }
     }
 
     // premio: cubo rojo hueco, distinto de la fruta llena
@@ -1862,6 +1781,11 @@ class Game {
         ctx.strokeStyle = i === 0 ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.3)';
         ctx.lineWidth = 1;
         ctx.strokeRect(x0 + 0.5, y0 + 0.5, ancho - 1, ancho - 1);
+        if (i === 0 && this.hunterPelea) {
+          ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+          ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
+          ctx.strokeRect(x0 - 2.5, y0 - 2.5, ancho + 5, ancho + 5);
+        }
         if (i === 0) {
           const dx = this.hunter.dir.x || 0;
           const dy = this.hunter.dir.y || 0;
@@ -1931,20 +1855,26 @@ class Game {
     const huecoCabeza = Math.max(0, hueco - Math.round(this.chomp * cell * 0.07));
     const tamanoCabeza = lado - huecoCabeza * 2;
     const fantasma = this.ghosting;
+    // el fantasma no se corta de golpe: se apaga en cuatro escalones durante
+    // el último 1,6 s. primero pierde el relleno, luego el contorno
+    const pasoFantasma = this.ghostPaso;
+    const rellenoFantasma = (1 - pasoFantasma) * 0.82;
+    const contornoFantasma = 0.9;
     const visibles = this.crash ? Math.max(0, this.body.length - this.crash.popped) : this.body.length;
 
     ctx.save();
     if (this.crash) ctx.globalAlpha = clamp(1 - (this.crash.t - 120) / 520, 0.12, 1);
-    else if (this.fase > 0) ctx.globalAlpha = Math.floor(this.fase / 80) % 2 === 0 ? 0.45 : 1;
     for (let i = visibles - 1; i >= 0; i--) {
       const p = this.posAt(i, alpha);
       if (!p) continue;
       const x0 = Math.round(ox + p.x * cell) + hueco;
       const y0 = Math.round(oy + p.y * cell) + hueco;
       if (fantasma) {
-        ctx.fillStyle = 'rgba(255,255,255,0.16)';
-        ctx.fillRect(x0, y0, tamano, tamano);
-        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        if (rellenoFantasma > 0) {
+          ctx.fillStyle = `rgba(255,255,255,${rellenoFantasma.toFixed(3)})`;
+          ctx.fillRect(x0, y0, tamano, tamano);
+        }
+        ctx.strokeStyle = `rgba(255,255,255,${contornoFantasma.toFixed(3)})`;
         ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
         ctx.strokeRect(x0 + 0.5, y0 + 0.5, tamano - 1, tamano - 1);
       } else {
@@ -1960,9 +1890,11 @@ class Game {
       const x0 = Math.round(ox + punta.x * cell) + huecoCabeza;
       const y0 = Math.round(oy + punta.y * cell) + huecoCabeza;
       if (fantasma) {
-        ctx.fillStyle = 'rgba(255,255,255,0.16)';
-        ctx.fillRect(x0, y0, tamanoCabeza, tamanoCabeza);
-        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+        if (rellenoFantasma > 0) {
+          ctx.fillStyle = `rgba(255,255,255,${rellenoFantasma.toFixed(3)})`;
+          ctx.fillRect(x0, y0, tamanoCabeza, tamanoCabeza);
+        }
+        ctx.strokeStyle = `rgba(255,255,255,${(contornoFantasma + 0.05).toFixed(3)})`;
         ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
         ctx.strokeRect(x0 + 0.5, y0 + 0.5, tamanoCabeza - 1, tamanoCabeza - 1);
       } else {
@@ -1972,28 +1904,14 @@ class Game {
       const ojo = Math.max(2, Math.round(tamanoCabeza * 0.2));
       const dx = this.dir.x;
       const dy = this.dir.y;
-      ctx.fillStyle = fantasma ? '#ffffff' : '#000000';
+      ctx.fillStyle = fantasma
+        ? (pasoFantasma > 0.5 ? '#ffffff' : `rgba(0,0,0,${(1 - pasoFantasma).toFixed(2)})`)
+        : '#000000';
       for (const s of [-1, 1]) {
         const ex = x0 + tamanoCabeza / 2 + dx * tamanoCabeza * 0.18 + (dy !== 0 ? s * tamanoCabeza * 0.2 : 0);
         const ey = y0 + tamanoCabeza / 2 + dy * tamanoCabeza * 0.18 + (dx !== 0 ? s * tamanoCabeza * 0.2 : 0);
         ctx.fillRect(Math.round(ex - ojo / 2), Math.round(ey - ojo / 2), ojo, ojo);
       }
-    }
-
-    // estela del portal: dos marcos que se abren donde entras y donde sales
-    for (const f of this.portalFx) {
-      const avance = clamp(f.t / 320, 0, 1);
-      const crece = lado * (0.5 + avance * 1.6);
-      const alfa = (1 - avance) * 0.85;
-      if (alfa < 0.03) continue;
-      ctx.strokeStyle = `rgba(255,255,255,${alfa.toFixed(2)})`;
-      ctx.lineWidth = Math.max(1, Math.round(cell * 0.08 * (1 - avance)));
-      ctx.strokeRect(
-        Math.round(ox + (f.x + 0.5) * cell - crece / 2) + 0.5,
-        Math.round(oy + (f.y + 0.5) * cell - crece / 2) + 0.5,
-        Math.round(crece),
-        Math.round(crece),
-      );
     }
 
     // chispas: también cuadradas
@@ -2069,7 +1987,7 @@ function avisar(mensaje) {
 
 function comprobarPiezas() {
   const faltan = [];
-  if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.portals || !MODES.hunter) faltan.push('modos');
+  if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.hunter || !MODES.blind) faltan.push('modos');
   if (!Array.isArray(LEVELS) || LEVELS.length !== 20) faltan.push('niveles');
   if (typeof Game !== 'function') faltan.push('motor');
   if (faltan.length) {
@@ -2089,7 +2007,6 @@ const el = {
   overlay: $('#overlay'),
   prompt: $('#prompt'),
   meta: $('#hud-meta'),
-  timer: $('#hud-timer'),
   score: $('#hud-score'),
   best: $('#hud-best'),
   mult: $('#hud-mult'),
@@ -2107,7 +2024,7 @@ const pincel = el.canvas.getContext('2d', { alpha: false });
 
 function nuevoRegistro() {
   return {
-    best: { classic: 0, frenzy: 0, portals: 0, hunter: 0, blind: 0, clock: 0, wall: 0 },
+    best: { classic: 0, frenzy: 0, hunter: 0, blind: 0 },
     campaign: { unlocked: 1, best: {} },
     sound: true,
     crt: true,
@@ -2290,8 +2207,7 @@ function actualizarPista() {
 function actualizarMarcador() {
   const juego = app.juego;
   if (!juego) {
-    if (el.timer) el.timer.hidden = true;
-    actualizarEfectos(null);
+      actualizarEfectos(null);
     return;
   }
 
@@ -2304,16 +2220,6 @@ function actualizarMarcador() {
     meta = `${dosDigitos(app.nivel + 1)} ${nivel.name.toLowerCase()} · ${Math.min(juego.fruits, nivel.goal)}/${nivel.goal}`;
   } else {
     meta = `${MODES[app.modo].name.toLowerCase()} · ${juego.fruits} frutas`;
-  }
-  if (el.timer) {
-    const conReloj = !!(juego.cfg && juego.cfg.timer);
-    el.timer.hidden = !conReloj;
-    if (conReloj) {
-      const segundos = Math.ceil(juego.timeLeft / 1000);
-      const texto = `${segundos} s`;
-      if (el.timer.textContent !== texto) el.timer.textContent = texto;
-      el.timer.classList.toggle('apurado', juego.timeLeft < 8000);
-    }
   }
   if (el.meta.textContent !== meta) el.meta.textContent = meta;
 
@@ -2340,9 +2246,11 @@ function actualizarEfectos(juego) {
     if (juego.fx.ghost > 0) activos.push(['fantasma', juego.fx.ghost / POWER_INFO.ghost.ms]);
     if (juego.fx.slow > 0) activos.push(['lento', juego.fx.slow / POWER_INFO.slow.ms]);
     if (juego.turbo) activos.push(['turbo', 1]);
-    if (juego.cfg && juego.cfg.hunter && juego.hunter) {
+    if (juego.cfg && juego.cfg.hunter && juego.hunter && juego.hunterPelea) {
       const tope = juego.cfg.hunterCap || 18;
-      if (juego.hunter.body.length >= tope) activos.push(['cazador lleno', 1]);
+      const umbral = juego.hunterUmbral();
+      const largo = juego.hunter.body.length;
+      activos.push(['te caza', largo >= tope ? 1 : (largo - umbral) / Math.max(1, tope - umbral)]);
     }
   }
 
@@ -2555,7 +2463,7 @@ function mostrarInicio() {
     <div class="inicio-texto">
       <header class="inicio-cabeza">
         <h1>snake<span class="dot">.</span></h1>
-        <p class="kicker">rejilla 20×20 · ${LEVELS.length} niveles · 7 modos</p>
+        <p class="kicker">rejilla 20×20 · ${LEVELS.length} niveles · ${MODE_ORDER.length - 1} modos</p>
       </header>
       <nav class="filas" aria-label="grupos">${filas}</nav>
       <p class="pie">
@@ -2575,7 +2483,6 @@ function mostrarInicio() {
 
   el.score.textContent = '—';
   el.meta.textContent = 'elige un grupo';
-  if (el.timer) el.timer.hidden = true;
   el.best.textContent = '';
   el.mult.textContent = '';
   el.chain.style.width = '0%';
@@ -2635,7 +2542,6 @@ function mostrarModos(indice = app.grupo) {
 
   el.score.textContent = '—';
   el.meta.textContent = grupo.name;
-  if (el.timer) el.timer.hidden = true;
   el.best.textContent = '';
   el.mult.textContent = '';
   el.chain.style.width = '0%';
@@ -2676,7 +2582,6 @@ function mostrarNiveles() {
   pintarNiveles();
   el.score.textContent = '—';
   el.meta.textContent = 'campaña';
-  if (el.timer) el.timer.hidden = true;
   el.best.textContent = '';
   el.mult.textContent = '';
   el.chain.style.width = '0%';
@@ -2809,17 +2714,17 @@ function mostrarAyuda() {
       <li>la campaña son 20 niveles: se abre uno cada vez que cierras el anterior</li>
       <li>clásico: pasadas 30 frutas empiezan a salir muros sueltos</li>
       <li>frenesí: los bordes dan la vuelta y la velocidad sube sola</li>
-      <li>portales: entrar por un cubo te saca por el otro, y sales sin chocar</li>
-      <li>a partir de 15 frutas, los portales son dos parejas</li>
-      <li>cazador: la serpiente roja come puntos azules y crece; si su cabeza te pisa, pierdes</li>
+      <li>cazador: la serpiente roja empieza comiendo puntos azules y no te toca</li>
+      <li>cuando llega a dos tercios de su largo se pone a cazar: marco blanco, aviso y a por ti</li>
+      <li>su cuerpo no te mata: si le muerdes un anillo, lo recortas; sólo su cabeza te come</li>
       <li>los puntos azules también te valen: cómetelos y el cazador no crece</li>
       <li>el cubo rojo fino marca por dónde va a cortar el cazador</li>
       <li>los muros avisan 700 ms antes: el cubo hueco dice dónde van a salir</li>
-      <li>cuando el cazador está lleno va directo a por ti y se mueve al doble</li>
       <li>en ciego sólo ves un cuadrado de luz, y se abre poco a poco según comes</li>
-      <li>en reloj sales con 45 segundos, cada fruta suma 2,6 y el cubo hueco 4 más</li>
-      <li>en muro el mapa se llena de muros cada tres frutas</li>
-      <li>al empezar cada partida el mapa se enciende desde tu cabeza</li>
+      <li>al empezar cada partida el mapa se enciende desde tu cabeza y el borde se ilumina con él</li>
+      <li>el borde no es un marco: sólo se marca donde hay muro o cuando te acercas, y se enciende el bloque por el que vas a salir</li>
+      <li>en la campaña, la fruta que cierra el nivel sale amarilla</li>
+      <li>el fantasma se apaga por escalones en el último segundo y medio: los cubos se van rellenando</li>
     </ul>
     <p class="pie"><span>osciladores y ruido en directo · sin ficheros de audio</span></p>
   </div>`);
@@ -2875,9 +2780,6 @@ function eventosJuego(tipo, datos) {
     case 'bonus':
       audio.play('bonus');
       break;
-    case 'portal':
-      audio.play('portal');
-      break;
     case 'power':
       audio.play('power');
       break;
@@ -2895,6 +2797,14 @@ function eventosJuego(tipo, datos) {
       break;
     case 'pellet':
       audio.play('pellet');
+      parpadear(el.mult);
+      break;
+    case 'bite':
+      audio.play('hunterEat');
+      parpadear(el.mult);
+      break;
+    case 'hunterHunt':
+      audio.play('alerta');
       parpadear(el.mult);
       break;
     case 'combo':
@@ -3233,7 +3143,7 @@ function ejecutar(nombre) {
 
 function borrarRecords() {
   if (!window.confirm('¿borrar récords y progreso?')) return;
-  guardado.best = { classic: 0, frenzy: 0, portals: 0, hunter: 0, blind: 0, clock: 0, wall: 0 };
+  guardado.best = { classic: 0, frenzy: 0, hunter: 0, blind: 0 };
   guardado.campaign = { unlocked: 1, best: {} };
   guardar();
   audio.play('ui');
@@ -3266,8 +3176,6 @@ function configDemo(modo) {
   }
   const base = { ...MODES[modo] };
   base.goal = null;
-  // la vista previa no puede morir de reloj ni cegarse del todo
-  if (base.timer) base.timer = 600000;
   return base;
 }
 

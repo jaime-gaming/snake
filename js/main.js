@@ -12,7 +12,7 @@ function avisar(mensaje) {
 
 function comprobarPiezas() {
   const faltan = [];
-  if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.portals || !MODES.hunter) faltan.push('modos');
+  if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.hunter || !MODES.blind) faltan.push('modos');
   if (!Array.isArray(LEVELS) || LEVELS.length !== 20) faltan.push('niveles');
   if (typeof Game !== 'function') faltan.push('motor');
   if (faltan.length) {
@@ -32,7 +32,6 @@ const el = {
   overlay: $('#overlay'),
   prompt: $('#prompt'),
   meta: $('#hud-meta'),
-  timer: $('#hud-timer'),
   score: $('#hud-score'),
   best: $('#hud-best'),
   mult: $('#hud-mult'),
@@ -50,7 +49,7 @@ const pincel = el.canvas.getContext('2d', { alpha: false });
 
 function nuevoRegistro() {
   return {
-    best: { classic: 0, frenzy: 0, portals: 0, hunter: 0, blind: 0, clock: 0, wall: 0 },
+    best: { classic: 0, frenzy: 0, hunter: 0, blind: 0 },
     campaign: { unlocked: 1, best: {} },
     sound: true,
     crt: true,
@@ -233,8 +232,7 @@ function actualizarPista() {
 function actualizarMarcador() {
   const juego = app.juego;
   if (!juego) {
-    if (el.timer) el.timer.hidden = true;
-    actualizarEfectos(null);
+      actualizarEfectos(null);
     return;
   }
 
@@ -247,16 +245,6 @@ function actualizarMarcador() {
     meta = `${dosDigitos(app.nivel + 1)} ${nivel.name.toLowerCase()} · ${Math.min(juego.fruits, nivel.goal)}/${nivel.goal}`;
   } else {
     meta = `${MODES[app.modo].name.toLowerCase()} · ${juego.fruits} frutas`;
-  }
-  if (el.timer) {
-    const conReloj = !!(juego.cfg && juego.cfg.timer);
-    el.timer.hidden = !conReloj;
-    if (conReloj) {
-      const segundos = Math.ceil(juego.timeLeft / 1000);
-      const texto = `${segundos} s`;
-      if (el.timer.textContent !== texto) el.timer.textContent = texto;
-      el.timer.classList.toggle('apurado', juego.timeLeft < 8000);
-    }
   }
   if (el.meta.textContent !== meta) el.meta.textContent = meta;
 
@@ -283,9 +271,11 @@ function actualizarEfectos(juego) {
     if (juego.fx.ghost > 0) activos.push(['fantasma', juego.fx.ghost / POWER_INFO.ghost.ms]);
     if (juego.fx.slow > 0) activos.push(['lento', juego.fx.slow / POWER_INFO.slow.ms]);
     if (juego.turbo) activos.push(['turbo', 1]);
-    if (juego.cfg && juego.cfg.hunter && juego.hunter) {
+    if (juego.cfg && juego.cfg.hunter && juego.hunter && juego.hunterPelea) {
       const tope = juego.cfg.hunterCap || 18;
-      if (juego.hunter.body.length >= tope) activos.push(['cazador lleno', 1]);
+      const umbral = juego.hunterUmbral();
+      const largo = juego.hunter.body.length;
+      activos.push(['te caza', largo >= tope ? 1 : (largo - umbral) / Math.max(1, tope - umbral)]);
     }
   }
 
@@ -498,7 +488,7 @@ function mostrarInicio() {
     <div class="inicio-texto">
       <header class="inicio-cabeza">
         <h1>snake<span class="dot">.</span></h1>
-        <p class="kicker">rejilla 20×20 · ${LEVELS.length} niveles · 7 modos</p>
+        <p class="kicker">rejilla 20×20 · ${LEVELS.length} niveles · ${MODE_ORDER.length - 1} modos</p>
       </header>
       <nav class="filas" aria-label="grupos">${filas}</nav>
       <p class="pie">
@@ -518,7 +508,6 @@ function mostrarInicio() {
 
   el.score.textContent = '—';
   el.meta.textContent = 'elige un grupo';
-  if (el.timer) el.timer.hidden = true;
   el.best.textContent = '';
   el.mult.textContent = '';
   el.chain.style.width = '0%';
@@ -578,7 +567,6 @@ function mostrarModos(indice = app.grupo) {
 
   el.score.textContent = '—';
   el.meta.textContent = grupo.name;
-  if (el.timer) el.timer.hidden = true;
   el.best.textContent = '';
   el.mult.textContent = '';
   el.chain.style.width = '0%';
@@ -619,7 +607,6 @@ function mostrarNiveles() {
   pintarNiveles();
   el.score.textContent = '—';
   el.meta.textContent = 'campaña';
-  if (el.timer) el.timer.hidden = true;
   el.best.textContent = '';
   el.mult.textContent = '';
   el.chain.style.width = '0%';
@@ -752,17 +739,17 @@ function mostrarAyuda() {
       <li>la campaña son 20 niveles: se abre uno cada vez que cierras el anterior</li>
       <li>clásico: pasadas 30 frutas empiezan a salir muros sueltos</li>
       <li>frenesí: los bordes dan la vuelta y la velocidad sube sola</li>
-      <li>portales: entrar por un cubo te saca por el otro, y sales sin chocar</li>
-      <li>a partir de 15 frutas, los portales son dos parejas</li>
-      <li>cazador: la serpiente roja come puntos azules y crece; si su cabeza te pisa, pierdes</li>
+      <li>cazador: la serpiente roja empieza comiendo puntos azules y no te toca</li>
+      <li>cuando llega a dos tercios de su largo se pone a cazar: marco blanco, aviso y a por ti</li>
+      <li>su cuerpo no te mata: si le muerdes un anillo, lo recortas; sólo su cabeza te come</li>
       <li>los puntos azules también te valen: cómetelos y el cazador no crece</li>
       <li>el cubo rojo fino marca por dónde va a cortar el cazador</li>
       <li>los muros avisan 700 ms antes: el cubo hueco dice dónde van a salir</li>
-      <li>cuando el cazador está lleno va directo a por ti y se mueve al doble</li>
       <li>en ciego sólo ves un cuadrado de luz, y se abre poco a poco según comes</li>
-      <li>en reloj sales con 45 segundos, cada fruta suma 2,6 y el cubo hueco 4 más</li>
-      <li>en muro el mapa se llena de muros cada tres frutas</li>
-      <li>al empezar cada partida el mapa se enciende desde tu cabeza</li>
+      <li>al empezar cada partida el mapa se enciende desde tu cabeza y el borde se ilumina con él</li>
+      <li>el borde no es un marco: sólo se marca donde hay muro o cuando te acercas, y se enciende el bloque por el que vas a salir</li>
+      <li>en la campaña, la fruta que cierra el nivel sale amarilla</li>
+      <li>el fantasma se apaga por escalones en el último segundo y medio: los cubos se van rellenando</li>
     </ul>
     <p class="pie"><span>osciladores y ruido en directo · sin ficheros de audio</span></p>
   </div>`);
@@ -818,9 +805,6 @@ function eventosJuego(tipo, datos) {
     case 'bonus':
       audio.play('bonus');
       break;
-    case 'portal':
-      audio.play('portal');
-      break;
     case 'power':
       audio.play('power');
       break;
@@ -838,6 +822,14 @@ function eventosJuego(tipo, datos) {
       break;
     case 'pellet':
       audio.play('pellet');
+      parpadear(el.mult);
+      break;
+    case 'bite':
+      audio.play('hunterEat');
+      parpadear(el.mult);
+      break;
+    case 'hunterHunt':
+      audio.play('alerta');
       parpadear(el.mult);
       break;
     case 'combo':
@@ -1176,7 +1168,7 @@ function ejecutar(nombre) {
 
 function borrarRecords() {
   if (!window.confirm('¿borrar récords y progreso?')) return;
-  guardado.best = { classic: 0, frenzy: 0, portals: 0, hunter: 0, blind: 0, clock: 0, wall: 0 };
+  guardado.best = { classic: 0, frenzy: 0, hunter: 0, blind: 0 };
   guardado.campaign = { unlocked: 1, best: {} };
   guardar();
   audio.play('ui');
@@ -1209,8 +1201,6 @@ function configDemo(modo) {
   }
   const base = { ...MODES[modo] };
   base.goal = null;
-  // la vista previa no puede morir de reloj ni cegarse del todo
-  if (base.timer) base.timer = 600000;
   return base;
 }
 

@@ -7,9 +7,8 @@ export function inBounds(x, y, cols, rows) {
   return x >= 0 && y >= 0 && x < cols && y < rows;
 }
 
-// primer paso (en celdas, signo) desde start hasta goal esquivando blocked.
-// links: pares [[origen, destino], ...] en clave K, para portales
-export function bfsStep({ start, goal, blocked, cols, rows, wrap, links }) {
+// primer paso (en celdas, signo) desde start hasta goal esquivando blocked
+export function bfsStep({ start, goal, blocked, cols, rows, wrap }) {
   const startK = K(start.x, start.y);
   const goalK = K(goal.x, goal.y);
   if (startK === goalK) return null;
@@ -21,7 +20,6 @@ export function bfsStep({ start, goal, blocked, cols, rows, wrap, links }) {
 
   while (head < queue.length) {
     const cell = queue[head++];
-    const saltos = links && links.get ? links.get(K(cell.x, cell.y)) : null;
     const vecinos = [];
     for (const [dx, dy] of DIRS) {
       let nx = cell.x + dx;
@@ -35,11 +33,6 @@ export function bfsStep({ start, goal, blocked, cols, rows, wrap, links }) {
       const nk = K(nx, ny);
       if (blocked.has(nk) && nk !== goalK) continue;
       vecinos.push({ nx, ny, nk });
-    }
-    if (saltos) {
-      for (const destino of saltos) {
-        vecinos.push({ nx: destino % 4096, ny: Math.floor(destino / 4096), nk: destino });
-      }
     }
     for (const { nx, ny, nk } of vecinos) {
       if (seen.has(nk)) continue;

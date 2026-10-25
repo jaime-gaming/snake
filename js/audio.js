@@ -84,9 +84,6 @@ const SONIDOS = {
     tono(820, 0.07, { vol: 0.2, delay: 0.06 });
     tono(1040, 0.09, { vol: 0.18, delay: 0.12 });
   },
-  portal() {
-    tono(900, 0.06, { tipo: 'triangle', vol: 0.16, fin: 1400 });
-  },
   power() {
     tono(480, 0.08, { tipo: 'triangle', vol: 0.2 });
     tono(720, 0.1, { tipo: 'triangle', vol: 0.16, delay: 0.07 });

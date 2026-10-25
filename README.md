@@ -29,24 +29,24 @@ El menú son tres grupos y cada uno abre su propia subpágina con sus modos: `�
 
 - **clásico** — sin fin. cada fruta acelera y, pasadas 30, empiezan a salir muros sueltos.
 - **frenesí** — los bordes dan la vuelta y la velocidad sube sola con el reloj.
-- **portales** — dos cubos que se recolocan cada tres frutas. entras por uno y sales por el otro **sin chocar** con lo que haya al otro lado. a partir de 15 frutas hay dos parejas.
-- **cazador** — una serpiente roja te persigue por el laberinto. come puntos azules y se hace más larga: cada anillo que gana es una casilla más que te puede tapar. empieza tomándoselo con calma (se mueve cada tres ticks), a partir de 7 anillos aprieta cada dos y, cuando llega a 18, va directo a por ti cada tick. su cuerpo te bloquea pero no te mata: te come sólo si su cabeza cae sobre la tuya. marca con un cubo rojo fino por dónde va a cortar, y si se queda sin salida se muda a otra zona. los puntos azules también son para ti: si te los comes, el cazador no crece. vuelve a nacer lejos cada vez que coges el cubo hueco.
+- **cazador** — la serpiente roja empieza comiendo puntos azules y **no te toca**: se mueve despacio y tu cabeza tampoco es casilla para ella. cuando llega a dos tercios de su tope (12 anillos) se pone a cazar: marco blanco en la cabeza, aviso y ritmo doble. su cuerpo no te mata; si le muerdes un anillo se lo recortas. te come sólo si su cabeza cae sobre la tuya, y antes marca con un cubo rojo fino por dónde va a cortar. los puntos azules también son para ti: si te los comes, no crece. cada cubo hueco te da una vida nueva: vuelve a nacer lejos.
 
 **especiales**
 
 - **ciego** — sólo ves un cuadrado de luz a tu alrededor, y se abre poco a poco según comes.
-- **reloj** — sales con 45 segundos, cada fruta suma 2,6 y el cubo hueco 4 más.
-- **muro** — un muro nuevo cada tres frutas, con tope de 30 y más poderes para compensar. siempre **avisa 700 ms antes**: un cubo hueco marca la casilla y un punto crece en el centro; cuando llena la casilla, el muro ya está.
+
+los modos que sobraban (portales, reloj y muro) se han ido: sus reglas no aportaban nada que la campaña y el clásico no dieran ya, y cada uno era una forma más de romper el juego.
 
 ## piezas
 
 - **cadena** — dos frutas seguidas suben el multiplicador hasta ×5. la barra de abajo es el tiempo que te queda para encadenar, y comer con la barra por encima del 62% paga un extra de 5 × multiplicador. cada subida de multiplicador da un destello y marca el marcador.
 - **premio** — un cubo rojo hueco aparece cada pocas frutas, caduca y da dos anillos de largo.
-- **poderes** — todo son cubos: contorno discontinuo, fantasma (atraviesas muros, bordes y cazador durante cinco segundos); raya en medio, lento; cuadro relleno, recorte (pierdes anillos y ganas puntos).
+- **poderes** — todo son cubos: contorno discontinuo, fantasma (atraviesas muros, bordes y cazador durante cinco segundos); raya en medio, lento; cuadro relleno, recorte (pierdes anillos y ganas puntos). el fantasma no se corta de golpe: en el último segundo y medio se apaga en cuatro escalones y los cubos se van rellenando hasta volver a ser sólidos.
 - **turbo** — 0,68 del intervalo mientras lo mantengas.
 - **choque** — al morir la casilla del golpe queda marcada y tres marcos cuadrados se abren desde ella mientras la serpiente se deshace de la cabeza a la cola. la cifra final sube de 0 al total en medio segundo.
-- **invulnerable al salir de un portal** — durante 240 ms la serpiente parpadea y nada te toca, para que el salto nunca sea una trampa.
-- **arranque** — al empezar cada partida, la luz enciende el tablero por bloques, un escalón por casilla, hasta dejar el mapa entero a la vista.
+- **borde** — el marco no es un adorno fijo. donde hay muro se marca; donde no, no se marca hasta que te acercas, y el bloque por el que vas a salir se enciende en blanco. al morir por el borde, el aviso ya estaba ahí.
+- **última fruta** — en la campaña, la fruta que cierra el nivel sale amarilla con el centro negro: es el último punto de la barra de progreso.
+- **arranque** — al empezar cada partida, la luz enciende el tablero por bloques, un escalón por casilla, hasta dejar el mapa entero a la vista. el borde se enciende con él, porque se dibuja dentro del tablero.
 - **velocidad** — la campaña va de 155 a 106 ms por casilla y los infinitos arrancan entre 124 y 146, con suelo de 42 a 86 ms. cuesta más acelerar que antes, así que las partidas duran más.
 
 ## archivos
@@ -58,7 +58,7 @@ snake.js            TODO el juego en un fichero (generado, es lo que carga la p�
 js/                 fuentes por módulos, más cómodas de editar
   engine.js         motor: rejilla, colisiones, poderes, cazador, dibujo
   grid.js           bfs y utilidades de rejilla (cazador y piloto automático)
-  levels.js         grupos, 7 modos y los 20 niveles
+  levels.js         grupos, 4 modos y los 20 niveles
   audio.js          sonido con osciladores, sin ficheros
   input.js          teclado, gestos y mando
   main.js           pantallas, progreso y bucle
