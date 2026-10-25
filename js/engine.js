@@ -282,9 +282,12 @@ export class Game {
     const takesPower = this.power && hx === this.power.x && hy === this.power.y;
     const willGrow = this.grow > 0 || eats || takesBonus;
 
-    for (let i = 0; i < this.body.length; i++) {
-      if (!willGrow && i === this.body.length - 1) continue;
-      if (this.body[i].x === hx && this.body[i].y === hy) return this.die('cola', hx, hy);
+    // con el fantasma puesto atraviesas también tu propio cuerpo
+    if (!ghost) {
+      for (let i = 0; i < this.body.length; i++) {
+        if (!willGrow && i === this.body.length - 1) continue;
+        if (this.body[i].x === hx && this.body[i].y === hy) return this.die('cola', hx, hy);
+      }
     }
 
     this.body.unshift({ x: hx, y: hy });
@@ -478,7 +481,6 @@ export class Game {
       }
       const visto = this.botTrail.get(K(nx, ny));
       if (visto > 0) puntos -= visto * 7;
-      if (this.cfg.vision) puntos += Math.random() * 2;
 
       if (puntos > mejorPunto) {
         mejorPunto = puntos;
@@ -980,9 +982,7 @@ export class Game {
     }
     // si no mata (frenesí, fantasma), sólo se marca al acercarse
     if (this.reveal < 1) {
-      const luz = this.cfg.vision
-        ? this.cfg.vision * (0.35 + 0.65 * this.reveal)
-        : 1.2 + this.reveal * 17;
+      const luz = 1.2 + this.reveal * 17;
       const lejos = Math.max(Math.abs(cx - cabeza.x), Math.abs(cy - cabeza.y));
       if (lejos <= luz + 1) return 0.26 * (1 - this.reveal);
     }
@@ -1200,11 +1200,7 @@ export class Game {
       }
     };
 
-    if (this.cfg.vision) {
-      // ciego: un cuadrado de luz alrededor de la cabeza, con el borde a bloques
-      const radio = this.cfg.vision * (0.35 + 0.65 * this.reveal);
-      sombra(cabeza.x + 0.5, cabeza.y + 0.5, radio * 0.6, radio * 0.85, 0.97, 4);
-    } else if (this.reveal < 1) {
+    if (this.reveal < 1) {
       // arranque: la luz avanza en cuadros desde la cabeza
       const alcance = 1.2 + this.reveal * 17;
       sombra(cabeza.x + 0.5, cabeza.y + 0.5, alcance, 3.4, 1, 5);

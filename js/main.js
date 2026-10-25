@@ -1,5 +1,10 @@
 import { Game, POWER_INFO } from './engine.js?v=3';
-import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS } from './levels.js?v=3';
+import {
+  MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS,
+  // BORRAR-COMPETITIVO
+  COMPETITIVE, mapaDePartida, modificadorDePartida, configCompetitivo,
+  ajustarRango, rangoInfo, escalaBots,
+} from './levels.js?v=3';
 import { audio } from './audio.js?v=3';
 import { attachInput } from './input.js?v=3';
 
@@ -12,7 +17,9 @@ function avisar(mensaje) {
 
 function comprobarPiezas() {
   const faltan = [];
-  if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.hunter || !MODES.blind) faltan.push('modos');
+  // BORRAR-COMPETITIVO (la parte de competitive se puede quitar)
+  if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.hunter || !MODES.competitive) faltan.push('modos');
+  if (!COMPETITIVE || !COMPETITIVE.rangos || COMPETITIVE.rangos.length !== 7) faltan.push('competitivo');
   if (!Array.isArray(LEVELS) || LEVELS.length !== 20) faltan.push('niveles');
   if (typeof Game !== 'function') faltan.push('motor');
   if (faltan.length) {
@@ -33,6 +40,8 @@ const el = {
   prompt: $('#prompt'),
   meta: $('#hud-meta'),
   score: $('#hud-score'),
+  timer: $('#hud-timer'), // BORRAR-COMPETITIVO
+  marcador: $('#marcador'), // BORRAR-COMPETITIVO
   best: $('#hud-best'),
   mult: $('#hud-mult'),
   chain: $('#chain-bar'),
@@ -49,8 +58,10 @@ const pincel = el.canvas.getContext('2d', { alpha: false });
 
 function nuevoRegistro() {
   return {
-    best: { classic: 0, frenzy: 0, hunter: 0, blind: 0 },
+    best: { classic: 0, frenzy: 0, hunter: 0, competitive: 0 },
     campaign: { unlocked: 1, best: {} },
+    // BORRAR-COMPETITIVO
+    comp: { rango: 0, dentro: 0, partidas: 0, victorias: 0 },
     sound: true,
     crt: true,
   };
@@ -89,6 +100,14 @@ function leerGuardado() {
       datos.campaign.best[nivel] = Number(valor) || 0;
     }
   }
+  // BORRAR-COMPETITIVO
+  const comp = bruto.comp || {};
+  datos.comp = {
+    rango: Math.min(COMPETITIVE.rangos.length - 1, Math.max(0, parseInt(comp.rango, 10) || 0)),
+    dentro: Math.min(COMPETITIVE.porRango, Math.max(0, parseInt(comp.dentro, 10) || 0)),
+    partidas: Math.max(0, parseInt(comp.partidas, 10) || 0),
+    victorias: Math.max(0, parseInt(comp.victorias, 10) || 0),
+  };
   if (typeof bruto.sound === 'boolean') datos.sound = bruto.sound;
   if (typeof bruto.crt === 'boolean') datos.crt = bruto.crt;
   return datos;
@@ -123,6 +142,9 @@ const app = {
   temporizador: 0,
   record: false,
   chips: new Map(),
+  comp: null, // BORRAR-COMPETITIVO
+  mapaComp: null, // BORRAR-COMPETITIVO
+  modComp: null, // BORRAR-COMPETITIVO
 };
 
 const vista = { cell: 24, ox: 0, oy: 0, width: 480, height: 480, dpr: 1 };
@@ -203,6 +225,11 @@ function ponerOverlay(html) {
 function pantalla(nombre) {
   app.pantalla = nombre;
   document.body.dataset.screen = nombre;
+  // BORRAR-COMPETITIVO · el marcador y el reloj sólo existen durante la partida
+  if (nombre !== 'playing' && nombre !== 'paused') {
+    if (el.marcador) el.marcador.hidden = true;
+    if (el.timer && !(app.comp && app.comp.activo)) el.timer.hidden = true;
+  }
   actualizarPista();
 }
 
@@ -215,6 +242,9 @@ const PISTAS = {
   paused: 'P seguir · R reiniciar · esc menú',
   dead: 'R reintentar · esc menú',
   cleared: 'enter siguiente · esc menú',
+  // BORRAR-COMPETITIVO
+  versus: 'enter empezar · R nueva partida · esc menú',
+  'versus-fin': 'enter revancha · esc menú',
 };
 
 function actualizarPista() {
@@ -240,13 +270,31 @@ function actualizarMarcador() {
   if (el.score.textContent !== valor) el.score.textContent = valor;
 
   let meta;
-  if (app.modo === 'campaign') {
+  // BORRAR-COMPETITIVO
+  if (app.modo === 'competitive' && app.comp) {
+    const info = rangoInfo(guardado.comp);
+    const puestos = tablaCompetitivo(app.comp);
+    const puesto = Math.max(1, puestos.findIndex((f) => f.yo) + 1);
+    meta = `${info.nombre} · ${puesto}º/${puestos.length} · ${app.comp.mod.nombre}`;
+  } else if (app.modo === 'campaign') {
     const nivel = LEVELS[app.nivel];
     meta = `${dosDigitos(app.nivel + 1)} ${nivel.name.toLowerCase()} · ${Math.min(juego.fruits, nivel.goal)}/${nivel.goal}`;
   } else {
     meta = `${MODES[app.modo].name.toLowerCase()} · ${juego.fruits} frutas`;
   }
   if (el.meta.textContent !== meta) el.meta.textContent = meta;
+
+  // BORRAR-COMPETITIVO · cuenta atrás de la partida
+  if (el.timer) {
+    const conReloj = app.modo === 'competitive' && !!app.comp && app.comp.activo;
+    el.timer.hidden = !conReloj;
+    if (conReloj) {
+      const segundos = Math.max(0, Math.ceil(app.comp.restante / 1000));
+      const texto = `${segundos} s`;
+      if (el.timer.textContent !== texto) el.timer.textContent = texto;
+      el.timer.classList.toggle('apurado', app.comp.restante <= 10000);
+    }
+  }
 
   const marca = `récord ${mejorActual()}`;
   if (el.best.textContent !== marca) el.best.textContent = marca;
@@ -452,6 +500,11 @@ function valorDerecha(modo) {
 function resumenGrupo(indice) {
   const grupo = GROUPS[indice];
   if (indice === 0) return `${guardado.campaign.unlocked - 1}/${LEVELS.length}`;
+  // BORRAR-COMPETITIVO
+  if (grupo.modes.includes('competitive')) {
+    const info = rangoInfo(guardado.comp);
+    return `${info.nombre} ${info.dentro}/${COMPETITIVE.porRango}`;
+  }
   const hechos = grupo.modes.filter((m) => (guardado.best[m] || 0) > 0).length;
   return `${hechos}/${grupo.modes.length}`;
 }
@@ -594,6 +647,8 @@ function seleccionarModo(i) {
 
 function elegirModo(modo) {
   if (modo === 'campaign') mostrarNiveles();
+  // BORRAR-COMPETITIVO
+  else if (modo === 'competitive') mostrarCompetitivo();
   else empezarPartida(modo, 0);
 }
 
@@ -746,16 +801,236 @@ function mostrarAyuda() {
       <li>los puntos azules también te valen: cómetelos y el cazador no crece</li>
       <li>el cubo rojo fino marca por dónde va a cortar el cazador</li>
       <li>los muros avisan 700 ms antes: el cubo hueco dice dónde van a salir</li>
-      <li>en ciego sólo ves un cuadrado de luz, y se abre poco a poco según comes</li>
+      <li>competitivo: cuatro serpientes, cuatro cuadrículas y un mapa con modificador. 60 segundos y gana el que más puntos tenga</li>
+      <li>en competitivo el marcador de la esquina lleva la cuenta de los bots; los bots aprietan más según tu rango</li>
       <li>al empezar cada partida el mapa se enciende desde tu cabeza y el borde se ilumina con él</li>
       <li>el borde se ve siempre: si chocar con él te mata, es una pared y no se esconde. con el fantasma puesto (o en frenesí, que da la vuelta) se apaga y sólo se marca al acercarte, y el bloque por el que vas a salir se enciende</li>
       <li>en la campaña, la fruta que cierra el nivel sale amarilla</li>
       <li>el fantasma se apaga por escalones en el último segundo y medio: los cubos se van rellenando</li>
+      <li>con el fantasma puesto no te matas tú: atraviesas muros, bordes y tu propio cuerpo</li>
     </ul>
     <p class="pie"><span>osciladores y ruido en directo · sin ficheros de audio</span></p>
   </div>`);
   pantalla('help');
   enfocarPrimero('button[data-accion="home"]');
+}
+
+/* ------------------------------------------- competitivo (BORRAR-COMPETITIVO)
+   modo temporal: 1 vs 1 vs 1 vs 1 contra bots, con mapa y modificador.
+   para quitarlo entero:  grep -rn BORRAR-COMPETITIVO .
+--------------------------------------------------------------------------- */
+
+function textoRango(info) {
+  return info.siguiente
+    ? `${info.nombre} · ${info.dentro}/${COMPETITIVE.porRango} para ${info.siguiente}`
+    : `${info.nombre} · rango máximo`;
+}
+
+function mostrarCompetitivo() {
+  pararTemporizador();
+  app.juego = null;
+  app.demo = null;
+  app.comp = null;
+  app.mapaComp = mapaDePartida();
+  app.modComp = modificadorDePartida();
+  const info = rangoInfo(guardado.comp);
+
+  const escalera = COMPETITIVE.rangos.map((nombre, i) => {
+    const clase = i === info.rango ? ' class="aqui"' : i < info.rango ? ' class="hecho"' : '';
+    return `<li${clase}><span class="p">${dosDigitos(i + 1)}</span><span class="n">${nombre}</span></li>`;
+  }).join('');
+
+  ponerOverlay(`<div class="panel versus">
+    <div class="niveles-cabeza">
+      <div>
+        <p class="kicker">competitivo · 1 vs 1 vs 1 vs 1 · ${COMPETITIVE.tiempo / 1000} s</p>
+        <h2>rango ${info.nombre}</h2>
+      </div>
+      <button class="ghost" type="button" data-accion="modos">grupos <kbd>esc</kbd></button>
+    </div>
+    <div class="versus-cuerpo">
+      <div class="versus-lado">
+        <p class="kicker">tu rango</p>
+        <div class="comp-barra"><i style="width:${(info.progreso * 100).toFixed(0)}%"></i></div>
+        <p class="nota">${textoRango(info)}</p>
+        <ol class="comp-escalera">${escalera}</ol>
+      </div>
+      <div class="versus-lado">
+        <p class="kicker">esta partida</p>
+        <dl class="comp-datos">
+          <div><dt>mapa</dt><dd>${app.mapaComp.nombre}</dd></div>
+          <div><dt>modificador</dt><dd>${app.modComp.nombre}</dd></div>
+          <div><dt>rivales</dt><dd>${COMPETITIVE.bots.join(' · ')}</dd></div>
+          <div><dt>límite</dt><dd>${COMPETITIVE.tiempo / 1000} s</dd></div>
+        </dl>
+        <p class="nota">${app.modComp.tag}</p>
+        <p class="nota">cada uno juega en su propia cuadrícula y no ve las demás: el marcador de la esquina lleva la cuenta. el 1º suma 3 de rango, el 2º suma 1, el 3º resta 1 y el 4º resta 2.</p>
+      </div>
+    </div>
+    <div class="acciones">
+      <button class="principal" type="button" data-accion="comp-start">empezar <kbd>enter</kbd></button>
+      <button type="button" data-accion="home">menú <kbd>esc</kbd></button>
+    </div>
+  </div>`);
+
+  el.score.textContent = '—';
+  el.meta.textContent = `competitivo · ${info.nombre}`;
+  el.best.textContent = '';
+  el.mult.textContent = '';
+  el.chain.style.width = '0%';
+  el.pause.disabled = true;
+  el.prompt.classList.remove('visible');
+  pantalla('versus');
+  enfocarPrimero('button[data-accion="comp-start"]');
+}
+
+function crearRivales(cfg) {
+  const escala = escalaBots(guardado.comp.rango);
+  const ajustes = [0.97, 1, 1.04];
+  return COMPETITIVE.bots.slice(0, COMPETITIVE.jugadores - 1).map((nombre, i) => {
+    const ajuste = ajustes[i % ajustes.length] * escala;
+    const juego = new Game(configCompetitivo(app.mapaComp, app.modComp, {
+      startSpeed: Math.round(cfg.startSpeed * ajuste),
+      minSpeed: Math.round(cfg.minSpeed * ajuste),
+    }), () => {});
+    juego.state = 'running';
+    return { nombre, juego };
+  });
+}
+
+function empezarCompetitivo() {
+  if (!app.mapaComp) app.mapaComp = mapaDePartida();
+  if (!app.modComp) app.modComp = modificadorDePartida();
+  pararTemporizador();
+  audio.unlock();
+  audio.play('ui');
+  app.demo = null;
+
+  const cfg = configCompetitivo(app.mapaComp, app.modComp);
+  app.comp = {
+    activo: true,
+    restante: COMPETITIVE.tiempo,
+    mapa: app.mapaComp,
+    mod: app.modComp,
+    rivales: [],
+    muerto: false,
+    resultado: null,
+  };
+  app.comp.rivales = crearRivales(cfg);
+  app.modo = 'competitive';
+  app.nivel = 0;
+  app.record = false;
+  app.juego = new Game(cfg, eventosJuego);
+  app.marca = mejorActual();
+
+  ponerOverlay(null);
+  pantalla('playing');
+  if (el.marcador) el.marcador.hidden = false;
+  ajustarLienzo();
+  pintarMarcador();
+  actualizarMarcador();
+}
+
+function tablaCompetitivo(c) {
+  const filas = [{
+    nombre: 'tú',
+    puntos: app.juego ? app.juego.score : 0,
+    vivo: !!app.juego && app.juego.state === 'running',
+    yo: true,
+  }];
+  for (const rival of c.rivales) {
+    filas.push({
+      nombre: rival.nombre,
+      puntos: rival.juego.score,
+      vivo: rival.juego.state === 'running',
+    });
+  }
+  return filas.sort((a, b) => b.puntos - a.puntos);
+}
+
+function pintarMarcador() {
+  const c = app.comp;
+  if (!el.marcador || !c || !c.activo) return;
+  const html = tablaCompetitivo(c).map((f, i) => {
+    const clases = [f.yo ? 'propio' : '', f.vivo ? '' : 'fuera'].filter(Boolean).join(' ');
+    return `<p${clases ? ` class="${clases}"` : ''}><span class="p">${i + 1}</span><span class="n">${f.nombre}</span><span class="s">${puntos(f.puntos)}</span></p>`;
+  }).join('');
+  if (el.marcador.dataset.huella !== html) {
+    el.marcador.innerHTML = html;
+    el.marcador.dataset.huella = html;
+  }
+}
+
+function pasoCompetitivo(dt) {
+  const c = app.comp;
+  if (!c || !c.activo) return;
+  c.restante = Math.max(0, c.restante - dt);
+  app.juego.update(dt);
+  for (const rival of c.rivales) {
+    if (rival.juego.state === 'running') {
+      rival.juego.botTurn();
+      rival.juego.update(dt);
+    }
+  }
+  pintarMarcador();
+  if (c.restante <= 0) finCompetitivo();
+}
+
+function finCompetitivo() {
+  const c = app.comp;
+  if (!c || !c.activo) return;
+  c.activo = false;
+  pararTemporizador();
+
+  const filas = tablaCompetitivo(c).map((f, i) => ({ ...f, puesto: i + 1 }));
+  const yo = filas.find((f) => f.yo) || { puesto: filas.length };
+  const delta = COMPETITIVE.premios[Math.min(COMPETITIVE.premios.length - 1, yo.puesto - 1)];
+  const antes = rangoInfo(guardado.comp);
+  const cambio = ajustarRango(guardado.comp, delta);
+  guardado.comp = {
+    rango: cambio.rango,
+    dentro: cambio.dentro,
+    partidas: (guardado.comp.partidas || 0) + 1,
+    victorias: (guardado.comp.victorias || 0) + (yo.puesto === 1 ? 1 : 0),
+  };
+  guardado.best.competitive = Math.max(guardado.best.competitive || 0, app.juego ? app.juego.score : 0);
+  guardar();
+
+  const despues = rangoInfo(guardado.comp);
+  c.resultado = { filas, puesto: yo.puesto, delta, antes, despues };
+  const signo = delta > 0 ? `+${delta}` : String(delta);
+  const titulo = yo.puesto === 1 ? 'has ganado' : `${yo.puesto}º de ${filas.length}`;
+  const movimiento = cambio.sube
+    ? `asciendes a ${despues.nombre}`
+    : cambio.baja
+      ? `bajas a ${despues.nombre}`
+      : textoRango(despues);
+
+  const tabla = filas.map((f) => `<li${f.yo ? ' class="propio"' : ''}>
+      <span class="p">${f.puesto}</span>
+      <span class="n">${f.nombre}</span>
+      <span class="s">${puntos(f.puntos)}</span>
+    </li>`).join('');
+
+  ponerOverlay(`<div class="panel versus fin-comp">
+    <div class="fin-cabeza">
+      <p class="kicker">competitivo · ${c.mod.nombre} · ${c.mapa.nombre}</p>
+      <p class="cifra">${titulo}</p>
+      <p class="nota">${signo} de rango · ${movimiento}</p>
+    </div>
+    <ol class="comp-tabla">${tabla}</ol>
+    <div class="acciones">
+      <button class="principal" type="button" data-accion="comp-again">revancha <kbd>enter</kbd></button>
+      <button type="button" data-accion="home">menú <kbd>esc</kbd></button>
+    </div>
+  </div>`);
+  pantalla('versus-fin');
+  enfocarPrimero('button[data-accion="comp-again"]');
+  if (el.marcador) el.marcador.hidden = true;
+  if (el.timer) el.timer.hidden = true;
+  el.pause.disabled = true;
+  el.prompt.classList.remove('visible');
+  audio.play(yo.puesto === 1 ? 'level' : 'ui');
 }
 
 /* ---------------------------------------------------------- partida */
@@ -782,6 +1057,9 @@ function empezarPartida(modo, nivel = 0) {
   pararTemporizador();
   audio.unlock();
   app.demo = null;
+  app.comp = null; // BORRAR-COMPETITIVO
+  if (el.marcador) el.marcador.hidden = true; // BORRAR-COMPETITIVO
+  if (el.timer) el.timer.hidden = true; // BORRAR-COMPETITIVO
   app.modo = modo;
   app.nivel = nivel;
   app.record = false;
@@ -843,7 +1121,13 @@ function eventosJuego(tipo, datos) {
     case 'die':
       audio.play('death');
       guardarMarca();
-      app.temporizador = setTimeout(mostrarFin, 900);
+      // BORRAR-COMPETITIVO
+      if (app.comp && app.comp.activo) {
+        app.comp.muerto = true;
+        app.temporizador = setTimeout(finCompetitivo, 900);
+      } else {
+        app.temporizador = setTimeout(mostrarFin, 900);
+      }
       break;
     case 'clear':
       audio.play('level');
@@ -965,7 +1249,10 @@ function pausar() {
 
   const juego = app.juego;
   const cifra = puntos(juego.score);
-  const nota = `${juego.fruits} frutas · récord ${Math.max(app.marca, juego.score)}`;
+  // BORRAR-COMPETITIVO
+  const nota = app.comp
+    ? `${juego.fruits} frutas · ${Math.ceil(app.comp.restante / 1000)} s de partida`
+    : `${juego.fruits} frutas · récord ${Math.max(app.marca, juego.score)}`;
 
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
@@ -1075,6 +1362,28 @@ function accion(nombre) {
     return;
   }
 
+  // BORRAR-COMPETITIVO
+  if (app.pantalla === 'versus' || app.pantalla === 'versus-fin') {
+    if (esDireccion) {
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
+      return;
+    }
+    if (nombre === 'confirm') {
+      activarFoco();
+      return;
+    }
+    if (nombre === 'restart') {
+      if (app.pantalla === 'versus') empezarCompetitivo();
+      else mostrarCompetitivo();
+      return;
+    }
+    if (nombre === 'back') {
+      if (app.pantalla === 'versus') mostrarModos(2);
+      else mostrarInicio();
+    }
+    return;
+  }
+
   if (app.pantalla === 'levels') {
     if (nombre === 'up') moverFoco(0, -1);
     else if (nombre === 'down') moverFoco(0, 1);
@@ -1127,6 +1436,11 @@ function accion(nombre) {
     return;
   }
   if (nombre === 'restart') {
+    // BORRAR-COMPETITIVO
+    if (app.comp && app.comp.activo) {
+      mostrarCompetitivo();
+      return;
+    }
     if (app.juego) empezarPartida(app.modo, app.nivel);
     return;
   }
@@ -1165,6 +1479,13 @@ function ejecutar(nombre) {
       break;
     case 'wipe':
       borrarRecords();
+      break;
+    // BORRAR-COMPETITIVO
+    case 'comp-start':
+      empezarCompetitivo();
+      break;
+    case 'comp-again':
+      mostrarCompetitivo();
       break;
     default:
       break;
@@ -1358,7 +1679,12 @@ function bucle(t) {
   if (app.pantalla === 'home' || app.pantalla === 'modes') {
     pasoDemo(dt);
   } else if (app.juego) {
-    app.juego.update(dt);
+    // BORRAR-COMPETITIVO · con partida de competitivo corren también los tres bots
+    if (app.comp && app.comp.activo) {
+      if (app.pantalla === 'playing') pasoCompetitivo(dt);
+    } else {
+      app.juego.update(dt);
+    }
     app.juego.draw(pincel, vista);
     actualizarMarcador();
   }
@@ -1399,4 +1725,8 @@ try {
 
 if (location.hash === '#debug') {
   window.__snake = { app, guardado, accion, empezarPartida, mostrarInicio, crearDemo, mostrarFin };
+  // BORRAR-COMPETITIVO
+  window.__snake.mostrarCompetitivo = mostrarCompetitivo;
+  window.__snake.empezarCompetitivo = empezarCompetitivo;
+  window.__snake.finCompetitivo = finCompetitivo;
 }

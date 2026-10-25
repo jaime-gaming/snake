@@ -31,17 +31,27 @@ El menú son tres grupos y cada uno abre su propia subpágina con sus modos: `�
 - **frenesí** — los bordes dan la vuelta y la velocidad sube sola con el reloj.
 - **cazador** — la serpiente roja empieza comiendo puntos azules y **no te toca**: se mueve despacio y tu cabeza tampoco es casilla para ella. cuando llega a dos tercios de su tope (12 anillos) se pone a cazar: marco blanco en la cabeza, aviso y ritmo doble. su cuerpo no te mata; si le muerdes un anillo se lo recortas. te come sólo si su cabeza cae sobre la tuya, y antes marca con un cubo rojo fino por dónde va a cortar. **si se estrella contra tu cuerpo revienta**: estalla, está un segundo fuera y vuelve a nacer lejos por la mitad de largo, así que tu cuerpo es también un arma. se mueve interpolado entre casillas, sin saltos. los puntos azules también son para ti: si te los comes, no crece. cada cubo hueco te da una vida nueva: vuelve a nacer lejos.
 
-**especiales**
+**competitivo**
 
-- **ciego** — sólo ves un cuadrado de luz a tu alrededor, y se abre poco a poco según comes.
+- **competitivo** — 1 vs 1 vs 1 vs 1 con límite de **60 segundos**. cada jugador tiene **su propia cuadrícula** (tú y tres bots: `pulso`, `ruido` y `onda`) y no ve las de los demás: el marcador de la esquina lleva la cuenta en vivo. cada partida sortea un **mapa** (las cinco arenas del modo o cualquiera de los 20 niveles) y un **modificador** que cambia la partida para los cuatro a la vez: `sin muros`, `muros`, `rápido`, `lento`, `hambre` (un poder cada tres frutas) o `sin premios`. hay **siete rangos** — hierro, cobre, bronce, plata, oro, platino y obsidiana — y cada 12 puntos de rango se sube uno. al terminar, el 1º suma 3, el 2º suma 1, el 3º resta 1 y el 4º resta 2. los bots aprietan más cuanto más alto es tu rango (de un 30 % más lentos a un 7 % más rápidos que tú). si te matas, la partida se cierra y cuenta la clasificación.
 
-los modos que sobraban (portales, reloj y muro) se han ido: sus reglas no aportaban nada que la campaña y el clásico no dieran ya, y cada uno era una forma más de romper el juego.
+los modos que sobraban (portales, reloj, muro y ciego) se han ido: sus reglas no aportaban nada que la campaña y el clásico no dieran ya, y cada uno era una forma más de romper el juego.
+
+### BORRAR-COMPETITIVO · cómo quitar el competitivo
+
+el competitivo es un modo temporal y está marcado para poder borrarlo entero de una pasada. todo lo suyo lleva la etiqueta `BORRAR-COMPETITIVO`:
+
+```sh
+grep -rn BORRAR-COMPETITIVO .
+```
+
+eso señala los trozos de `js/levels.js` (modo, grupo, rangos, mapas y modificadores), `js/main.js` (sala, partida, marcador, reloj y clasificación), `index.html` (reloj y marcador), `styles.css` (sus estilos), `tools/check.mjs` (sus pruebas, que además comprueban que la marca sigue puesta) y este readme. si se quita el modo, hay que volver a dejar `MODES` en tres modos y el menú en tres grupos.
 
 ## piezas
 
 - **cadena** — dos frutas seguidas suben el multiplicador hasta ×5. la barra de abajo es el tiempo que te queda para encadenar, y comer con la barra por encima del 62% paga un extra de 5 × multiplicador. cada subida de multiplicador da un destello y marca el marcador.
 - **premio** — un cubo rojo hueco aparece cada pocas frutas, caduca y da dos anillos de largo.
-- **poderes** — todo son cubos: contorno discontinuo, fantasma (atraviesas muros, bordes y cazador durante cinco segundos); raya en medio, lento; cuadro relleno, recorte (pierdes anillos y ganas puntos). el fantasma no se corta de golpe: en el último segundo y medio se apaga en cuatro escalones y los cubos se van rellenando hasta volver a ser sólidos.
+- **poderes** — todo son cubos: contorno discontinuo, fantasma (atraviesas muros, bordes, cazador **y tu propio cuerpo** durante cinco segundos, así que con el fantasma puesto no te puedes matar tú); raya en medio, lento; cuadro relleno, recorte (pierdes anillos y ganas puntos). el fantasma no se corta de golpe: en el último segundo y medio se apaga en cuatro escalones y los cubos se van rellenando hasta volver a ser sólidos.
 - **turbo** — 0,68 del intervalo mientras lo mantengas.
 - **choque** — al morir la casilla del golpe queda marcada y tres marcos cuadrados se abren desde ella mientras la serpiente se deshace de la cabeza a la cola. la cifra final sube de 0 al total en medio segundo.
 - **borde** — si chocar con él te mata, el borde se ve **siempre**: es una pared, no un adorno. donde hay muro va más marcado. con el fantasma puesto (o en frenesí, donde los bordes dan la vuelta y no matan) se apaga y sólo se marca al acercarte. el bloque por el que vas a salir se enciende en blanco.
@@ -58,7 +68,7 @@ snake.js            TODO el juego en un fichero (generado, es lo que carga la p�
 js/                 fuentes por módulos, más cómodas de editar
   engine.js         motor: rejilla, colisiones, poderes, cazador, dibujo
   grid.js           bfs y utilidades de rejilla (cazador y piloto automático)
-  levels.js         grupos, 4 modos y los 20 niveles
+  levels.js         grupos, 4 modos, 20 niveles y el competitivo
   audio.js          sonido con osciladores, sin ficheros
   input.js          teclado, gestos y mando
   main.js           pantallas, progreso y bucle

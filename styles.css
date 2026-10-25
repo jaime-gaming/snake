@@ -1010,3 +1010,189 @@ button.foco {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BORRAR-COMPETITIVO · estilos del modo competitivo (reloj, marcador, sala,
+   escalera de rangos y tabla final). grep -rn BORRAR-COMPETITIVO .
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.timer {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.timer.apurado {
+  color: var(--accent);
+}
+
+#marcador {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 5px;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid var(--line);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+  pointer-events: none;
+}
+
+#marcador p {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  line-height: 1.35;
+}
+
+#marcador .p {
+  width: 8px;
+  color: #6a6a6a;
+}
+
+#marcador .n {
+  flex: 1 1 auto;
+}
+
+#marcador .s {
+  font-variant-numeric: tabular-nums;
+  color: #cfcfcf;
+}
+
+#marcador .propio {
+  color: var(--fg);
+}
+
+#marcador .propio .p {
+  color: var(--fg);
+}
+
+#marcador .fuera {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+.versus-cuerpo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(12px, 3vw, 26px);
+  margin: 4px 0 2px;
+}
+
+.versus-lado {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.comp-barra {
+  height: 6px;
+  background: #1c1c1c;
+  border: 1px solid var(--line2);
+}
+
+.comp-barra i {
+  display: block;
+  height: 100%;
+  background: var(--fg);
+}
+
+.comp-escalera,
+.comp-tabla {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.comp-escalera li,
+.comp-tabla li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 4px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+  border: 1px solid transparent;
+}
+
+.comp-escalera li .p,
+.comp-tabla li .p {
+  width: 14px;
+  color: #6a6a6a;
+}
+
+.comp-escalera li .n,
+.comp-tabla li .n {
+  flex: 1 1 auto;
+}
+
+.comp-escalera li.aqui {
+  color: var(--fg);
+  border-color: var(--line2);
+}
+
+.comp-escalera li.hecho {
+  color: #bdbdbd;
+}
+
+.comp-tabla li {
+  font-size: 12px;
+}
+
+.comp-tabla li .s {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+.comp-tabla li.propio {
+  color: var(--fg);
+  border-color: var(--line2);
+}
+
+.comp-datos {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  font-size: 11px;
+}
+
+.comp-datos div {
+  display: flex;
+  gap: 8px;
+}
+
+.comp-datos dt {
+  min-width: 76px;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 9px;
+}
+
+.comp-datos dd {
+  margin: 0;
+  color: var(--fg);
+}
+
+@media (max-width: 760px) {
+  .versus-cuerpo {
+    grid-template-columns: 1fr;
+  }
+  #marcador {
+    font-size: 8px;
+  }
+}

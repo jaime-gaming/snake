@@ -3,8 +3,17 @@
 // valida los niveles, deja al piloto automático jugarlos y prueba las reglas
 // básicas del motor. sale con código 1 si algo falla.
 
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { Game } from '../js/engine.js';
-import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS } from '../js/levels.js';
+import {
+  MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS,
+  // BORRAR-COMPETITIVO
+  COMPETITIVE, mapaDePartida, modificadorDePartida, configCompetitivo,
+  ajustarRango, rangoInfo, escalaBots,
+} from '../js/levels.js';
 
 const K = (x, y) => y * 4096 + x;
 let fallos = 0;
@@ -41,6 +50,7 @@ process.stdout.write('estructura\n');
   comprobar(planos.length === MODE_ORDER.length, 'grupos: MODE_ORDER no coincide con los grupos');
   comprobar(new Set(planos).size === planos.length, 'grupos: hay un modo repetido');
   comprobar(Object.keys(MODES).length === 4, 'modos: no son cuatro');
+  comprobar(!MODES.blind, 'modos: el modo ciego sigue ahí');
   comprobar(
     Object.keys(MODES).every((id) => planos.includes(id)),
     'grupos: algún modo se queda fuera de los grupos',
@@ -143,7 +153,8 @@ LEVELS.forEach((nivel, i) => {
 
 // modos infinitos: aguantan 30 s sin romperse
 process.stdout.write('modos\n');
-for (const id of ['classic', 'frenzy', 'hunter', 'blind']) {
+// BORRAR-COMPETITIVO · el competitivo también aguanta 30 s con el piloto
+for (const id of ['classic', 'frenzy', 'hunter', 'competitive']) {
   const juego = new Game({ ...MODES[id] }, () => {});
   let ms = 0;
   let poderes = 0;
@@ -303,20 +314,6 @@ process.stdout.write('revelado\n');
   process.stdout.write(`  revelado: ${medio.toFixed(2)} a los 300 ms, ${juego.reveal.toFixed(2)} a los 900 ms\n`);
 }
 
-// ciego: la niebla existe y la partida sigue viva
-process.stdout.write('ciego\n');
-{
-  const juego = new Game({ ...MODES.blind }, () => {});
-  comprobar(juego.cfg.vision > 0, 'ciego: sin radio de visión');
-  juego.state = 'running';
-  juego.setDirection(1, 0);
-  for (let i = 0; i < 120; i++) {
-    juego.botTurn();
-    juego.update(40);
-    if (juego.state !== 'running') break;
-  }
-  comprobar(juego.reveal > 0.5, 'ciego: el revelado no avanza');
-}
 
 // choque: deja marca y congela un instante
 process.stdout.write('choque\n');
@@ -642,6 +639,32 @@ process.stdout.write('fantasma\n');
   process.stdout.write(`  fantasma: ${pasos.map((p) => p.toFixed(2)).join(' → ')}\n`);
 }
 
+// fantasma: atravesarte a ti mismo no te mata
+process.stdout.write('fantasma y tu cuerpo\n');
+{
+  const montar = (fantasma) => {
+    const juego = new Game({ ...MODES.classic }, () => {});
+    juego.state = 'running';
+    juego.walls = [];
+    juego.wallSet.clear();
+    // la cabeza va a (6,6), que es un anillo del medio (la cola está en 5,6)
+    juego.body = [{ x: 6, y: 5 }, { x: 7, y: 5 }, { x: 7, y: 6 }, { x: 6, y: 6 }, { x: 5, y: 6 }];
+    juego.prevBody = juego.body.map((c) => ({ ...c }));
+    juego.dir = { x: 0, y: 1 };
+    juego.food = { x: 0, y: 0 };
+    juego.grow = 0;
+    if (fantasma) juego.fx.ghost = 4000;
+    juego.step();
+    return juego;
+  };
+  const vivo = montar(true);
+  comprobar(vivo.state === 'running', 'fantasma: te matas al pasar por tu propio cuerpo');
+  comprobar(vivo.body[0].x === 6 && vivo.body[0].y === 6, 'fantasma: no has atravesado tu cuerpo');
+  const muerto = montar(false);
+  comprobar(muerto.state === 'dead', 'sin fantasma: atravesarte a ti mismo no te mata');
+  process.stdout.write('  fantasma: pasas por encima de ti, sin poder te matas\n');
+}
+
 // la fruta que cierra el nivel va en amarillo
 process.stdout.write('última fruta\n');
 {
@@ -734,6 +757,103 @@ process.stdout.write('cazador al choque\n');
   juego.time += paso;
   comprobar(juego.hunterAvance === 1, 'cazador: no cierra el paso');
   process.stdout.write('  cazador: avanza interpolado entre casillas\n');
+}
+/* ═══════════════════════════════════════════════════════════════════════════
+   BORRAR-COMPETITIVO · pruebas del modo competitivo. se van con el modo.
+   ═══════════════════════════════════════════════════════════════════════════ */
+process.stdout.write('competitivo\n');
+{
+  comprobar(COMPETITIVE.rangos.length === 7, 'competitivo: no hay siete rangos');
+  comprobar(
+    COMPETITIVE.rangos.every((r) => typeof r === 'string' && r.length > 2),
+    'competitivo: algún rango no tiene nombre',
+  );
+  comprobar(new Set(COMPETITIVE.rangos).size === 7, 'competitivo: hay rangos repetidos');
+  comprobar(COMPETITIVE.jugadores === 4, 'competitivo: no es 1 vs 1 vs 1 vs 1');
+  comprobar(COMPETITIVE.bots.length === 3, 'competitivo: no hay tres bots');
+  comprobar(COMPETITIVE.tiempo > 10000, 'competitivo: el límite de tiempo es absurdo');
+  comprobar(COMPETITIVE.premios.length === 4, 'competitivo: faltan premios por puesto');
+  comprobar(COMPETITIVE.premios[0] > 0 && COMPETITIVE.premios[3] < 0, 'competitivo: ganar no sube y perder no baja');
+  process.stdout.write(`  rangos: ${COMPETITIVE.rangos.join(' · ')}\n`);
+
+  // mapas y modificadores: siempre válidos, con muros dentro del tablero
+  const azar = (v) => () => v;
+  for (const v of [0, 0.2, 0.4, 0.6, 0.8, 0.999]) {
+    const mapa = mapaDePartida(azar(v));
+    comprobar(mapa && typeof mapa.nombre === 'string', 'competitivo: mapa sin nombre');
+    comprobar(
+      mapa.walls.every(([x, y]) => x >= 0 && y >= 0 && x < COLS && y < ROWS),
+      `competitivo: el mapa ${mapa.nombre} tiene muros fuera`,
+    );
+  }
+  comprobar(COMPETITIVE.modificadores.length >= 4, 'competitivo: hay muy pocos modificadores');
+  for (const mod of COMPETITIVE.modificadores) {
+    const cfg = configCompetitivo(mapaDePartida(azar(0.3)), mod);
+    comprobar(typeof mod.nombre === 'string' && mod.nombre.length > 2, 'competitivo: modificador sin nombre');
+    comprobar(typeof mod.tag === 'string' && mod.tag.length > 4, 'competitivo: modificador sin explicación');
+    comprobar(cfg.startSpeed >= 60 && cfg.startSpeed <= 260, `competitivo: ${mod.nombre} deja una velocidad rara`);
+    comprobar(cfg.minSpeed <= cfg.startSpeed, `competitivo: ${mod.nombre} deja el mínimo por encima del inicio`);
+    comprobar(!cfg.goal, `competitivo: ${mod.nombre} pone meta`);
+    comprobar(cfg.competitive === true, `competitivo: ${mod.nombre} pierde la marca del modo`);
+  }
+  process.stdout.write(`  ${COMPETITIVE.modificadores.length} modificadores y ${COMPETITIVE.arenas.length} arenas\n`);
+
+  // cada jugador recibe su propia cuadrícula: cambiar una no toca las demás
+  const mapa = mapaDePartida(azar(0.5));
+  const mod = modificadorDePartida(azar(0.1));
+  const a = configCompetitivo(mapa, mod);
+  const b = configCompetitivo(mapa, mod);
+  comprobar(a.walls !== b.walls, 'competitivo: los jugadores comparten el array de muros');
+  comprobar(a.walls !== mapa.walls, 'competitivo: el mapa se comparte con la configuración');
+  const juegoA = new Game(a, () => {});
+  const juegoB = new Game(b, () => {});
+  juegoA.raiseWall();
+  juegoA.updateFx(900);
+  comprobar(juegoA.walls.length !== juegoB.walls.length || juegoA.walls.length === 0,
+    'competitivo: lo que pasa en una cuadrícula se ve en la otra');
+
+  // ascensos y descensos
+  comprobar(ajustarRango({ rango: 0, dentro: 10 }, 3).rango === 1, 'competitivo: ganar no asciende');
+  comprobar(ajustarRango({ rango: 3, dentro: 1 }, -2).rango === 2, 'competitivo: perder no desciende');
+  const tope = ajustarRango({ rango: 6, dentro: 11 }, 3);
+  comprobar(tope.rango === 6 && tope.dentro < COMPETITIVE.porRango, 'competitivo: se sube por encima del último rango');
+  const suelo = ajustarRango({ rango: 0, dentro: 0 }, -2);
+  comprobar(suelo.rango === 0 && suelo.dentro === 0, 'competitivo: se baja por debajo del primer rango');
+  const info = rangoInfo({ rango: 2, dentro: 6 });
+  comprobar(info.nombre === COMPETITIVE.rangos[2], 'competitivo: el rango no coincide con su nombre');
+  comprobar(info.siguiente === COMPETITIVE.rangos[3], 'competitivo: no dice cuál es el siguiente');
+  comprobar(Math.abs(info.progreso - 0.5) < 1e-9, 'competitivo: la barra del rango miente');
+  comprobar(rangoInfo({ rango: 6, dentro: 11 }).siguiente === null, 'competitivo: el último rango tiene siguiente');
+
+  // los bots aprietan más según tu rango
+  comprobar(escalaBots(0) > escalaBots(3) && escalaBots(3) > escalaBots(6), 'competitivo: los bots no escalan con el rango');
+  comprobar(escalaBots(99) === escalaBots(6), 'competitivo: la escala de bots se sale');
+
+  // una partida entera con el piloto, con reloj propio: 4 cuadrículas a la vez
+  const jugadores = [0, 1, 2, 3].map(() => new Game(configCompetitivo(mapa, mod), () => {}));
+  for (const j of jugadores) j.state = 'running';
+  let t = 0;
+  while (t < 12000) {
+    for (const j of jugadores) {
+      if (j.state === 'running') {
+        j.botTurn();
+        j.update(30);
+      }
+    }
+    t += 30;
+  }
+  comprobar(jugadores.every((j) => j.score >= 0), 'competitivo: puntuación negativa');
+  comprobar(jugadores.slice(1).every((j) => j.walls !== jugadores[0].walls), 'competitivo: dos jugadores con la misma cuadrícula');
+  process.stdout.write(`  partida de prueba: ${jugadores.map((j) => j.score).join(' · ')} puntos\n`);
+
+  // la marca de borrado tiene que seguir ahí, en todos los ficheros que toca
+  const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const marcados = ['js/levels.js', 'js/main.js', 'index.html', 'styles.css', 'tools/check.mjs', 'README.md'];
+  for (const rel of marcados) {
+    const texto = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    comprobar(texto.includes('BORRAR-COMPETITIVO'), `competitivo: falta la marca BORRAR-COMPETITIVO en ${rel}`);
+  }
+  process.stdout.write(`  marca de borrado en ${marcados.length} ficheros\n`);
 }
 
 process.stdout.write(fallos ? `\n${fallos} fallos\n` : '\ntodo en orden\n');
