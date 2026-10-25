@@ -1,4 +1,4 @@
-/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-10-25 · v13).
+/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-10-25 · v14).
    no lo edites a mano: cambia js/*.js y vuelve a ejecutar node tools/build.mjs */
 (function () {
 'use strict';
@@ -2320,7 +2320,11 @@ const el = {
   reloj: $('#reloj'), // BORRAR-COMPETITIVO
   minis: $('#minis'), // BORRAR-COMPETITIVO
   aviso: $('#aviso'), // BORRAR-COMPETITIVO
-  marcador: $('#marcador'), // BORRAR-COMPETITIVO
+  sorteo: $('#sorteo'), // BORRAR-COMPETITIVO
+  sorteoMapa: $('#sorteo-mapa'), // BORRAR-COMPETITIVO
+  sorteoMod: $('#sorteo-mod'), // BORRAR-COMPETITIVO
+  cuenta: $('#cuenta'), // BORRAR-COMPETITIVO
+  pila: $('#pila'), // BORRAR-COMPETITIVO
   best: $('#hud-best'),
   mult: $('#hud-mult'),
   chain: $('#chain-bar'),
@@ -2422,8 +2426,10 @@ const app = {
   record: false,
   chips: new Map(),
   comp: null, // BORRAR-COMPETITIVO
+  mapasComp: [], // BORRAR-COMPETITIVO
   mapaComp: null, // BORRAR-COMPETITIVO
   modComp: null, // BORRAR-COMPETITIVO
+  intervalo: 0, // BORRAR-COMPETITIVO
 };
 
 const vista = { cell: 24, ox: 0, oy: 0, width: 480, height: 480, dpr: 1 };
@@ -2446,6 +2452,11 @@ function pararTemporizador() {
     clearTimeout(app.temporizador);
     app.temporizador = 0;
   }
+  // BORRAR-COMPETITIVO · el sorteo va con intervalo propio
+  if (app.intervalo) {
+    clearInterval(app.intervalo);
+    app.intervalo = 0;
+  }
 }
 
 /* ---------------------------------------------------------- lienzo */
@@ -2457,10 +2468,15 @@ function ajustarLienzo() {
   // tiramos de la ventana para no quedarnos con un tablero de 0 px
   const anchoCaja = caja.width || window.innerWidth || 480;
   const altoCaja = caja.height || Math.max(240, (window.innerHeight || 720) * 0.6);
-  // BORRAR-COMPETITIVO · con las minis abajo, el tablero les deja su franja
-  const franja = app.comp && app.comp.activo && el.minis && !el.minis.hidden ? 96 : 0;
+  // BORRAR-COMPETITIVO · con las minis al lado, el tablero les deja su columna
+  const conMinis = !!(app.comp && app.comp.activo && el.minis && !el.minis.hidden);
+  const apilado = conMinis && esApilado();
+  if (el.pila) el.pila.classList.toggle('apilado', apilado);
+  const hueco = conMinis ? (apilado ? 96 : 106) : 0;
+  const anchoUtil = apilado ? anchoCaja : anchoCaja - hueco;
+  const altoUtil = apilado ? altoCaja - hueco : altoCaja;
   // el tablero ocupa todo el hueco: celdas fraccionarias, sin bordes muertos
-  const lado = Math.max(160, Math.min(anchoCaja, altoCaja - franja) - 2);
+  const lado = Math.max(160, Math.min(anchoUtil, altoUtil) - 2);
   const celda = lado / Math.max(COLS, ROWS);
   const ancho = lado;
   const alto = lado;
@@ -2506,11 +2522,12 @@ function ponerOverlay(html) {
 function pantalla(nombre) {
   app.pantalla = nombre;
   document.body.dataset.screen = nombre;
-  // BORRAR-COMPETITIVO · el marcador, el reloj y las minis sólo existen jugando
+  // BORRAR-COMPETITIVO · el reloj, las minis y la cuenta sólo existen jugando
   if (nombre !== 'playing' && nombre !== 'paused') {
-    if (el.marcador) el.marcador.hidden = true;
     if (el.reloj) el.reloj.hidden = true;
     if (el.minis) el.minis.hidden = true;
+    if (el.cuenta) el.cuenta.hidden = true;
+    if (el.sorteo) el.sorteo.hidden = true;
   }
   actualizarPista();
 }
@@ -2525,7 +2542,7 @@ const PISTAS = {
   dead: 'R reintentar · esc menú',
   cleared: 'enter siguiente · esc menú',
   // BORRAR-COMPETITIVO
-  versus: 'enter empezar · R nueva partida · esc menú',
+  sorteo: 'sorteando mapa y modificador…',
   'versus-fin': 'enter revancha · esc menú',
 };
 
@@ -2785,7 +2802,7 @@ function resumenGrupo(indice) {
   // BORRAR-COMPETITIVO
   if (grupo.modes.includes('competitive')) {
     const info = rangoInfo(guardado.comp);
-    return `${info.nombre} ${info.dentro}/${COMPETITIVE.porRango}`;
+    return `${icoRango(info.rango)}${info.nombre} ${info.dentro}/${COMPETITIVE.porRango}`;
   }
   const hechos = grupo.modes.filter((m) => (guardado.best[m] || 0) > 0).length;
   return `${hechos}/${grupo.modes.length}`;
@@ -2815,7 +2832,7 @@ function mostrarInicio() {
 
   const filas = GROUPS.map((grupo, i) => `<button class="row" type="button" data-grupo="${i}" data-i="${i}">
       <span class="row-idx">${dosDigitos(i + 1)}</span>
-      <span class="row-name">${grupo.name}<small>${grupo.tag} · ${grupo.modes.length} ${grupo.modes.length === 1 ? 'modo' : 'modos'}</small></span>
+      <span class="row-name">${grupo.name}<small>${grupo.tag}${grupo.modes.length > 1 ? ` · ${grupo.modes.length} modos` : ''}</small></span>
       <span class="row-right">${resumenGrupo(i)}</span>
     </button>`).join('');
 
@@ -2930,7 +2947,7 @@ function seleccionarModo(i) {
 function elegirModo(modo) {
   if (modo === 'campaign') mostrarNiveles();
   // BORRAR-COMPETITIVO
-  else if (modo === 'competitive') mostrarCompetitivo();
+  else if (modo === 'competitive') sorteoCompetitivo(); // BORRAR-COMPETITIVO
   else empezarPartida(modo, 0);
 }
 
@@ -3089,151 +3106,120 @@ function mostrarAyuda() {
 }
 
 /* ------------------------------------------- competitivo (BORRAR-COMPETITIVO)
-   modo temporal: 1 vs 1 vs 1 vs 1 contra bots, con mapa y modificador.
-   para quitarlo entero:  grep -rn BORRAR-COMPETITIVO .
+   modo temporal: 1 vs 1 vs 1 vs 1 contra bots, con sorteo de mapa y modificador,
+   cuenta atrás para que los cuatro empiecen a la vez y las cuadrículas rivales
+   en directo. para quitarlo entero:  grep -rn BORRAR-COMPETITIVO .
 --------------------------------------------------------------------------- */
 
-function textoRango(info) {
-  return info.siguiente
-    ? `${info.nombre} · ${info.dentro}/${COMPETITIVE.porRango} para ${info.siguiente}`
-    : `${info.nombre} · rango máximo`;
+// BORRAR-COMPETITIVO · iconos de rango: cubos, sin degradados ni adornos
+const RANGO_ICONO = [
+  '<rect x="10" y="10" width="8" height="8"/>',
+  '<rect x="10" y="4" width="8" height="8"/><rect x="10" y="16" width="8" height="8"/>',
+  '<rect x="4" y="4" width="8" height="8"/><rect x="4" y="16" width="8" height="8"/><rect x="16" y="16" width="8" height="8"/>',
+  '<rect x="4" y="4" width="8" height="8"/><rect x="16" y="4" width="8" height="8"/><rect x="4" y="16" width="8" height="8"/><rect x="16" y="16" width="8" height="8"/>',
+  '<rect x="4" y="4" width="8" height="8"/><rect x="16" y="4" width="8" height="8"/><rect x="10" y="10" width="8" height="8"/><rect x="4" y="16" width="8" height="8"/><rect x="16" y="16" width="8" height="8"/>',
+  '<rect x="10" y="2" width="8" height="8"/><rect x="2" y="10" width="8" height="8"/><rect x="18" y="10" width="8" height="8"/><rect x="10" y="18" width="8" height="8"/>',
+  '<rect x="10" y="2" width="8" height="8"/><rect x="2" y="10" width="8" height="8"/><rect x="10" y="10" width="8" height="8"/><rect x="18" y="10" width="8" height="8"/><rect x="10" y="18" width="8" height="8"/>',
+];
+
+function icoRango(indice, clase = '') {
+  return `<svg class="ico-rango${clase ? ` ${clase}` : ''}" viewBox="0 0 28 28" aria-hidden="true" focusable="false">${RANGO_ICONO[indice] || ''}</svg>`;
 }
 
-function mostrarCompetitivo() {
+// los siete iconos, con el actual marcado
+function tiraRangos(rangoActual) {
+  return `<div class="rangos" aria-label="rango ${rangoActual + 1} de ${COMPETITIVE.rangos.length}">${
+    COMPETITIVE.rangos.map((nombre, i) => {
+      const clase = i === rangoActual ? ' aqui' : i < rangoActual ? ' hecho' : '';
+      return `<span class="bloque${clase}" title="${nombre}">${icoRango(i)}</span>`;
+    }).join('')
+  }</div>`;
+}
+
+function nombresDeMapas() {
+  if (!app.mapasComp.length) {
+    app.mapasComp = [
+      ...COMPETITIVE.arenas.map((a) => a.nombre),
+      ...LEVELS.map((n, i) => `nivel ${dosDigitos(i + 1)}`),
+    ];
+  }
+  return app.mapasComp;
+}
+
+/* BORRAR-COMPETITIVO · sorteo de mapa y modificador, ya en el tablero */
+
+function sorteoCompetitivo() {
   pararTemporizador();
-  app.juego = null;
+  audio.unlock();
   app.demo = null;
+  app.juego = null;
   app.comp = null;
+  app.modo = 'competitive';
   app.mapaComp = mapaDePartida();
   app.modComp = modificadorDePartida();
-  const info = rangoInfo(guardado.comp);
-
-  // BORRAR-COMPETITIVO · siete bloques, sin listas ni párrafos
-  const rangos = COMPETITIVE.rangos.map((nombre, i) => {
-    const clase = i === info.rango ? ' aqui' : i < info.rango ? ' hecho' : '';
-    return `<span class="bloque${clase}" title="${nombre}">${i + 1}</span>`;
-  }).join('');
-
-  ponerOverlay(`<div class="panel versus">
-    <div class="niveles-cabeza">
-      <div>
-        <p class="kicker">competitivo · 4 jugadores · ${COMPETITIVE.tiempo / 1000} s</p>
-        <h2>${info.nombre}</h2>
-      </div>
-      <button class="ghost" type="button" data-accion="modos">grupos <kbd>esc</kbd></button>
-    </div>
-    <div class="rangos" aria-label="rango ${info.nivel} de ${info.total}">${rangos}</div>
-    <p class="nota">${info.siguiente ? `${info.falta} para ${info.siguiente}` : 'rango máximo'}</p>
-    <div class="sellos">
-      <span><b>mapa</b>${app.mapaComp.nombre}</span>
-      <span><b>modificador</b>${app.modComp.nombre}</span>
-      <span><b>rivales</b>${COMPETITIVE.bots.join(' · ')}</span>
-    </div>
-    <p class="pie"><span>1º +3 · 2º +1 · 3º −1 · 4º −2 · si te matas, −20 %</span></p>
-    <div class="acciones">
-      <button class="principal" type="button" data-accion="comp-start">jugar <kbd>enter</kbd></button>
-      <button type="button" data-accion="home">menú <kbd>esc</kbd></button>
-    </div>
-  </div>`);
 
   el.score.textContent = '—';
-  el.meta.textContent = `competitivo · ${info.nombre}`;
+  el.meta.textContent = 'competitivo · sorteando';
   el.best.textContent = '';
   el.mult.textContent = '';
   el.chain.style.width = '0%';
   el.pause.disabled = true;
   el.prompt.classList.remove('visible');
-  pantalla('versus');
-  enfocarPrimero('button[data-accion="comp-start"]');
-}
+  ponerOverlay(null);
+  pantalla('sorteo');
 
-/* BORRAR-COMPETITIVO · las cuatro cuadrículas en directo */
-
-function montarMinis() {
-  if (!el.minis || !app.comp) return;
-  const gente = app.comp.rivales.map((r) => ({ nombre: r.nombre, juego: r.juego }));
-  el.minis.innerHTML = gente.map((p, i) => `<figure class="mini" data-i="${i}">
-      <canvas aria-hidden="true"></canvas>
-      <figcaption>${p.nombre}</figcaption>
-    </figure>`).join('');
-  el.minis.hidden = false;
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  app.comp.minis = gente.map((p, i) => {
-    const figura = el.minis.querySelector(`.mini[data-i="${i}"]`);
-    const lienzo = figura.querySelector('canvas');
-    const ancho = Math.round(figura.getBoundingClientRect().width) || 64;
-    lienzo.style.width = `${ancho}px`;
-    lienzo.style.height = `${ancho}px`;
-    lienzo.width = Math.round(ancho * dpr);
-    lienzo.height = Math.round(ancho * dpr);
-    return {
-      figura,
-      lienzo,
-      ctx: lienzo.getContext('2d'),
-      juego: p.juego,
-      lado: ancho,
-      dpr,
-      cap: figura.querySelector('figcaption'),
-    };
-  });
-}
-
-function dibujarMinis() {
-  const c = app.comp;
-  if (!c || !c.minis || !el.minis || el.minis.hidden) return;
-  for (const m of c.minis) {
-    m.juego.draw(m.ctx, {
-      cell: m.lado / COLS,
-      ox: 0,
-      oy: 0,
-      width: m.lado,
-      height: m.lado,
-      dpr: m.dpr,
-      mini: true,
-    });
+  const mapas = nombresDeMapas();
+  const mods = COMPETITIVE.modificadores.map((m) => m.nombre);
+  const alAzar = (lista) => lista[Math.floor(Math.random() * lista.length)];
+  if (el.sorteo) {
+    el.sorteo.hidden = false;
+    el.sorteo.classList.remove('fijo');
   }
+  const pintar = () => {
+    if (el.sorteoMapa) el.sorteoMapa.textContent = alAzar(mapas);
+    if (el.sorteoMod) el.sorteoMod.textContent = alAzar(mods);
+  };
+  pintar();
+  let paso = 0;
+  const total = 16;
+  app.intervalo = setInterval(() => {
+    paso += 1;
+    if (paso < total) {
+      pintar();
+      audio.play('ui');
+      return;
+    }
+    clearInterval(app.intervalo);
+    app.intervalo = 0;
+    // se queda con lo sorteado
+    if (el.sorteoMapa) el.sorteoMapa.textContent = app.mapaComp.nombre;
+    if (el.sorteoMod) el.sorteoMod.textContent = app.modComp.nombre;
+    if (el.sorteo) el.sorteo.classList.add('fijo');
+    audio.play('bonus');
+    app.temporizador = setTimeout(() => {
+      if (el.sorteo) {
+        el.sorteo.hidden = true;
+        el.sorteo.classList.remove('fijo');
+      }
+      empezarCompetitivo();
+    }, 780);
+  }, 85);
 }
 
-function quitarMinis() {
-  if (!el.minis) return;
-  el.minis.hidden = true;
-  el.minis.innerHTML = '';
-  if (app.comp) app.comp.minis = null;
-}
-
-function avisarCastigo(mensaje) {
-  if (!el.aviso) return;
-  el.aviso.textContent = mensaje;
-  el.aviso.classList.add('ver');
-  clearTimeout(avisarCastigo.turno);
-  avisarCastigo.turno = setTimeout(() => el.aviso.classList.remove('ver'), 1100);
-}
-
-function crearRivales(cfg) {
-  const escala = escalaBots(guardado.comp.rango);
-  const ajustes = [0.97, 1, 1.04];
-  return COMPETITIVE.bots.slice(0, COMPETITIVE.jugadores - 1).map((nombre, i) => {
-    const ajuste = ajustes[i % ajustes.length] * escala;
-    const juego = new Game(configCompetitivo(app.mapaComp, app.modComp, {
-      startSpeed: Math.round(cfg.startSpeed * ajuste),
-      minSpeed: Math.round(cfg.minSpeed * ajuste),
-    }), () => {});
-    juego.state = 'running';
-    return { nombre, juego };
-  });
-}
+/* BORRAR-COMPETITIVO · partida: cuenta atrás y los cuatro a la vez */
 
 function empezarCompetitivo() {
   if (!app.mapaComp) app.mapaComp = mapaDePartida();
   if (!app.modComp) app.modComp = modificadorDePartida();
   pararTemporizador();
   audio.unlock();
-  audio.play('ui');
   app.demo = null;
 
   const cfg = configCompetitivo(app.mapaComp, app.modComp);
   app.comp = {
     activo: true,
+    fase: 'cuenta',
+    cuenta: 3000,
     restante: COMPETITIVE.tiempo,
     mapa: app.mapaComp,
     mod: app.modComp,
@@ -3251,13 +3237,115 @@ function empezarCompetitivo() {
 
   ponerOverlay(null);
   pantalla('playing');
-  if (el.marcador) el.marcador.hidden = false;
-  if (el.reloj) el.reloj.hidden = false;
+  if (el.reloj) {
+    el.reloj.hidden = false;
+    el.reloj.textContent = String(COMPETITIVE.tiempo / 1000);
+    el.reloj.classList.remove('apurado');
+  }
+  if (el.cuenta) {
+    el.cuenta.hidden = false;
+    el.cuenta.textContent = '3';
+  }
   montarMinis();
   ajustarLienzo();
-  pintarMarcador();
   actualizarMarcador();
 }
+
+function crearRivales(cfg) {
+  const escala = escalaBots(guardado.comp.rango);
+  const ajustes = [0.97, 1, 1.04];
+  return COMPETITIVE.bots.slice(0, COMPETITIVE.jugadores - 1).map((nombre, i) => {
+    const ajuste = ajustes[i % ajustes.length] * escala;
+    const juego = new Game(configCompetitivo(app.mapaComp, app.modComp, {
+      startSpeed: Math.round(cfg.startSpeed * ajuste),
+      minSpeed: Math.round(cfg.minSpeed * ajuste),
+    }), () => {});
+    juego.state = 'running';
+    return { nombre, juego };
+  });
+}
+
+/* BORRAR-COMPETITIVO · las cuadrículas rivales, en vivo a la derecha */
+
+function montarMinis() {
+  if (!el.minis || !app.comp) return;
+  const gente = app.comp.rivales.map((r) => ({ nombre: r.nombre, juego: r.juego }));
+  el.minis.innerHTML = gente.map((p, i) => `<figure class="mini" data-i="${i}">
+      <figcaption><span>${p.nombre}</span><b>0</b></figcaption>
+      <canvas aria-hidden="true"></canvas>
+    </figure>`).join('');
+  el.minis.hidden = false;
+  if (el.pila) {
+    el.pila.classList.add('con-minis');
+    el.pila.classList.toggle('apilado', esApilado());
+  }
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  app.comp.minis = gente.map((p, i) => {
+    const figura = el.minis.querySelector(`.mini[data-i="${i}"]`);
+    const lienzo = figura.querySelector('canvas');
+    const ancho = Math.round(figura.getBoundingClientRect().width) || 72;
+    lienzo.style.width = `${ancho}px`;
+    lienzo.style.height = `${ancho}px`;
+    lienzo.width = Math.round(ancho * dpr);
+    lienzo.height = Math.round(ancho * dpr);
+    return {
+      figura,
+      lienzo,
+      ctx: lienzo.getContext('2d'),
+      juego: p.juego,
+      lado: ancho,
+      dpr,
+      marca: figura.querySelector('b'),
+      ultimo: -1,
+    };
+  });
+}
+
+function esApilado() {
+  const caja = el.stage.getBoundingClientRect();
+  return (caja.width || window.innerWidth || 480) < 560;
+}
+
+function dibujarMinis() {
+  const c = app.comp;
+  if (!c || !c.minis || !el.minis || el.minis.hidden) return;
+  for (const m of c.minis) {
+    m.juego.draw(m.ctx, {
+      cell: m.lado / COLS,
+      ox: 0,
+      oy: 0,
+      width: m.lado,
+      height: m.lado,
+      dpr: m.dpr,
+      mini: true,
+    });
+    const valor = m.juego.score;
+    if (valor !== m.ultimo) {
+      m.ultimo = valor;
+      if (m.marca) m.marca.textContent = puntos(valor);
+    }
+  }
+}
+
+function quitarMinis() {
+  if (!el.minis) return;
+  el.minis.hidden = true;
+  el.minis.innerHTML = '';
+  if (el.pila) {
+    el.pila.classList.remove('con-minis', 'apilado');
+  }
+  if (app.comp) app.comp.minis = null;
+}
+
+function avisarCastigo(mensaje) {
+  if (!el.aviso) return;
+  el.aviso.textContent = mensaje;
+  el.aviso.classList.add('ver');
+  clearTimeout(avisarCastigo.turno);
+  avisarCastigo.turno = setTimeout(() => el.aviso.classList.remove('ver'), 1100);
+}
+
+/* BORRAR-COMPETITIVO · clasificación y reloj */
 
 function tablaCompetitivo(c) {
   const filas = [{
@@ -3276,22 +3364,58 @@ function tablaCompetitivo(c) {
   return filas.sort((a, b) => b.puntos - a.puntos);
 }
 
-function pintarMarcador() {
+function pintarReloj() {
   const c = app.comp;
-  if (!el.marcador || !c || !c.activo) return;
-  const html = tablaCompetitivo(c).map((f, i) => {
-    const clases = [f.yo ? 'propio' : '', f.vivo ? '' : 'fuera'].filter(Boolean).join(' ');
-    return `<p${clases ? ` class="${clases}"` : ''}><span class="p">${i + 1}</span><span class="n">${f.nombre}</span><span class="s">${puntos(f.puntos)}</span></p>`;
-  }).join('');
-  if (el.marcador.dataset.huella !== html) {
-    el.marcador.innerHTML = html;
-    el.marcador.dataset.huella = html;
+  if (!el.reloj || !c || !c.activo) return;
+  const segundos = c.fase === 'cuenta'
+    ? Math.ceil(COMPETITIVE.tiempo / 1000)
+    : Math.max(0, Math.ceil(c.restante / 1000));
+  const texto = String(segundos);
+  if (el.reloj.textContent !== texto) el.reloj.textContent = texto;
+  el.reloj.classList.toggle('apurado', c.fase === 'juego' && c.restante <= 10000);
+}
+
+function pintarCuenta() {
+  const c = app.comp;
+  if (!el.cuenta || !c) return;
+  if (c.fase !== 'cuenta') {
+    el.cuenta.hidden = true;
+    return;
+  }
+  el.cuenta.hidden = false;
+  const texto = c.cuenta > 300 ? String(Math.max(1, Math.ceil(c.cuenta / 1000))) : 'ya';
+  if (el.cuenta.textContent !== texto) {
+    el.cuenta.textContent = texto;
+    el.cuenta.classList.remove('pop');
+    // reinicia la animación del número
+    void el.cuenta.offsetWidth;
+    el.cuenta.classList.add('pop');
   }
 }
 
 function pasoCompetitivo(dt) {
   const c = app.comp;
   if (!c || !c.activo) return;
+
+  // cuenta atrás: nadie se mueve hasta el mismo instante
+  if (c.fase === 'cuenta') {
+    c.cuenta = Math.max(0, c.cuenta - dt);
+    pintarCuenta();
+    pintarReloj();
+    if (c.cuenta <= 0) {
+      c.fase = 'juego';
+      // al acabar la cuenta, todos arrancan solos: también tú
+      if (app.juego.state === 'ready') {
+        app.juego.state = 'running';
+        app.juego.savedState = 'running';
+      }
+      el.prompt.classList.remove('visible');
+      pintarCuenta();
+      audio.play('start');
+    }
+    return;
+  }
+
   c.restante = Math.max(0, c.restante - dt);
   app.juego.update(dt);
   for (const rival of c.rivales) {
@@ -3300,7 +3424,7 @@ function pasoCompetitivo(dt) {
       rival.juego.update(dt);
     }
   }
-  pintarMarcador();
+  pintarReloj();
   if (c.restante <= 0) finCompetitivo();
 }
 
@@ -3313,7 +3437,6 @@ function finCompetitivo() {
   const filas = tablaCompetitivo(c).map((f, i) => ({ ...f, puesto: i + 1 }));
   const yo = filas.find((f) => f.yo) || { puesto: filas.length };
   const delta = COMPETITIVE.premios[Math.min(COMPETITIVE.premios.length - 1, yo.puesto - 1)];
-  const antes = rangoInfo(guardado.comp);
   const cambio = ajustarRango(guardado.comp, delta);
   guardado.comp = {
     rango: cambio.rango,
@@ -3325,14 +3448,14 @@ function finCompetitivo() {
   guardar();
 
   const despues = rangoInfo(guardado.comp);
-  c.resultado = { filas, puesto: yo.puesto, delta, antes, despues };
+  c.resultado = { filas, puesto: yo.puesto, delta, antes: despues };
   const signo = delta > 0 ? `+${delta}` : String(delta);
   const titulo = yo.puesto === 1 ? 'has ganado' : `${yo.puesto}º de ${filas.length}`;
   const movimiento = cambio.sube
-    ? `asciendes a ${despues.nombre}`
+    ? `subes a ${despues.nombre}`
     : cambio.baja
       ? `bajas a ${despues.nombre}`
-      : textoRango(despues);
+      : `${despues.dentro}/${COMPETITIVE.porRango} para ${despues.siguiente || 'nada'}`;
 
   const tabla = filas.map((f) => `<li${f.yo ? ' class="propio"' : ''}>
       <span class="p">${f.puesto}</span>
@@ -3342,10 +3465,16 @@ function finCompetitivo() {
 
   ponerOverlay(`<div class="panel versus fin-comp">
     <div class="fin-cabeza">
-      <p class="kicker">competitivo · ${c.mod.nombre} · ${c.mapa.nombre}</p>
-      <p class="cifra">${titulo}</p>
+      <div class="rango-cabeza">
+        ${icoRango(despues.rango, ' grande')}
+        <div>
+          <p class="kicker">competitivo · ${c.mod.nombre} · ${c.mapa.nombre}</p>
+          <p class="cifra">${titulo}</p>
+        </div>
+      </div>
       <p class="nota">${signo} de rango · ${movimiento}${c.muertes ? ` · reviviste ${c.muertes}×` : ''}</p>
     </div>
+    ${tiraRangos(despues.rango)}
     <ol class="comp-tabla">${tabla}</ol>
     <div class="acciones">
       <button class="principal" type="button" data-accion="comp-again">revancha <kbd>enter</kbd></button>
@@ -3355,9 +3484,8 @@ function finCompetitivo() {
   pantalla('versus-fin');
   quitarMinis();
   enfocarPrimero('button[data-accion="comp-again"]');
-  if (el.marcador) el.marcador.hidden = true;
   if (el.reloj) el.reloj.hidden = true;
-  if (el.minis) el.minis.hidden = true;
+  if (el.cuenta) el.cuenta.hidden = true;
   el.pause.disabled = true;
   el.prompt.classList.remove('visible');
   audio.play(yo.puesto === 1 ? 'level' : 'ui');
@@ -3388,7 +3516,6 @@ function empezarPartida(modo, nivel = 0) {
   audio.unlock();
   app.demo = null;
   app.comp = null; // BORRAR-COMPETITIVO
-  if (el.marcador) el.marcador.hidden = true; // BORRAR-COMPETITIVO
   if (el.reloj) el.reloj.hidden = true; // BORRAR-COMPETITIVO
   if (el.minis) el.minis.innerHTML = ''; // BORRAR-COMPETITIVO
   if (el.minis) el.minis.hidden = true; // BORRAR-COMPETITIVO
@@ -3700,7 +3827,16 @@ function accion(nombre) {
   }
 
   // BORRAR-COMPETITIVO
-  if (app.pantalla === 'versus' || app.pantalla === 'versus-fin') {
+  if (app.pantalla === 'sorteo') {
+    // BORRAR-COMPETITIVO · mientras se sortea, sólo se puede salir
+    if (nombre === 'back' || nombre === 'pause') {
+      pararTemporizador();
+      mostrarInicio();
+    }
+    return;
+  }
+
+  if (app.pantalla === 'versus-fin') {
     if (esDireccion) {
       moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
       return;
@@ -3710,14 +3846,10 @@ function accion(nombre) {
       return;
     }
     if (nombre === 'restart') {
-      if (app.pantalla === 'versus') empezarCompetitivo();
-      else mostrarCompetitivo();
+      sorteoCompetitivo();
       return;
     }
-    if (nombre === 'back') {
-      if (app.pantalla === 'versus') mostrarModos(2);
-      else mostrarInicio();
-    }
+    if (nombre === 'back') mostrarInicio();
     return;
   }
 
@@ -3775,7 +3907,7 @@ function accion(nombre) {
   if (nombre === 'restart') {
     // BORRAR-COMPETITIVO
     if (app.comp && app.comp.activo) {
-      mostrarCompetitivo();
+      sorteoCompetitivo();
       return;
     }
     if (app.juego) empezarPartida(app.modo, app.nivel);
@@ -3818,11 +3950,8 @@ function ejecutar(nombre) {
       borrarRecords();
       break;
     // BORRAR-COMPETITIVO
-    case 'comp-start':
-      empezarCompetitivo();
-      break;
     case 'comp-again':
-      mostrarCompetitivo();
+      sorteoCompetitivo();
       break;
     default:
       break;
@@ -3923,6 +4052,12 @@ el.overlay.addEventListener('click', (e) => {
   if (boton.dataset.grupo !== undefined) {
     audio.unlock();
     audio.play('ui');
+    const grupo = GROUPS[Number(boton.dataset.grupo)];
+    // BORRAR-COMPETITIVO · competitivo va directo, sin subpágina de un solo modo
+    if (grupo && grupo.modes.length === 1 && grupo.modes[0] === 'competitive') {
+      sorteoCompetitivo();
+      return;
+    }
     mostrarModos(Number(boton.dataset.grupo));
     return;
   }
@@ -4064,7 +4199,7 @@ try {
 if (location.hash === '#debug') {
   window.__snake = { app, guardado, accion, empezarPartida, mostrarInicio, crearDemo, mostrarFin };
   // BORRAR-COMPETITIVO
-  window.__snake.mostrarCompetitivo = mostrarCompetitivo;
+  window.__snake.sorteoCompetitivo = sorteoCompetitivo;
   window.__snake.empezarCompetitivo = empezarCompetitivo;
   window.__snake.finCompetitivo = finCompetitivo;
 }

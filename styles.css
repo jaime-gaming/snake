@@ -1012,7 +1012,8 @@ button.foco {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   BORRAR-COMPETITIVO · lo justo: reloj centrado, minis y rangos en bloques.
+   BORRAR-COMPETITIVO · vista del competitivo: tablero a la izquierda, rivales
+   en columna a la derecha, reloj encima y cuenta atrás en el centro.
    grep -rn BORRAR-COMPETITIVO .
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -1039,25 +1040,56 @@ button.foco {
 
 #pila {
   display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+}
+
+#pila.apilado {
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  min-width: 0;
 }
 
 #minis {
   display: flex;
-  gap: 6px;
-  justify-content: center;
-  max-width: 100%;
+  flex-direction: column;
+  gap: 8px;
+  align-self: stretch;
+}
+
+#pila.apilado #minis {
+  flex-direction: row;
+  align-self: center;
 }
 
 .mini {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   margin: 0;
-  width: 78px;
+  width: 86px;
+}
+
+.mini figcaption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.mini figcaption b {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
 }
 
 .mini canvas {
@@ -1068,20 +1100,75 @@ button.foco {
   outline: 1px solid var(--line2);
 }
 
-.mini.propio canvas {
-  outline-color: var(--fg);
+/* sorteo: dos valores girando, luego se quedan */
+#sorteo {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: #000;
+  text-align: center;
+  pointer-events: none;
 }
 
-.mini figcaption {
-  font-size: 8px;
-  letter-spacing: 0.12em;
+#sorteo .k {
+  margin: 12px 0 0;
+  font-size: 9px;
+  letter-spacing: 0.24em;
   text-transform: uppercase;
   color: var(--dim);
-  text-align: center;
 }
 
-.mini.propio figcaption {
+#sorteo .v {
+  margin: 0;
+  font-size: clamp(22px, 6vw, 38px);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #8f8f8f;
+  font-variant-numeric: tabular-nums;
+}
+
+#sorteo.fijo .k {
   color: var(--fg);
+}
+
+#sorteo.fijo .v {
+  color: var(--fg);
+  outline: 1px solid var(--line2);
+  padding: 2px 14px;
+}
+
+/* cuenta atrás: un número por segundo, a bloques */
+#cuenta {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 5;
+  transform: translate(-50%, -50%);
+  font-size: clamp(64px, 18vw, 132px);
+  font-weight: 600;
+  line-height: 0.9;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+  pointer-events: none;
+}
+
+#cuenta.pop {
+  animation: latido 0.5s steps(2, end);
+}
+
+@keyframes latido {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(1.18); }
+  100% { opacity: 0.85; transform: translate(-50%, -50%) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #cuenta.pop { animation: none; opacity: 1; }
 }
 
 #aviso {
@@ -1103,72 +1190,36 @@ button.foco {
   opacity: 1;
 }
 
-#marcador {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 3px 5px;
-  background: rgba(0, 0, 0, 0.72);
-  border: 1px solid var(--line);
-  font-size: 8px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--dim);
-  pointer-events: none;
+/* rangos: siete cubos SVG */
+.ico-rango {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  fill: currentColor;
 }
 
-#marcador p {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  margin: 0;
-  line-height: 1.35;
-}
-
-#marcador .p {
-  width: 7px;
-  color: #6a6a6a;
-}
-
-#marcador .n {
-  flex: 1 1 auto;
-}
-
-#marcador .s {
-  font-variant-numeric: tabular-nums;
-  color: #cfcfcf;
-}
-
-#marcador .propio,
-#marcador .propio .p {
+.ico-rango.grande {
+  width: 34px;
+  height: 34px;
   color: var(--fg);
 }
 
-#marcador .fuera {
-  opacity: 0.4;
-  text-decoration: line-through;
-}
-
-/* rangos: siete bloques, ni una lista ni un párrafo */
 .rangos {
   display: flex;
-  gap: 3px;
+  gap: 4px;
 }
 
 .rangos .bloque {
+  display: flex;
   flex: 1 1 0;
-  padding: 6px 0;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 0;
   background: #0d0d0d;
   border: 1px solid var(--line);
-  color: #4f4f4f;
-  font-size: 9px;
-  font-weight: 600;
-  text-align: center;
-  letter-spacing: 0.1em;
+  color: #4a4a4a;
+  font-size: 16px;
 }
 
 .rangos .bloque.hecho {
@@ -1182,29 +1233,10 @@ button.foco {
   color: #000;
 }
 
-.sellos {
+.rango-cabeza {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.sellos span {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  padding: 3px 6px;
-  border: 1px solid var(--line);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  color: var(--fg);
-}
-
-.sellos b {
-  font-size: 8px;
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--dim);
+  align-items: center;
+  gap: 10px;
 }
 
 .comp-tabla {
@@ -1252,9 +1284,6 @@ button.foco {
     width: 62px;
   }
   .mini figcaption {
-    font-size: 7px;
-  }
-  #marcador {
     font-size: 7px;
   }
 }
