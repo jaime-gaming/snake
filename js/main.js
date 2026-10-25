@@ -13,7 +13,7 @@ function avisar(mensaje) {
 function comprobarPiezas() {
   const faltan = [];
   if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.portals || !MODES.hunter) faltan.push('modos');
-  if (!Array.isArray(LEVELS) || LEVELS.length !== 12) faltan.push('niveles');
+  if (!Array.isArray(LEVELS) || LEVELS.length !== 20) faltan.push('niveles');
   if (typeof Game !== 'function') faltan.push('motor');
   if (faltan.length) {
     avisar(`faltan piezas (${faltan.join(', ')}). casi seguro hay ficheros viejos en caché: pulsa recargar limpio.`);
@@ -117,6 +117,8 @@ const app = {
   demoModo: null,
   demoAcum: 0,
   menuSel: 0,
+  grupo: 0,
+  modoSel: 0,
   nivelSel: 0,
   marca: 0,
   reloj: 0,
@@ -206,8 +208,9 @@ function pantalla(nombre) {
 }
 
 const PISTAS = {
-  home: '↑↓ elegir · ←→ saltar de grupo · enter jugar',
-  levels: 'flechas nav · enter jugar · esc menú',
+  home: '↑↓ grupo · enter abrir',
+  modes: '↑↓ modo · ←→ grupo · enter jugar · esc volver',
+  levels: 'flechas nav · enter jugar · esc grupos',
   help: 'esc volver',
   playing: '',
   paused: 'P seguir · R reiniciar · esc menú',
@@ -280,6 +283,10 @@ function actualizarEfectos(juego) {
     if (juego.fx.ghost > 0) activos.push(['fantasma', juego.fx.ghost / POWER_INFO.ghost.ms]);
     if (juego.fx.slow > 0) activos.push(['lento', juego.fx.slow / POWER_INFO.slow.ms]);
     if (juego.turbo) activos.push(['turbo', 1]);
+    if (juego.cfg && juego.cfg.hunter && juego.hunter) {
+      const tope = juego.cfg.hunterCap || 18;
+      if (juego.hunter.body.length >= tope) activos.push(['cazador lleno', 1]);
+    }
   }
 
   for (const [nombre, chip] of app.chips) {
@@ -306,21 +313,8 @@ function actualizarEfectos(juego) {
 
 /* ---------------------------------------------------------- menú */
 
-function valorDerecha(modo) {
-  if (modo === 'campaign') return `${guardado.campaign.unlocked - 1}/${LEVELS.length}`;
-  const mejor = guardado.best[modo] || 0;
-  return mejor ? String(mejor) : '—';
-}
-
-// izquierda y derecha saltan de grupo
-function grupoDe(modo) {
-  return GROUPS.findIndex((g) => g.modes.includes(modo));
-}
-
-function primerModoDelGrupo(indice) {
-  const total = GROUPS.length;
-  const grupo = GROUPS[((indice % total) + total) % total];
-  return ORDEN.indexOf(grupo.modes[0]);
+function modosDelGrupo(indice = app.grupo) {
+  return GROUPS[((indice % GROUPS.length) + GROUPS.length) % GROUPS.length].modes;
 }
 
 function nombreModo(modo) {
@@ -329,38 +323,58 @@ function nombreModo(modo) {
 }
 
 function descripcion(modo) {
-  if (modo === 'campaign') {
-    return `campaña: ${LEVELS.length} niveles con muros`;
-  }
-  return MODES[modo].name.toLowerCase() + ': ' + MODES[modo].tag;
+  if (modo === 'campaign') return `20 niveles con muros · ${guardado.campaign.unlocked - 1} superados`;
+  return MODES[modo].tag;
+}
+
+function valorDerecha(modo) {
+  if (modo === 'campaign') return `${guardado.campaign.unlocked - 1}/${LEVELS.length}`;
+  const mejor = guardado.best[modo] || 0;
+  return mejor ? String(mejor) : '—';
+}
+
+function resumenGrupo(indice) {
+  const grupo = GROUPS[indice];
+  if (indice === 0) return `${guardado.campaign.unlocked - 1}/${LEVELS.length}`;
+  const hechos = grupo.modes.filter((m) => (guardado.best[m] || 0) > 0).length;
+  return `${hechos}/${grupo.modes.length}`;
+}
+
+// la portada enseña cada grupo; la demo es un modo que lo representa
+function modoDeGrupo(indice) {
+  const grupo = GROUPS[indice];
+  if (indice === 0) return 'campaign';
+  const conRecord = grupo.modes.filter((m) => (guardado.best[m] || 0) > 0);
+  return (conRecord[conRecord.length - 1]) || grupo.modes[0];
+}
+
+function filaModo(modo, i) {
+  return `<button class="row" type="button" data-modo="${modo}" data-i="${i}">
+    <span class="row-idx">${dosDigitos(i + 1)}</span>
+    <span class="row-name">${nombreModo(modo)}<small>${descripcion(modo)}</small></span>
+    <span class="row-right">${valorDerecha(modo)}</span>
+  </button>`;
 }
 
 function mostrarInicio() {
   pararTemporizador();
   app.juego = null;
-  app.menuSel = 0;
+  app.grupo = Math.min(app.grupo, GROUPS.length - 1);
   app.demoModo = null;
 
-  let indice = 0;
-  const filas = GROUPS.map((grupo) => {
-    const botones = grupo.modes.map((modo) => {
-      const i = indice++;
-      return `<button class="row" type="button" data-modo="${modo}" data-i="${i}">
-        <span class="row-idx">${dosDigitos(i + 1)}</span>
-        <span class="row-name">${nombreModo(modo)}<small>${descripcion(modo)}</small></span>
-        <span class="row-right">${valorDerecha(modo)}</span>
-      </button>`;
-    }).join('');
-    return `<p class="grupo">${grupo.name}</p>${botones}`;
-  }).join('');
+  const filas = GROUPS.map((grupo, i) => `<button class="row" type="button" data-grupo="${i}" data-i="${i}">
+      <span class="row-idx">${dosDigitos(i + 1)}</span>
+      <span class="row-name">${grupo.name}<small>${grupo.tag} · ${grupo.modes.length} ${grupo.modes.length === 1 ? 'modo' : 'modos'}</small></span>
+      <span class="row-right">${resumenGrupo(i)}</span>
+    </button>`).join('');
 
-  ponerOverlay(`<div class="panel inicio">
+  ponerOverlay(`<div class="panel inicio portada">
     <div class="inicio-texto">
       <header class="inicio-cabeza">
         <h1>snake<span class="dot">.</span></h1>
-        <p class="kicker">rejilla 20×20 · ${ORDEN.length} modos y una campaña</p>
+        <p class="kicker">rejilla 20×20 · ${LEVELS.length} niveles · 7 modos</p>
       </header>
-      <nav class="filas">${filas}</nav>
+      <nav class="filas" aria-label="grupos">${filas}</nav>
       <p class="pie">
         <button class="link" type="button" data-accion="help">controles</button>
         <span aria-hidden="true">·</span>
@@ -371,13 +385,13 @@ function mostrarInicio() {
     </div>
     <aside class="inicio-demo">
       <p class="kicker" id="demo-titulo">vista previa</p>
-      <canvas id="demo" aria-label="vista previa del modo elegido"></canvas>
-      <p class="nota" id="demo-nota">así se juega el modo que tienes marcado</p>
+      <canvas id="demo" aria-label="vista previa"></canvas>
+      <p class="nota" id="demo-nota">elige un grupo para ver sus modos</p>
     </aside>
   </div>`);
 
   el.score.textContent = '—';
-  el.meta.textContent = 'elige un modo';
+  el.meta.textContent = 'elige un grupo';
   if (el.timer) el.timer.hidden = true;
   el.best.textContent = '';
   el.mult.textContent = '';
@@ -386,18 +400,80 @@ function mostrarInicio() {
   el.pause.textContent = 'pausa';
   el.prompt.classList.remove('visible');
   pantalla('home');
+  seleccionarGrupo(app.grupo);
+  ajustarLienzo();
+}
+
+function seleccionarGrupo(i) {
+  const total = GROUPS.length;
+  app.grupo = ((i % total) + total) % total;
+  el.overlay.querySelectorAll('[data-grupo]').forEach((nodo) => {
+    if (nodo.classList.contains('tab')) return;
+    nodo.classList.toggle('sel', Number(nodo.dataset.grupo) === app.grupo);
+  });
+  const modo = modoDeGrupo(app.grupo);
+  if (app.demoModo !== modo) crearDemo(modo);
+  pintarTituloDemo(modo, 'grupo');
+}
+
+function mostrarModos(indice = app.grupo) {
+  pararTemporizador();
+  app.juego = null;
+  app.demo = null;
+  app.grupo = ((indice % GROUPS.length) + GROUPS.length) % GROUPS.length;
+  app.modoSel = 0;
+  app.demoModo = null;
+
+  const grupo = GROUPS[app.grupo];
+  const filas = grupo.modes.map((modo, i) => filaModo(modo, i)).join('');
+  const tabs = GROUPS.map((g, i) =>
+    `<button class="tab${i === app.grupo ? ' sel' : ''}" type="button" data-tab="${i}">${g.name}</button>`).join('');
+
+  ponerOverlay(`<div class="panel modos">
+    <div class="niveles-cabeza">
+      <div>
+        <p class="kicker">menú · ${dosDigitos(app.grupo + 1)}</p>
+        <h2>${grupo.name}</h2>
+      </div>
+      <button class="ghost" type="button" data-accion="home">grupos <kbd>esc</kbd></button>
+    </div>
+    <nav class="tabs" aria-label="cambiar de grupo">${tabs}</nav>
+    <div class="modos-cuerpo">
+      <nav class="filas" aria-label="modos">${filas}</nav>
+      <aside class="inicio-demo">
+        <p class="kicker" id="demo-titulo">vista previa</p>
+        <canvas id="demo" aria-label="vista previa del modo"></canvas>
+        <p class="nota" id="demo-nota"></p>
+      </aside>
+    </div>
+    <p class="pie"><span>↑↓ elegir · ←→ cambiar de grupo · enter jugar</span></p>
+  </div>`);
+
+  el.score.textContent = '—';
+  el.meta.textContent = grupo.name;
+  if (el.timer) el.timer.hidden = true;
+  el.best.textContent = '';
+  el.mult.textContent = '';
+  el.chain.style.width = '0%';
+  el.pause.disabled = true;
+  el.pause.textContent = 'pausa';
+  el.prompt.classList.remove('visible');
+  pantalla('modes');
   seleccionarModo(0);
   ajustarLienzo();
 }
 
 function seleccionarModo(i) {
-  const total = ORDEN.length;
-  app.menuSel = ((i % total) + total) % total;
-  el.overlay.querySelectorAll('.row').forEach((nodo, j) => {
-    nodo.classList.toggle('sel', j === app.menuSel);
+  const modos = modosDelGrupo();
+  const total = modos.length;
+  app.modoSel = ((i % total) + total) % total;
+  app.menuSel = ORDEN.indexOf(modos[app.modoSel]);
+  el.overlay.querySelectorAll('.row[data-modo]').forEach((nodo, j) => {
+    nodo.classList.toggle('sel', j === app.modoSel);
   });
-  const modo = ORDEN[app.menuSel];
+  const modo = modos[app.modoSel];
   if (app.demoModo !== modo) crearDemo(modo);
+  pintarTituloDemo(modo, 'modo');
 }
 
 function elegirModo(modo) {
@@ -443,7 +519,7 @@ function pintarNiveles() {
         <p class="kicker">campaña · ${guardado.campaign.unlocked - 1}/${LEVELS.length} superados</p>
         <h2>elige nivel</h2>
       </div>
-      <button class="ghost" type="button" data-accion="home">menú</button>
+      <button class="ghost" type="button" data-accion="modos">grupos <kbd>esc</kbd></button>
     </div>
     <div class="niveles-cuerpo">
       <div class="rejilla">${celdas}</div>
@@ -533,7 +609,7 @@ function mostrarAyuda() {
         <tr><th>turbo</th><td>espacio o mayús · toca el tablero</td></tr>
         <tr><th>pausa</th><td>P o esc</td></tr>
         <tr><th>reiniciar</th><td>R</td></tr>
-        <tr><th>menú</th><td>↑↓ elegir · ←→ saltar de grupo</td></tr>
+        <tr><th>menú</th><td>↑↓ grupo o modo · ←→ cambiar de grupo</td></tr>
         <tr><th>sonido</th><td>M</td></tr>
         <tr><th>mando</th><td>d-pad y sticks · A turbo · start pausa</td></tr>
       </tbody>
@@ -543,11 +619,14 @@ function mostrarAyuda() {
       <li>la comida encadena: dos frutas seguidas suben el multiplicador hasta ×5</li>
       <li>el rombo rojo caduca y da dos anillos de largo</li>
       <li>los iconos blancos dan poderes: círculo discontinuo fantasma (atraviesas todo), dos barras lento, cuadrado recorte</li>
-      <li>en cazador hay una serpiente roja: come los puntos azules y se hace más larga</li>
-      <li>si te toca cualquier anillo suyo, o su cabeza, pierdes; con el fantasma la atraviesas</li>
-      <li>en los portales, entrar por uno te saca por el otro</li>
-      <li>en ciego sólo ves un círculo a tu alrededor</li>
-      <li>en reloj empiezas con 45 segundos y cada fruta te da 2,6 más</li>
+      <li>la campaña son 20 niveles: se abre uno cada vez que cierras el anterior</li>
+      <li>clásico: pasadas 30 frutas empiezan a salir muros sueltos</li>
+      <li>frenesí: los bordes dan la vuelta y la velocidad sube sola</li>
+      <li>portales: entrar por un aro te saca por el otro, y cambian de sitio</li>
+      <li>cazador: la serpiente roja come puntos azules y crece; si te toca, pierdes</li>
+      <li>cuando el cazador está lleno va directo a por ti y se mueve al doble</li>
+      <li>en ciego sólo ves un círculo, y se abre poco a poco según comes</li>
+      <li>en reloj sales con 45 segundos, cada fruta suma 2,6 y el rombo 4 más</li>
       <li>en muro el mapa se llena de muros cada tres frutas</li>
       <li>al empezar cada partida el mapa se enciende desde tu cabeza</li>
     </ul>
@@ -779,13 +858,29 @@ function accion(nombre) {
   const esDireccion = ['up', 'down', 'left', 'right'].includes(nombre);
 
   if (app.pantalla === 'home') {
-    if (nombre === 'up') seleccionarModo(app.menuSel - 1);
-    else if (nombre === 'down') seleccionarModo(app.menuSel + 1);
-    else if (nombre === 'right') seleccionarModo(primerModoDelGrupo(grupoDe(ORDEN[app.menuSel]) + 1));
-    else if (nombre === 'left') seleccionarModo(primerModoDelGrupo(grupoDe(ORDEN[app.menuSel]) - 1));
+    if (nombre === 'up' || nombre === 'left') seleccionarGrupo(app.grupo - 1);
+    else if (nombre === 'down' || nombre === 'right') seleccionarGrupo(app.grupo + 1);
     else if (nombre === 'confirm') {
       audio.play('ui');
-      elegirModo(ORDEN[app.menuSel]);
+      mostrarModos(app.grupo);
+    }
+    return;
+  }
+
+  if (app.pantalla === 'modes') {
+    if (nombre === 'up') seleccionarModo(app.modoSel - 1);
+    else if (nombre === 'down') seleccionarModo(app.modoSel + 1);
+    else if (nombre === 'left') {
+      audio.play('ui');
+      mostrarModos(app.grupo - 1);
+    } else if (nombre === 'right') {
+      audio.play('ui');
+      mostrarModos(app.grupo + 1);
+    } else if (nombre === 'confirm') {
+      audio.play('ui');
+      elegirModo(modosDelGrupo()[app.modoSel]);
+    } else if (nombre === 'back' || nombre === 'pause') {
+      mostrarInicio();
     }
     return;
   }
@@ -798,7 +893,7 @@ function accion(nombre) {
     else if (nombre === 'confirm') {
       audio.play('ui');
       elegirNivel(app.nivelSel);
-    } else if (nombre === 'back' || nombre === 'pause') mostrarInicio();
+    } else if (nombre === 'back' || nombre === 'pause') mostrarModos(0);
     return;
   }
 
@@ -862,6 +957,9 @@ function ejecutar(nombre) {
       break;
     case 'home':
       mostrarInicio();
+      break;
+    case 'modos':
+      mostrarModos(0);
       break;
     case 'help':
       mostrarAyuda();
@@ -931,17 +1029,22 @@ function crearDemo(modo = app.demoModo || ORDEN[app.menuSel] || 'classic') {
   pintarTituloDemo(modo);
 }
 
-function pintarTituloDemo(modo) {
+function pintarTituloDemo(modo, contexto = 'modo') {
   const titulo = document.getElementById('demo-titulo');
   const nota = document.getElementById('demo-nota');
   if (!titulo) return;
   if (modo === 'campaign') {
-    const nivel = LEVELS[Math.min(guardado.campaign.unlocked - 1, LEVELS.length - 1)];
-    titulo.textContent = `vista previa · nivel ${dosDigitos(LEVELS.indexOf(nivel) + 1)} ${nivel.name.toLowerCase()}`;
-    nota.textContent = 'así es el siguiente nivel de la campaña';
+    const indice = Math.min(guardado.campaign.unlocked - 1, LEVELS.length - 1);
+    const nivel = LEVELS[indice];
+    titulo.textContent = `vista previa · nivel ${dosDigitos(indice + 1)} ${nivel.name.toLowerCase()}`;
+    nota.textContent = contexto === 'grupo'
+      ? `la campaña sigue por aquí · ${guardado.campaign.unlocked - 1} de ${LEVELS.length} superados`
+      : 'así es el siguiente nivel de la campaña';
   } else {
     titulo.textContent = `vista previa · ${nombreModo(modo)}`;
-    nota.textContent = MODES[modo].tag;
+    nota.textContent = contexto === 'grupo'
+      ? `${MODES[modo].tag} · entra para ver los demás`
+      : MODES[modo].tag;
   }
 }
 
@@ -968,6 +1071,18 @@ el.overlay.addEventListener('click', (e) => {
   const boton = e.target.closest('button');
   if (!boton) return;
   soltarFoco();
+  if (boton.dataset.grupo !== undefined) {
+    audio.unlock();
+    audio.play('ui');
+    mostrarModos(Number(boton.dataset.grupo));
+    return;
+  }
+  if (boton.dataset.tab !== undefined) {
+    audio.unlock();
+    audio.play('ui');
+    mostrarModos(Number(boton.dataset.tab));
+    return;
+  }
   if (boton.dataset.modo) {
     audio.unlock();
     audio.play('ui');
@@ -988,7 +1103,12 @@ el.overlay.addEventListener('click', (e) => {
 el.overlay.addEventListener('pointerover', (e) => {
   const boton = e.target.closest('button');
   if (!boton) return;
-  if (app.pantalla === 'home' && boton.dataset.i) seleccionarModo(Number(boton.dataset.i));
+  if (app.pantalla === 'home' && boton.dataset.grupo !== undefined) {
+    seleccionarGrupo(Number(boton.dataset.grupo));
+  }
+  if (app.pantalla === 'modes' && boton.dataset.modo !== undefined) {
+    seleccionarModo(Number(boton.dataset.i));
+  }
   if (app.pantalla === 'levels' && boton.dataset.nivel !== undefined) {
     seleccionarNivel(Number(boton.dataset.nivel));
   }
@@ -1038,7 +1158,7 @@ function bucle(t) {
   const dt = app.reloj ? t - app.reloj : 16;
   app.reloj = t;
 
-  if (app.pantalla === 'home') {
+  if (app.pantalla === 'home' || app.pantalla === 'modes') {
     pasoDemo(dt);
   } else if (app.juego) {
     app.juego.update(dt);

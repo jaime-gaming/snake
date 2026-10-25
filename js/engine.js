@@ -68,7 +68,8 @@ export class Game {
     if (cfg.portals) this.placePortals();
     if (cfg.hunter) {
       this.placeHunter();
-      for (let i = 0; i < 2; i++) this.spawnPellet();
+      const cuantos = Math.max(2, cfg.hunterPellets || 2);
+      for (let i = 0; i < cuantos; i++) this.spawnPellet();
     }
   }
 
@@ -117,8 +118,8 @@ export class Game {
   }
 
   interval() {
-    const slow = this.fx.slow > 0 ? 1.55 : 1;
-    return Math.max(24, this.speed * (this.turbo ? 0.62 : 1) * slow);
+    const slow = this.fx.slow > 0 ? 1.5 : 1;
+    return Math.max(42, this.speed * (this.turbo ? 0.68 : 1) * slow);
   }
 
   setDirection(dx, dy) {
@@ -208,7 +209,17 @@ export class Game {
   updateFx(dt) {
     const k = dt / 1000;
     if (this.reveal < 1) this.reveal = Math.min(1, this.reveal + dt / 1000);
-    if (this.crash) this.crash.t = Math.min(700, this.crash.t + dt);
+    if (this.crash) {
+      this.crash.t = Math.min(1600, this.crash.t + dt);
+      // la serpiente se deshace de la cabeza a la cola, un anillo cada 18 ms
+      const objetivo = Math.min(this.body.length, Math.floor(this.crash.t / 18));
+      while (this.crash.popped < objetivo) {
+        const c = this.body[this.crash.popped];
+        this.crash.popped++;
+        if (!c) break;
+        this.burst(c.x + 0.5, c.y + 0.5, 2, '#ffffff', 5);
+      }
+    }
     this.shake = Math.max(0, this.shake - dt * 0.05);
     this.flash = Math.max(0, this.flash - dt * 0.004);
     for (let i = this.particles.length - 1; i >= 0; i--) {
@@ -299,6 +310,11 @@ export class Game {
     this.burst(food.x + 0.5, food.y + 0.5, 10, '#ff2b2b', 7);
     if (cfg.timePerFood) this.timeLeft = Math.min((cfg.timer || 0) * 2, this.timeLeft + cfg.timePerFood);
     if (cfg.spawnWalls && cfg.wallEvery && this.fruits % cfg.wallEvery === 0) this.raiseWall();
+    // clásico: pasada la mitad de la partida empiezan a salir muros sueltos
+    if (cfg.wallFrom && this.fruits > cfg.wallFrom && cfg.wallEvery &&
+      this.fruits % cfg.wallEvery === 0 && this.walls.length < (cfg.wallMax || 999)) {
+      this.raiseWall();
+    }
     this.emit('eat', { chain: this.chain, multiplier: this.multiplier });
     this.spawnFood();
     if (cfg.bonusEvery && this.fruits % cfg.bonusEvery === 0) this.spawnBonus();
@@ -319,6 +335,9 @@ export class Game {
     this.score += 50 * this.multiplier;
     this.shake = 5;
     this.burst(b.x + 0.5, b.y + 0.5, 18, '#ffffff', 9);
+    if (this.cfg.bonusTime && this.cfg.timer) {
+      this.timeLeft = Math.min((this.cfg.timer || 0) * 2, this.timeLeft + this.cfg.bonusTime);
+    }
     if (this.cfg.hunter) this.placeHunter();
     this.emit('bonus', { score: this.score });
   }
@@ -344,17 +363,13 @@ export class Game {
     if (this.state !== 'running') return;
     this.state = 'dead';
     this.turbo = false;
-    this.shake = 16;
-    this.flash = 1.4;
-    this.hitStop = 160;
-    const cx = (x ?? 0) + 0.5;
-    const cy = (y ?? 0) + 0.5;
-    this.crash = { x: cx, y: cy, t: 0, reason };
-    this.burst(cx, cy, 26, '#ffffff', 11);
-    // la serpiente se deshace en chispas desde la cola
-    this.body.forEach((c, i) => {
-      if (i % 2 === 0) this.burst(c.x + 0.5, c.y + 0.5, 3, '#ffffff', 5);
-    });
+    this.shake = 11;
+    this.flash = 0.8;
+    this.hitStop = 90;
+    const impactox = x ?? this.body[0].x;
+    const impactoY = y ?? this.body[0].y;
+    this.crash = { x: impactox, y: impactoY, t: 0, reason, popped: 0 };
+    this.burst(impactox + 0.5, impactoY + 0.5, 22, '#ffffff', 10);
     this.emit('die', { reason, score: this.score, fruits: this.fruits });
   }
 
@@ -489,6 +504,42 @@ export class Game {
     }
   }
 
+  // casillas libres a las que se puede llegar desde la cabeza: la comida nunca cae en un hueco cerrado
+  reachableFree() {
+    const muro = new Set(this.wallSet);
+    for (let i = 0; i < this.body.length - 1; i++) muro.add(K(this.body[i].x, this.body[i].y));
+    if (this.hunter) for (const p of this.hunter.body) muro.add(K(p.x, p.y));
+    const inicio = this.body[0];
+    const visto = new Set([K(inicio.x, inicio.y)]);
+    const cola = [inicio];
+    const libres = [];
+    for (let c = 0; c < cola.length; c++) {
+      const p = cola[c];
+      for (const [dx, dy] of DIRS) {
+        const nx = p.x + dx;
+        const ny = p.y + dy;
+        if (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows) continue;
+        const k = K(nx, ny);
+        if (visto.has(k) || muro.has(k)) continue;
+        visto.add(k);
+        cola.push({ x: nx, y: ny });
+        libres.push({ x: nx, y: ny });
+      }
+    }
+    return libres;
+  }
+
+  ocupada(x, y) {
+    if (this.body.some((s) => s.x === x && s.y === y)) return true;
+    if (this.bonus && this.bonus.x === x && this.bonus.y === y) return true;
+    if (this.power && this.power.x === x && this.power.y === y) return true;
+    if (this.hunter && this.hunter.body.some((p) => p.x === x && p.y === y)) return true;
+    if (this.pellets.some((p) => p.x === x && p.y === y)) return true;
+    if (this.portals && this.portals.some((p) =>
+      (p.a.x === x && p.a.y === y) || (p.b.x === x && p.b.y === y))) return true;
+    return false;
+  }
+
   freeCell(pad = 0) {
     const blocked = (x, y) => {
       if (this.wallSet.has(K(x, y))) return true;
@@ -514,8 +565,13 @@ export class Game {
   }
 
   spawnFood() {
-    const cell = this.freeCell(0);
-    if (cell) this.food = cell;
+    const libres = this.reachableFree().filter((c) => !this.ocupada(c.x, c.y));
+    if (libres.length) {
+      this.food = libres[rand(libres.length)];
+      return;
+    }
+    const celda = this.freeCell(0);
+    if (celda) this.food = celda;
   }
 
   spawnBonus() {
@@ -532,6 +588,7 @@ export class Game {
   }
 
   raiseWall() {
+    if (this.cfg.wallMax && this.walls.length >= this.cfg.wallMax) return;
     const cabeza = this.body[0];
     for (let i = 0; i < 80; i++) {
       const c = this.freeCell(1);
@@ -610,37 +667,37 @@ export class Game {
   spawnPellet() {
     if (!this.hunter) return;
     const cabeza = this.body[0];
-    let sitio = null;
-    for (let i = 0; i < 120; i++) {
-      const c = this.freeCell(1);
-      if (!c) break;
-      if (Math.abs(c.x - cabeza.x) + Math.abs(c.y - cabeza.y) >= 4) {
-        sitio = c;
-        break;
-      }
-    }
-    if (!sitio) sitio = this.freeCell(1);
-    if (sitio) this.pellets.push(sitio);
+    const tope = Math.max(2, this.cfg.hunterPellets || 2);
+    if (this.pellets.length >= tope) return;
+    const libres = this.reachableFree().filter((c) => !this.ocupada(c.x, c.y));
+    const lejos = libres.filter((c) => Math.abs(c.x - cabeza.x) + Math.abs(c.y - cabeza.y) >= 4);
+    const donde = lejos.length ? lejos : libres;
+    if (donde.length) this.pellets.push({ ...donde[rand(donde.length)] });
   }
 
-  // ritmo del cazador: acelera cuando ya es largo y lo tiene cerca
+  // ritmo del cazador: acelera cuando ya es largo, cuando lo tiene cerca y del todo al estar lleno
   hunterCadence() {
     const h = this.hunter;
     if (!h) return 2;
+    const tope = this.cfg.hunterCap || 18;
+    if (h.body.length >= tope) return 1;
     const cabeza = this.body[0];
     const jefe = h.body[0];
     const dist = Math.abs(jefe.x - cabeza.x) + Math.abs(jefe.y - cabeza.y);
     return h.body.length >= 7 && dist <= 3 ? 1 : 2;
   }
 
-  // a qué va: a comer si es corta, a cortarte el paso si ya es larga
+  // a qué va: a comer si es corta, a cortarte el paso si es larga y a por ti si ya está llena
   hunterTarget() {
     const h = this.hunter;
     const cabeza = this.body[0];
+    const tope = this.cfg.hunterCap || 18;
+    if (h.body.length >= tope) return { x: cabeza.x, y: cabeza.y };
     if (h.body.length >= 7) {
+      const vista = Math.max(2, this.cfg.hunterSight || 4);
       let x = cabeza.x;
       let y = cabeza.y;
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < vista; i++) {
         const nx = x + this.dir.x;
         const ny = y + this.dir.y;
         if (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows) break;
@@ -706,6 +763,7 @@ export class Game {
       cols: this.cols,
       rows: this.rows,
       wrap: false,
+      links: this.portalLinks(),
     });
 
     let elegido = null;
@@ -742,7 +800,12 @@ export class Game {
       }
     }
 
-    if (!elegido) return;
+    if (!elegido) {
+      // acorralado: se muda a otra zona en vez de quedarse clavado
+      this.burst(cabeza.x + 0.5, cabeza.y + 0.5, 12, '#c91616', 7);
+      this.placeHunter();
+      return;
+    }
 
     h.dir = { x: elegido.x - cabeza.x, y: elegido.y - cabeza.y };
     h.body.unshift(elegido);
@@ -752,10 +815,12 @@ export class Game {
     const indice = this.pellets.findIndex((p) => p.x === elegido.x && p.y === elegido.y);
     if (indice >= 0) {
       this.pellets.splice(indice, 1);
-      if (h.body.length < 16) h.grow += 1;
+      const tope = this.cfg.hunterCap || 18;
+      if (h.body.length < tope) h.grow += 1;
       this.burst(elegido.x + 0.5, elegido.y + 0.5, 8, '#3d7bff', 5);
-      this.spawnPellet();
-      this.emit('hunterEat');
+      const cuantos = Math.max(2, this.cfg.hunterPellets || 2);
+      while (this.pellets.length < cuantos) this.spawnPellet();
+      this.emit('hunterEat', { largo: h.body.length, lleno: h.body.length >= tope });
     }
   }
 
@@ -899,32 +964,75 @@ export class Game {
       );
     }
 
-    // el cazador: serpiente roja, crece con los puntos
+    // el cazador: serpiente roja, crece con los puntos azules
     if (this.hunter) {
       const ritmo = 2;
-      const hAlpha = ((this.hunterTick % ritmo) + (this.state === 'running' ? clamp(this.acc / this.interval(), 0, 1) : 1)) / ritmo;
-      for (let i = this.hunter.body.length - 1; i >= 0; i--) {
+      const avance = ((this.hunterTick % ritmo) +
+        (this.state === 'running' ? clamp(this.acc / this.interval(), 0, 1) : 1)) / ritmo;
+      const puntosCaza = [];
+      for (let i = 0; i < this.hunter.body.length; i++) {
         const actual = this.hunter.body[i];
         const previo = this.hunter.prev[i] || actual;
         const salto = Math.abs(actual.x - previo.x) > 1 || Math.abs(actual.y - previo.y) > 1;
-        const px = Math.round(ox + (salto ? actual.x : previo.x + (actual.x - previo.x) * hAlpha) * cell);
-        const py = Math.round(oy + (salto ? actual.y : previo.y + (actual.y - previo.y) * hAlpha) * cell);
-        const margen = Math.max(1, Math.round(cell * 0.07));
-        ctx.fillStyle = i === 0 ? '#ff2b2b' : '#c91616';
-        ctx.fillRect(px + margen, py + margen, cell - margen * 2, cell - margen * 2);
-        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(px + margen + 0.5, py + margen + 0.5, cell - margen * 2 - 1, cell - margen * 2 - 1);
+        puntosCaza.push({
+          x: salto ? actual.x : previo.x + (actual.x - previo.x) * avance,
+          y: salto ? actual.y : previo.y + (actual.y - previo.y) * avance,
+        });
       }
-      const cabeza = this.hunter.body[0];
-      const tam = Math.max(2, Math.round(cell * 0.16));
-      ctx.fillStyle = '#000';
-      ctx.fillRect(
-        Math.round(ox + (cabeza.x + 0.5) * cell - tam / 2),
-        Math.round(oy + (cabeza.y + 0.5) * cell - tam / 2),
-        tam,
-        tam,
-      );
+
+      const largoCaza = puntosCaza.length;
+      const radioCaza = (i) => {
+        const cola = clamp((i - (largoCaza - 3)) / 3, 0, 1);
+        return cell * 0.4 * (1 - cola * 0.42);
+      };
+      const centroCaza = (p) => [ox + (p.x + 0.5) * cell, oy + (p.y + 0.5) * cell];
+
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (const [extra, color] of [
+        [Math.max(2, cell * 0.08), 'rgba(255,255,255,0.32)'],
+        [0, '#c21414'],
+      ]) {
+        ctx.strokeStyle = color;
+        for (let i = largoCaza - 1; i >= 1; i--) {
+          const a = puntosCaza[i];
+          const b = puntosCaza[i - 1];
+          if (Math.abs(a.x - b.x) > 1.2 || Math.abs(a.y - b.y) > 1.2) continue;
+          const [ax, ay] = centroCaza(a);
+          const [bx, by] = centroCaza(b);
+          ctx.lineWidth = Math.max(2, radioCaza(i) * 2) + extra;
+          ctx.beginPath();
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(bx, by);
+          ctx.stroke();
+        }
+      }
+
+      // cabeza del cazador: roja, con dos ojos negros
+      const jefe = puntosCaza[0];
+      if (jefe) {
+        const [hx, hy] = centroCaza(jefe);
+        const giro = Math.atan2(this.hunter.dir.y || 0, this.hunter.dir.x || 1) || 0;
+        const largo = cell * 0.86;
+        const alto = cell * 0.74;
+        ctx.save();
+        ctx.translate(hx, hy);
+        ctx.rotate(giro);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, largo / 2, alto / 2, 0, 0, Math.PI * 2);
+        ctx.fillStyle = '#ff2b2b';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+        ctx.lineWidth = Math.max(1, cell * 0.045);
+        ctx.stroke();
+        const ojo = Math.max(1, cell * 0.07);
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(cell * 0.1, -cell * 0.17, ojo, 0, Math.PI * 2);
+        ctx.arc(cell * 0.1, cell * 0.17, ojo, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
     }
 
     // ---- luz ----
@@ -981,33 +1089,100 @@ export class Game {
     }
 
     const alpha = this.state === 'running' ? clamp(this.acc / this.interval(), 0, 1) : 1;
-    const gap = Math.max(1, Math.round(cell * 0.07));
     const ghost = this.ghosting;
-    for (let i = this.body.length - 1; i >= 0; i--) {
+    const puntos = [];
+    for (let i = 0; i < this.body.length; i++) {
       const p = this.posAt(i, alpha);
-      if (!p) continue;
-      const px = Math.round(ox + p.x * cell);
-      const py = Math.round(oy + p.y * cell);
-      if (ghost) {
-        ctx.fillStyle = 'rgba(255,255,255,0.18)';
-        ctx.fillRect(px + gap, py + gap, cell - gap * 2, cell - gap * 2);
-        ctx.strokeStyle = 'rgba(255,255,255,0.92)';
-        ctx.lineWidth = Math.max(1, cell * 0.05);
-        ctx.strokeRect(px + gap + 0.5, py + gap + 0.5, cell - gap * 2 - 1, cell - gap * 2 - 1);
-      } else {
-        ctx.fillStyle = i === 0 ? '#ffffff' : i < 3 ? '#f0f0f0' : '#d8d8d8';
-        ctx.fillRect(px + gap, py + gap, cell - gap * 2, cell - gap * 2);
-      }
+      if (p) puntos.push(p);
     }
 
-    const head = this.posAt(0, alpha);
-    if (head) {
-      const size = Math.max(2, Math.round(cell * 0.17));
-      const cx = ox + (head.x + 0.5) * cell + this.dir.x * cell * 0.19;
-      const cy = oy + (head.y + 0.5) * cell + this.dir.y * cell * 0.19;
-      ctx.fillStyle = ghost ? 'rgba(255,255,255,0.75)' : '#000';
-      ctx.fillRect(Math.round(cx - size / 2), Math.round(cy - size / 2), size, size);
+    // cuerpo: una cinta redonda que se afina hacia la cola, sin huecos entre casillas
+    const visibles = this.crash ? Math.max(1, puntos.length - this.crash.popped) : puntos.length;
+    const radio = (i) => {
+      // cuerpo de grosor constante y punta redondeada en los tres últimos anillos
+      const cola = clamp((i - (puntos.length - 3)) / 3, 0, 1);
+      return cell * 0.44 * (1 - cola * 0.42);
+    };
+    const ancho = (i) => Math.max(2, radio(i) * 2);
+    const centro = (p) => [ox + (p.x + 0.5) * cell, oy + (p.y + 0.5) * cell];
+    const saltos = (a, b) => Math.abs(a.x - b.x) > 1.2 || Math.abs(a.y - b.y) > 1.2;
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.save();
+    if (this.crash) ctx.globalAlpha = clamp(1 - (this.crash.t - 120) / 520, 0.15, 1);
+
+    const cinta = (extra, color) => {
+      ctx.strokeStyle = color;
+      for (let i = visibles - 1; i >= 1; i--) {
+        const a = puntos[i];
+        const b = puntos[i - 1];
+        if (!a || !b || saltos(a, b)) continue;
+        const [ax, ay] = centro(a);
+        const [bx, by] = centro(b);
+        ctx.lineWidth = ancho(i) + extra;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(bx, by);
+        ctx.stroke();
+      }
+    };
+
+    if (ghost) {
+      ctx.setLineDash([Math.max(3, cell * 0.26), Math.max(2, cell * 0.3)]);
+      cinta(0, 'rgba(255,255,255,0.82)');
+      ctx.setLineDash([]);
+    } else {
+      cinta(Math.max(2, cell * 0.085), 'rgba(255,255,255,0.16)');
+      cinta(0, '#ffffff');
     }
+
+    // cabeza: morro redondeado con dos ojos, mirando hacia donde vas
+    const cabezaPos = puntos[0];
+    if (cabezaPos && (!this.crash || this.crash.popped < 1)) {
+      const [hx, hy] = centro(cabezaPos);
+      const giro = Math.atan2(this.dir.y, this.dir.x);
+      const largo = cell * 0.92;
+      const alto = cell * 0.82;
+      const radioEsquina = cell * 0.34;
+      const redondo = (x, y, w, h, r) => {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+      };
+      ctx.save();
+      ctx.translate(hx, hy);
+      ctx.rotate(giro);
+      redondo(-largo * 0.44, -alto / 2, largo, alto, radioEsquina);
+      if (ghost) {
+        ctx.fillStyle = 'rgba(6,6,6,0.88)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+        ctx.lineWidth = Math.max(1.5, cell * 0.09);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+      }
+      const ojo = Math.max(1, cell * 0.075);
+      const separacion = cell * 0.19;
+      const adelante = cell * 0.11;
+      ctx.fillStyle = ghost ? '#ffffff' : '#000000';
+      ctx.beginPath();
+      ctx.arc(adelante, -separacion, ojo, 0, Math.PI * 2);
+      ctx.arc(adelante, separacion, ojo, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
 
     ctx.save();
     for (const p of this.particles) {
@@ -1025,30 +1200,40 @@ export class Game {
       ctx.fillRect(0, 0, view.width, view.height);
     }
 
-    // ---- impacto: anillo y cruz donde te la pegaste ----
+    // ---- impacto: la casilla donde chocas queda marcada y saltan las grietas ----
     if (this.crash) {
       const c = this.crash;
-      const avance = clamp(c.t / 460, 0, 1);
-      const radio = cell * (0.4 + avance * 3.2);
-      const alpha = 1 - avance;
       const cx = ox + (c.x + 0.5) * cell;
       const cy = oy + (c.y + 0.5) * cell;
-      ctx.strokeStyle = `rgba(255,255,255,${(alpha * 0.9).toFixed(3)})`;
-      ctx.lineWidth = Math.max(1, 3 * (1 - avance));
-      ctx.beginPath();
-      ctx.arc(cx, cy, radio, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.strokeStyle = `rgba(255,255,255,${(alpha * 0.45).toFixed(3)})`;
-      ctx.lineWidth = 1;
-      const largo = cell * (0.6 + avance * 1.8);
-      ctx.beginPath();
-      ctx.moveTo(cx - largo, cy);
-      ctx.lineTo(cx + largo, cy);
-      ctx.moveTo(cx, cy - largo);
-      ctx.lineTo(cx, cy + largo);
-      ctx.stroke();
-      ctx.fillStyle = `rgba(255,255,255,${(alpha * alpha * 0.85).toFixed(3)})`;
-      ctx.fillRect(cx - cell * 0.18, cy - cell * 0.18, cell * 0.36, cell * 0.36);
+
+      const marca = clamp(1 - c.t / 200, 0, 1);
+      if (marca > 0.01) {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(cx - cell / 2, cy - cell / 2, cell, cell);
+        ctx.strokeStyle = `rgba(255,255,255,${marca.toFixed(3)})`;
+        ctx.lineWidth = Math.max(1.5, cell * 0.08);
+        ctx.strokeRect(cx - cell / 2 + 1, cy - cell / 2 + 1, cell - 2, cell - 2);
+      }
+
+      const avance = clamp((c.t - 30) / 430, 0, 1);
+      if (avance > 0 && avance < 1) {
+        const alfa = 1 - avance;
+        const desde = cell * 0.16;
+        const hasta = cell * (0.5 + avance * 1.05);
+        ctx.strokeStyle = `rgba(255,255,255,${(alfa * 0.85).toFixed(3)})`;
+        ctx.lineWidth = Math.max(1, cell * 0.06 * alfa);
+        ctx.beginPath();
+        for (const [dx, dy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+          ctx.moveTo(cx + dx * desde, cy + dy * desde);
+          ctx.lineTo(cx + dx * hasta, cy + dy * hasta);
+        }
+        ctx.stroke();
+
+        const marco = cell * (0.5 + avance * 1.1);
+        ctx.strokeStyle = `rgba(255,255,255,${(alfa * 0.45).toFixed(3)})`;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(cx - marco / 2, cy - marco / 2, marco, marco);
+      }
     }
   }
 }

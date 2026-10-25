@@ -4,7 +4,7 @@
 // básicas del motor. sale con código 1 si algo falla.
 
 import { Game } from '../js/engine.js';
-import { MODES, LEVELS, COLS, ROWS } from '../js/levels.js';
+import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS } from '../js/levels.js';
 
 const K = (x, y) => y * 4096 + x;
 let fallos = 0;
@@ -30,6 +30,66 @@ function configNivel(nivel) {
     powerEvery: nivel.powerEvery,
     chainWindow: nivel.chainWindow,
   };
+}
+
+// estructura: grupos del menú, 20 niveles y velocidades coherentes
+process.stdout.write('estructura\n');
+{
+  comprobar(GROUPS.length === 3, 'grupos: tienen que ser tres');
+  comprobar(GROUPS[0].modes[0] === 'campaign', 'grupos: la campaña va primero');
+  const planos = GROUPS.flatMap((g) => g.modes);
+  comprobar(planos.length === MODE_ORDER.length, 'grupos: MODE_ORDER no coincide con los grupos');
+  comprobar(new Set(planos).size === planos.length, 'grupos: hay un modo repetido');
+  comprobar(Object.keys(MODES).length === 7, 'modos: no son siete');
+  comprobar(
+    Object.keys(MODES).every((id) => planos.includes(id)),
+    'grupos: algún modo se queda fuera de los grupos',
+  );
+  process.stdout.write(`  ${GROUPS.length} grupos · ${planos.length} modos · ${LEVELS.length} niveles\n`);
+}
+{
+  comprobar(LEVELS.length === 20, `campaña: tiene ${LEVELS.length} niveles y deberían ser 20`);
+  let ultimo = Infinity;
+  LEVELS.forEach((nivel, i) => {
+    const etiqueta = `nivel ${String(i + 1).padStart(2)}`;
+    comprobar(nivel.speed >= nivel.minSpeed, `${etiqueta}: arranca más lento que su mínimo`);
+    comprobar(nivel.minSpeed >= 42, `${etiqueta}: baja del suelo de velocidad`);
+    comprobar(nivel.speed <= ultimo, `${etiqueta}: rompe el orden de velocidad`);
+    ultimo = nivel.speed;
+    comprobar(nivel.goal >= 4 && nivel.goal <= 16, `${etiqueta}: meta fuera de rango`);
+  });
+  for (const [id, modo] of Object.entries(MODES)) {
+    comprobar(modo.startSpeed >= modo.minSpeed, `${id}: arranca más lento que su mínimo`);
+    comprobar(modo.minSpeed >= 42, `${id}: baja del suelo de velocidad`);
+  }
+  process.stdout.write('  velocidades dentro de rango y en orden\n');
+}
+{
+  // ningún rincón cerrado: la comida siempre se puede alcanzar
+  let rincones = 0;
+  LEVELS.forEach((nivel) => {
+    const muro = new Set(nivel.walls.map(([x, y]) => K(x, y)));
+    const libres = [];
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) if (!muro.has(K(x, y))) libres.push({ x, y });
+    }
+    const visto = new Set([K(libres[0].x, libres[0].y)]);
+    const cola = [libres[0]];
+    for (let c = 0; c < cola.length; c++) {
+      const p = cola[c];
+      for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+        const nx = p.x + dx;
+        const ny = p.y + dy;
+        if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS) continue;
+        if (muro.has(K(nx, ny)) || visto.has(K(nx, ny))) continue;
+        visto.add(K(nx, ny));
+        cola.push({ x: nx, y: ny });
+      }
+    }
+    rincones += libres.length - visto.size;
+  });
+  comprobar(rincones === 0, `niveles: ${rincones} casillas encerradas sin salida`);
+  process.stdout.write('  todos los niveles conectados\n');
 }
 
 // niveles: muros dentro, sin duplicados, arranque limpio y comida alcanzable
@@ -154,7 +214,10 @@ process.stdout.write('cazador\n');
 {
   const juego = new Game({ ...MODES.hunter }, () => {});
   comprobar(!!juego.hunter && juego.hunter.body.length >= 2, 'cazador: no nace como serpiente');
-  comprobar(juego.pellets.length === 2, 'cazador: no hay dos puntos azules al empezar');
+  comprobar(
+    juego.pellets.length === (MODES.hunter.hunterPellets || 2),
+    'cazador: no salen todos los puntos azules al empezar',
+  );
   comprobar(
     juego.pellets.every((p) => !juego.wallSet.has(K(p.x, p.y))),
     'cazador: un punto cae dentro de un muro',
@@ -343,7 +406,115 @@ process.stdout.write('ia del cazador\n');
   const delante = objetivo.x !== cabeza.x || objetivo.y !== cabeza.y;
   comprobar(delante, 'ia del cazador: con cuerpo largo no corta el paso al jugador');
   const camino = Math.abs(objetivo.x - cabeza.x) + Math.abs(objetivo.y - cabeza.y);
-  comprobar(camino <= 4, 'ia del cazador: el corte queda demasiado lejos');
+  comprobar(
+    camino <= (MODES.hunter.hunterSight || 4),
+    'ia del cazador: el corte queda demasiado lejos',
+  );
+}
+
+// lo nuevo: reloj con premio, muros con tope, cazador lleno y deshacer del choque
+process.stdout.write('extras\n');
+{
+  const juego = new Game({ ...MODES.clock }, () => {});
+  juego.state = 'running';
+  juego.bonus = { x: juego.body[0].x, y: juego.body[0].y, ttl: 9000 };
+  const antes = juego.timeLeft;
+  juego.eatBonus();
+  comprobar(
+    juego.timeLeft >= antes + (MODES.clock.bonusTime || 0),
+    'reloj: el rombo no suma tiempo',
+  );
+}
+{
+  const juego = new Game({ ...MODES.classic }, () => {});
+  juego.state = 'running';
+  const tope = MODES.classic.wallFrom + MODES.classic.wallEvery * 2;
+  for (let i = 0; i < tope; i++) {
+    juego.fruits++;
+    juego.food = { ...juego.body[0] };
+    juego.eatFood();
+  }
+  comprobar(juego.walls.length > 0, 'clásico: no salen muros con el tiempo');
+  comprobar(juego.walls.length <= MODES.classic.wallMax, 'clásico: se pasa del tope de muros');
+}
+{
+  const juego = new Game({ ...MODES.wall }, () => {});
+  juego.state = 'running';
+  const tope = 26;
+  juego.cfg = { ...MODES.wall, wallMax: tope };
+  juego.walls.length = 0;
+  juego.wallSet.clear();
+  for (let i = 0; i < 400; i++) juego.raiseWall();
+  comprobar(juego.walls.length <= tope, 'muro: ignora el tope de muros');
+  comprobar(juego.walls.length > 0, 'muro: no levanta nada');
+}
+{
+  const juego = new Game({ ...MODES.hunter }, () => {});
+  juego.state = 'running';
+  const tope = MODES.hunter.hunterCap;
+  while (juego.hunter.body.length < tope) {
+    juego.hunter.body.push({ ...juego.hunter.body[juego.hunter.body.length - 1] });
+  }
+  comprobar(juego.hunterCadence() === 1, 'cazador: lleno no acelera');
+  const objetivo = juego.hunterTarget();
+  comprobar(
+    objetivo.x === juego.body[0].x && objetivo.y === juego.body[0].y,
+    'cazador: lleno no va directo a por ti',
+  );
+  for (let i = 0; i < 120; i++) juego.moveHunter();
+  comprobar(
+    juego.hunter.body.length <= tope,
+    'cazador: se salta el tope de largo',
+  );
+  comprobar(
+    juego.pellets.length === (MODES.hunter.hunterPellets || 2),
+    'cazador: deja de reponer los puntos azules',
+  );
+}
+{
+  // acorralado: se muda en vez de quedarse clavado
+  const juego = new Game({ ...MODES.hunter }, () => {});
+  juego.state = 'running';
+  const cuerpo = [{ x: 0, y: 0 }, { x: 1, y: 0 }];
+  juego.walls = [];
+  juego.wallSet = new Set();
+  for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) juego.wallSet.add(K(x, y));
+  }
+  for (const c of [...cuerpo, { x: 0, y: 1 }, { x: 1, y: 1 }]) juego.wallSet.delete(K(c.x, c.y));
+  juego.hunter = {
+    body: cuerpo.map((p) => ({ ...p })),
+    prev: cuerpo.map((p) => ({ ...p })),
+    dir: { x: 1, y: 0 },
+    grow: 0,
+  };
+  juego.hunterTick = 1;
+  juego.moveHunter();
+  comprobar(
+    juego.hunter.body.length >= 2 && !juego.hunter.body.every((p) => juego.wallSet.has(K(p.x, p.y))),
+    'cazador: acorralado se queda metido en un muro',
+  );
+}
+{
+  // choque: la serpiente se deshace de la cabeza a la cola
+  const juego = new Game({ ...MODES.classic }, () => {});
+  juego.state = 'running';
+  juego.body = [{ x: 0, y: 5 }, { x: 1, y: 5 }, { x: 2, y: 5 }, { x: 3, y: 5 }, { x: 4, y: 5 }];
+  juego.prevBody = juego.body.map((p) => ({ ...p }));
+  juego.dir = { x: -1, y: 0 };
+  juego.step();
+  comprobar(juego.state === 'dead' && !!juego.crash, 'choque: no hay impacto');
+  comprobar(juego.crash.popped === 0, 'choque: empieza a deshacerse antes de tiempo');
+  juego.hitStop = 0;
+  juego.update(120);
+  comprobar(juego.crash.popped >= 3, 'choque: la serpiente no se deshace');
+  comprobar(
+    juego.particles.length > 0,
+    'choque: no suelta chispas al deshacerse',
+  );
+  process.stdout.write(
+    `  extras: reloj, muros, cazador al tope y choque que se deshace (${juego.crash.popped} anillos)\n`,
+  );
 }
 
 process.stdout.write(fallos ? `\n${fallos} fallos\n` : '\ntodo en orden\n');

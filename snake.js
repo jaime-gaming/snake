@@ -1,4 +1,4 @@
-/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-10-24 · v7).
+/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-10-25 · v8).
    no lo edites a mano: cambia js/*.js y vuelve a ejecutar node tools/build.mjs */
 (function () {
 'use strict';
@@ -110,12 +110,17 @@ const diagonal = (x, y, len, dir = 1) => {
   for (let i = 0; i < len; i++) out.push([x + i, y + i * dir]);
   return out;
 };
+const dots = (...celdas) => celdas;
+// un corte deja hueco en un muro: es lo que convierte una barrera en un paso
+const cut = (...celdas) => celdas;
+const slit = (x, y, alto) => vline(x, y, alto);
 
-// grupos del menú: se navega en plano, se ve por secciones
+
+// grupos del menú: cada uno es una subpágina con sus modos
 const GROUPS = [
-  { name: 'progreso', modes: ['campaign'] },
-  { name: 'infinitos', modes: ['classic', 'frenzy', 'portals', 'hunter'] },
-  { name: 'especiales', modes: ['blind', 'clock', 'wall'] },
+  { name: 'progreso', tag: 'campaña de 20 niveles', modes: ['campaign'] },
+  { name: 'infinitos', tag: 'puntuación sin final', modes: ['classic', 'frenzy', 'portals', 'hunter'] },
+  { name: 'especiales', tag: 'una regla rara cada vez', modes: ['blind', 'clock', 'wall'] },
 ];
 
 const MODE_ORDER = GROUPS.flatMap((g) => g.modes);
@@ -134,30 +139,35 @@ const MODES = {
     ...base,
     id: 'classic',
     name: 'CLÁSICO',
-    tag: 'muros, cada fruta acelera',
-    startSpeed: 126,
-    minSpeed: 60,
-    accelPerFood: 2.2,
+    tag: 'cada fruta acelera · pasados 30 puntos empiezan a salir muros',
+    startSpeed: 142,
+    minSpeed: 82,
+    accelPerFood: 1.5,
+    wallFrom: 30,
+    wallEvery: 6,
+    wallMax: 18,
   },
   frenzy: {
     ...base,
     id: 'frenzy',
     name: 'FRENESÍ',
-    tag: 'bordes abiertos, acelera solo',
-    startSpeed: 102,
-    minSpeed: 34,
-    accelPerFood: 1.2,
-    rampPerSec: 0.8,
+    tag: 'bordes abiertos y la velocidad sube sola',
+    startSpeed: 124,
+    minSpeed: 56,
+    accelPerFood: 0.8,
+    rampPerSec: 0.5,
+    wrap: true,
     bonusEvery: 4,
+    powerEvery: 5,
   },
   portals: {
     ...base,
     id: 'portals',
     name: 'PORTALES',
-    tag: 'dos aros que cambian de sitio',
-    startSpeed: 120,
-    minSpeed: 54,
-    accelPerFood: 1.8,
+    tag: 'dos aros que cambian de sitio cada tres frutas',
+    startSpeed: 138,
+    minSpeed: 78,
+    accelPerFood: 1.4,
     portals: true,
     portalEvery: 3,
   },
@@ -165,11 +175,14 @@ const MODES = {
     ...base,
     id: 'hunter',
     name: 'CAZADOR',
-    tag: 'una serpiente roja te caza',
-    startSpeed: 122,
-    minSpeed: 62,
-    accelPerFood: 1.6,
+    tag: 'una serpiente roja come puntos azules y crece',
+    startSpeed: 140,
+    minSpeed: 86,
+    accelPerFood: 1.2,
     hunter: true,
+    hunterPellets: 3,
+    hunterCap: 18,
+    hunterSight: 5,
     bonusEvery: 6,
     powerEvery: 5,
   },
@@ -177,76 +190,99 @@ const MODES = {
     ...base,
     id: 'blind',
     name: 'CIEGO',
-    tag: 'solo ves lo que tienes cerca',
-    startSpeed: 124,
-    minSpeed: 66,
-    accelPerFood: 1.8,
-    vision: 4.2,
+    tag: 'sólo ves un círculo, que se abre al comer',
+    startSpeed: 142,
+    minSpeed: 84,
+    accelPerFood: 1.4,
+    vision: 3.8,
+    visionGain: 0.07,
+    visionMax: 6.4,
     chainWindow: 3600,
   },
   clock: {
     ...base,
     id: 'clock',
     name: 'RELOJ',
-    tag: '45 segundos, cada fruta suma',
-    startSpeed: 118,
-    minSpeed: 58,
-    accelPerFood: 1.6,
+    tag: '45 segundos de salida, cada fruta suma 2,6',
+    startSpeed: 136,
+    minSpeed: 80,
+    accelPerFood: 1.3,
     timer: 45000,
     timePerFood: 2600,
+    bonusTime: 4000,
     bonusEvery: 4,
   },
   wall: {
     ...base,
     id: 'wall',
     name: 'MURO',
-    tag: 'el mapa se llena de muros',
-    startSpeed: 128,
-    minSpeed: 62,
-    accelPerFood: 1.8,
+    tag: 'un muro nuevo cada tres frutas',
+    startSpeed: 146,
+    minSpeed: 86,
+    accelPerFood: 1.3,
     spawnWalls: true,
     wallEvery: 3,
-    powerEvery: 5,
+    wallMax: 30,
+    powerEvery: 4,
   },
 };
 
-const level = (name, goal, speed, walls, extra = {}) => ({
-  name,
-  goal,
-  speed,
-  walls,
-  minSpeed: 62,
-  accelPerFood: 2,
-  bonusEvery: 4,
-  powerEvery: 6,
-  chainWindow: 3000,
-  ...extra,
-});
+// campaña: 20 niveles. empieza lento y acaba a 104 ms por casilla
+const level = (name, goal, speed, walls, extra = {}) => {
+  const { cut: cortes = [], ...resto } = extra;
+  const fuera = new Set(cortes.map(([x, y]) => `${x},${y}`));
+  const vistos = new Set();
+  const limpios = walls.filter(([x, y]) => {
+    const k = `${x},${y}`;
+    if (fuera.has(k) || vistos.has(k)) return false;
+    vistos.add(k);
+    return true;
+  });
+  return {
+    name,
+    goal,
+    speed,
+    walls: limpios,
+    minSpeed: Math.max(72, speed - 32),
+    accelPerFood: 1.2,
+    bonusEvery: 4,
+    powerEvery: 6,
+    chainWindow: 3400,
+    ...resto,
+  };
+};
+
+const nivel = (i, name, goal, walls, extra = {}) =>
+  level(name, goal, Math.round(155 - i * 2.6), walls, {
+    accelPerFood: Number((1.2 + i * 0.055).toFixed(2)),
+    chainWindow: Math.max(2600, 3400 - i * 32),
+    ...extra,
+  });
 
 const LEVELS = [
-  level('LLANO', 4, 140, []),
+  nivel(0, 'LLANO', 4, []),
 
-  level('CRUZ', 5, 134, [...hline(9, 5, 8), ...vline(13, 2, 3), ...vline(13, 6, 4)]),
+  nivel(1, 'CRUZ', 5, [...hline(9, 5, 8), ...vline(13, 2, 3), ...vline(13, 6, 4)]),
 
-  level('PILARES', 6, 128, [
+  nivel(2, 'PILARES', 5, [
     ...rect(4, 4, 2, 2),
     ...rect(14, 4, 2, 2),
     ...rect(4, 14, 2, 2),
     ...rect(14, 14, 2, 2),
   ]),
 
-  level('ANILLO', 6, 124, [
+  nivel(3, 'ANILLO', 6, [
     ...holes(ring(6, 4, 8, 12), [[6, 9], [6, 10], [13, 9], [13, 10]]),
   ]),
 
-  level('ZIGZAG', 7, 120, [
+  nivel(4, 'ZIGZAG', 7, [
     ...hline(0, 4, 13),
     ...hline(7, 8, 13),
     ...hline(0, 12, 13),
     ...hline(7, 16, 13),
   ]),
 
-  level('COLUMNAS', 8, 116, [
+  nivel(5, 'COLUMNAS', 7, [
     ...vline(4, 0, 6),
     ...vline(9, 0, 6),
     ...vline(14, 0, 6),
@@ -255,7 +291,7 @@ const LEVELS = [
     ...vline(14, 14, 6),
   ]),
 
-  level('DOBLE ANILLO', 8, 112, [
+  nivel(6, 'DOBLE ANILLO', 8, [
     ...holes(ring(2, 2, 16, 16), [
       [2, 9], [2, 10], [17, 9], [17, 10],
       [9, 2], [10, 2], [9, 17], [10, 17],
@@ -263,7 +299,7 @@ const LEVELS = [
     ...holes(ring(7, 7, 6, 6), [[7, 9], [7, 10], [12, 9], [12, 10]]),
   ]),
 
-  level('REJILLA', 9, 108, [
+  nivel(7, 'REJILLA', 8, [
     ...hline(1, 3, 3),
     ...hline(9, 3, 3),
     ...hline(17, 3, 3),
@@ -276,7 +312,7 @@ const LEVELS = [
     ...hline(13, 15, 3),
   ]),
 
-  level('JAULA', 9, 104, [
+  nivel(8, 'JAULA', 9, [
     ...holes(ring(3, 3, 14, 14), [
       [3, 9], [3, 10], [16, 9], [16, 10],
       [6, 3], [7, 3], [12, 3], [13, 3],
@@ -284,14 +320,14 @@ const LEVELS = [
     ]),
   ]),
 
-  level('ASPAS', 10, 100, [
+  nivel(9, 'ASPAS', 9, [
     ...holes(diagonal(3, 5, 5, 1), [[5, 7]]),
     ...holes(diagonal(12, 5, 5, 1), [[14, 7]]),
     ...holes(diagonal(3, 14, 4, -1), [[4, 13]]),
     ...holes(diagonal(12, 14, 4, -1), [[13, 13]]),
   ]),
 
-  level('CUATRO ESQUINAS', 10, 96, [
+  nivel(10, 'CUATRO ESQUINAS', 10, [
     ...rect(0, 0, 5, 5),
     ...rect(15, 0, 5, 5),
     ...rect(0, 15, 5, 5),
@@ -300,7 +336,106 @@ const LEVELS = [
     ...rect(9, 13, 2, 2),
   ]),
 
-  level('FINAL', 12, 98, [
+  nivel(11, 'CRUZ HUECA', 10, [...rect(8, 0, 4, 20), ...rect(0, 8, 20, 4)], {
+    cut: [
+      ...hline(8, 4, 4),
+      ...hline(8, 16, 4),
+      ...vline(4, 8, 4),
+      ...vline(15, 8, 4),
+    ],
+  }),
+
+  nivel(12, 'REJILLA DOBLE', 11, [
+    ...hline(3, 4, 14),
+    ...hline(3, 9, 14),
+    ...hline(3, 14, 14),
+    ...vline(3, 4, 11),
+    ...vline(9, 4, 11),
+    ...vline(16, 4, 11),
+  ], {
+    cut: [
+      [5, 4], [5, 9], [5, 14],
+      [14, 4], [14, 9], [14, 14],
+      [9, 6], [9, 11],
+    ],
+  }),
+
+  nivel(13, 'PASILLO', 11, [
+    ...rect(0, 6, 20, 2),
+    ...rect(0, 13, 20, 2),
+    ...dots([3, 10], [16, 10]),
+  ], {
+    cut: [
+      [4, 6], [4, 7],
+      [14, 6], [14, 7],
+      [7, 13], [7, 14],
+      [16, 13], [16, 14],
+    ],
+  }),
+
+  nivel(14, 'PUAS', 12, [
+    ...rect(4, 4, 3, 3),
+    ...rect(13, 4, 3, 3),
+    ...rect(4, 13, 3, 3),
+    ...rect(13, 13, 3, 3),
+    ...vline(9, 2, 5),
+    ...vline(10, 14, 5),
+    ...dots([9, 9], [10, 10], [9, 10], [10, 9]),
+  ]),
+
+  nivel(15, 'ESCALERA', 12, [
+    ...hline(2, 4, 6),
+    ...hline(8, 7, 6),
+    ...hline(2, 10, 6),
+    ...hline(8, 13, 6),
+    ...vline(2, 4, 10),
+    ...vline(13, 4, 10),
+    ...holes(vline(7, 4, 4), [[7, 6]]),
+    ...holes(vline(8, 10, 4), [[8, 12]]),
+  ]),
+
+  nivel(16, 'DIENTES', 13, [
+    ...vline(5, 0, 7),
+    ...vline(5, 10, 7),
+    ...vline(10, 3, 7),
+    ...vline(10, 13, 5),
+    ...vline(15, 0, 7),
+    ...vline(15, 10, 7),
+    ...holes(ring(6, 6, 8, 8), [
+      [6, 9], [6, 10], [13, 9], [13, 10],
+      [9, 6], [10, 6], [9, 13], [10, 13],
+    ]),
+  ]),
+
+  nivel(17, 'LABERINTO', 13, [
+    ...vline(3, 0, 16),
+    ...vline(7, 4, 16),
+    ...vline(11, 0, 16),
+    ...vline(15, 4, 16),
+  ], {
+    cut: [
+      [3, 3], [3, 12],
+      [7, 7], [7, 17],
+      [11, 5], [11, 15],
+      [15, 8], [15, 18],
+    ],
+  }),
+
+  nivel(18, 'DOS JAULAS', 14, [
+    ...ring(2, 2, 7, 7),
+    ...ring(11, 11, 7, 7),
+    ...ring(12, 2, 6, 6),
+    ...ring(2, 12, 6, 6),
+  ], {
+    cut: [
+      [5, 2], [6, 2], [5, 8], [6, 8], [2, 5], [3, 5], [8, 5], [7, 5],
+      [14, 11], [15, 11], [14, 17], [15, 17], [11, 14], [12, 14], [17, 14], [17, 13],
+      [14, 2], [15, 2], [14, 7], [15, 7], [12, 4], [13, 4], [17, 4], [17, 5],
+      [4, 12], [5, 12], [4, 17], [5, 17], [2, 14], [3, 14], [7, 14], [7, 15],
+    ],
+  }),
+
+  nivel(19, 'FINAL', 14, [
     ...rect(0, 0, 4, 4),
     ...rect(16, 0, 4, 4),
     ...rect(0, 16, 4, 4),
@@ -311,6 +446,8 @@ const LEVELS = [
     ...rect(11, 11, 2, 2),
     ...hline(8, 2, 4),
     ...hline(8, 17, 4),
+    ...holes(vline(2, 7, 6), [[2, 9], [2, 10]]),
+    ...holes(vline(17, 7, 6), [[17, 9], [17, 10]]),
   ]),
 ];
 
@@ -681,7 +818,8 @@ class Game {
     if (cfg.portals) this.placePortals();
     if (cfg.hunter) {
       this.placeHunter();
-      for (let i = 0; i < 2; i++) this.spawnPellet();
+      const cuantos = Math.max(2, cfg.hunterPellets || 2);
+      for (let i = 0; i < cuantos; i++) this.spawnPellet();
     }
   }
 
@@ -730,8 +868,8 @@ class Game {
   }
 
   interval() {
-    const slow = this.fx.slow > 0 ? 1.55 : 1;
-    return Math.max(24, this.speed * (this.turbo ? 0.62 : 1) * slow);
+    const slow = this.fx.slow > 0 ? 1.5 : 1;
+    return Math.max(42, this.speed * (this.turbo ? 0.68 : 1) * slow);
   }
 
   setDirection(dx, dy) {
@@ -821,7 +959,17 @@ class Game {
   updateFx(dt) {
     const k = dt / 1000;
     if (this.reveal < 1) this.reveal = Math.min(1, this.reveal + dt / 1000);
-    if (this.crash) this.crash.t = Math.min(700, this.crash.t + dt);
+    if (this.crash) {
+      this.crash.t = Math.min(1600, this.crash.t + dt);
+      // la serpiente se deshace de la cabeza a la cola, un anillo cada 18 ms
+      const objetivo = Math.min(this.body.length, Math.floor(this.crash.t / 18));
+      while (this.crash.popped < objetivo) {
+        const c = this.body[this.crash.popped];
+        this.crash.popped++;
+        if (!c) break;
+        this.burst(c.x + 0.5, c.y + 0.5, 2, '#ffffff', 5);
+      }
+    }
     this.shake = Math.max(0, this.shake - dt * 0.05);
     this.flash = Math.max(0, this.flash - dt * 0.004);
     for (let i = this.particles.length - 1; i >= 0; i--) {
@@ -912,6 +1060,11 @@ class Game {
     this.burst(food.x + 0.5, food.y + 0.5, 10, '#ff2b2b', 7);
     if (cfg.timePerFood) this.timeLeft = Math.min((cfg.timer || 0) * 2, this.timeLeft + cfg.timePerFood);
     if (cfg.spawnWalls && cfg.wallEvery && this.fruits % cfg.wallEvery === 0) this.raiseWall();
+    // clásico: pasada la mitad de la partida empiezan a salir muros sueltos
+    if (cfg.wallFrom && this.fruits > cfg.wallFrom && cfg.wallEvery &&
+      this.fruits % cfg.wallEvery === 0 && this.walls.length < (cfg.wallMax || 999)) {
+      this.raiseWall();
+    }
     this.emit('eat', { chain: this.chain, multiplier: this.multiplier });
     this.spawnFood();
     if (cfg.bonusEvery && this.fruits % cfg.bonusEvery === 0) this.spawnBonus();
@@ -932,6 +1085,9 @@ class Game {
     this.score += 50 * this.multiplier;
     this.shake = 5;
     this.burst(b.x + 0.5, b.y + 0.5, 18, '#ffffff', 9);
+    if (this.cfg.bonusTime && this.cfg.timer) {
+      this.timeLeft = Math.min((this.cfg.timer || 0) * 2, this.timeLeft + this.cfg.bonusTime);
+    }
     if (this.cfg.hunter) this.placeHunter();
     this.emit('bonus', { score: this.score });
   }
@@ -957,17 +1113,13 @@ class Game {
     if (this.state !== 'running') return;
     this.state = 'dead';
     this.turbo = false;
-    this.shake = 16;
-    this.flash = 1.4;
-    this.hitStop = 160;
-    const cx = (x ?? 0) + 0.5;
-    const cy = (y ?? 0) + 0.5;
-    this.crash = { x: cx, y: cy, t: 0, reason };
-    this.burst(cx, cy, 26, '#ffffff', 11);
-    // la serpiente se deshace en chispas desde la cola
-    this.body.forEach((c, i) => {
-      if (i % 2 === 0) this.burst(c.x + 0.5, c.y + 0.5, 3, '#ffffff', 5);
-    });
+    this.shake = 11;
+    this.flash = 0.8;
+    this.hitStop = 90;
+    const impactox = x ?? this.body[0].x;
+    const impactoY = y ?? this.body[0].y;
+    this.crash = { x: impactox, y: impactoY, t: 0, reason, popped: 0 };
+    this.burst(impactox + 0.5, impactoY + 0.5, 22, '#ffffff', 10);
     this.emit('die', { reason, score: this.score, fruits: this.fruits });
   }
 
@@ -1102,6 +1254,42 @@ class Game {
     }
   }
 
+  // casillas libres a las que se puede llegar desde la cabeza: la comida nunca cae en un hueco cerrado
+  reachableFree() {
+    const muro = new Set(this.wallSet);
+    for (let i = 0; i < this.body.length - 1; i++) muro.add(K(this.body[i].x, this.body[i].y));
+    if (this.hunter) for (const p of this.hunter.body) muro.add(K(p.x, p.y));
+    const inicio = this.body[0];
+    const visto = new Set([K(inicio.x, inicio.y)]);
+    const cola = [inicio];
+    const libres = [];
+    for (let c = 0; c < cola.length; c++) {
+      const p = cola[c];
+      for (const [dx, dy] of DIRS) {
+        const nx = p.x + dx;
+        const ny = p.y + dy;
+        if (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows) continue;
+        const k = K(nx, ny);
+        if (visto.has(k) || muro.has(k)) continue;
+        visto.add(k);
+        cola.push({ x: nx, y: ny });
+        libres.push({ x: nx, y: ny });
+      }
+    }
+    return libres;
+  }
+
+  ocupada(x, y) {
+    if (this.body.some((s) => s.x === x && s.y === y)) return true;
+    if (this.bonus && this.bonus.x === x && this.bonus.y === y) return true;
+    if (this.power && this.power.x === x && this.power.y === y) return true;
+    if (this.hunter && this.hunter.body.some((p) => p.x === x && p.y === y)) return true;
+    if (this.pellets.some((p) => p.x === x && p.y === y)) return true;
+    if (this.portals && this.portals.some((p) =>
+      (p.a.x === x && p.a.y === y) || (p.b.x === x && p.b.y === y))) return true;
+    return false;
+  }
+
   freeCell(pad = 0) {
     const blocked = (x, y) => {
       if (this.wallSet.has(K(x, y))) return true;
@@ -1127,8 +1315,13 @@ class Game {
   }
 
   spawnFood() {
-    const cell = this.freeCell(0);
-    if (cell) this.food = cell;
+    const libres = this.reachableFree().filter((c) => !this.ocupada(c.x, c.y));
+    if (libres.length) {
+      this.food = libres[rand(libres.length)];
+      return;
+    }
+    const celda = this.freeCell(0);
+    if (celda) this.food = celda;
   }
 
   spawnBonus() {
@@ -1145,6 +1338,7 @@ class Game {
   }
 
   raiseWall() {
+    if (this.cfg.wallMax && this.walls.length >= this.cfg.wallMax) return;
     const cabeza = this.body[0];
     for (let i = 0; i < 80; i++) {
       const c = this.freeCell(1);
@@ -1223,37 +1417,37 @@ class Game {
   spawnPellet() {
     if (!this.hunter) return;
     const cabeza = this.body[0];
-    let sitio = null;
-    for (let i = 0; i < 120; i++) {
-      const c = this.freeCell(1);
-      if (!c) break;
-      if (Math.abs(c.x - cabeza.x) + Math.abs(c.y - cabeza.y) >= 4) {
-        sitio = c;
-        break;
-      }
-    }
-    if (!sitio) sitio = this.freeCell(1);
-    if (sitio) this.pellets.push(sitio);
+    const tope = Math.max(2, this.cfg.hunterPellets || 2);
+    if (this.pellets.length >= tope) return;
+    const libres = this.reachableFree().filter((c) => !this.ocupada(c.x, c.y));
+    const lejos = libres.filter((c) => Math.abs(c.x - cabeza.x) + Math.abs(c.y - cabeza.y) >= 4);
+    const donde = lejos.length ? lejos : libres;
+    if (donde.length) this.pellets.push({ ...donde[rand(donde.length)] });
   }
 
-  // ritmo del cazador: acelera cuando ya es largo y lo tiene cerca
+  // ritmo del cazador: acelera cuando ya es largo, cuando lo tiene cerca y del todo al estar lleno
   hunterCadence() {
     const h = this.hunter;
     if (!h) return 2;
+    const tope = this.cfg.hunterCap || 18;
+    if (h.body.length >= tope) return 1;
     const cabeza = this.body[0];
     const jefe = h.body[0];
     const dist = Math.abs(jefe.x - cabeza.x) + Math.abs(jefe.y - cabeza.y);
     return h.body.length >= 7 && dist <= 3 ? 1 : 2;
   }
 
-  // a qué va: a comer si es corta, a cortarte el paso si ya es larga
+  // a qué va: a comer si es corta, a cortarte el paso si es larga y a por ti si ya está llena
   hunterTarget() {
     const h = this.hunter;
     const cabeza = this.body[0];
+    const tope = this.cfg.hunterCap || 18;
+    if (h.body.length >= tope) return { x: cabeza.x, y: cabeza.y };
     if (h.body.length >= 7) {
+      const vista = Math.max(2, this.cfg.hunterSight || 4);
       let x = cabeza.x;
       let y = cabeza.y;
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < vista; i++) {
         const nx = x + this.dir.x;
         const ny = y + this.dir.y;
         if (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows) break;
@@ -1319,6 +1513,7 @@ class Game {
       cols: this.cols,
       rows: this.rows,
       wrap: false,
+      links: this.portalLinks(),
     });
 
     let elegido = null;
@@ -1355,7 +1550,12 @@ class Game {
       }
     }
 
-    if (!elegido) return;
+    if (!elegido) {
+      // acorralado: se muda a otra zona en vez de quedarse clavado
+      this.burst(cabeza.x + 0.5, cabeza.y + 0.5, 12, '#c91616', 7);
+      this.placeHunter();
+      return;
+    }
 
     h.dir = { x: elegido.x - cabeza.x, y: elegido.y - cabeza.y };
     h.body.unshift(elegido);
@@ -1365,10 +1565,12 @@ class Game {
     const indice = this.pellets.findIndex((p) => p.x === elegido.x && p.y === elegido.y);
     if (indice >= 0) {
       this.pellets.splice(indice, 1);
-      if (h.body.length < 16) h.grow += 1;
+      const tope = this.cfg.hunterCap || 18;
+      if (h.body.length < tope) h.grow += 1;
       this.burst(elegido.x + 0.5, elegido.y + 0.5, 8, '#3d7bff', 5);
-      this.spawnPellet();
-      this.emit('hunterEat');
+      const cuantos = Math.max(2, this.cfg.hunterPellets || 2);
+      while (this.pellets.length < cuantos) this.spawnPellet();
+      this.emit('hunterEat', { largo: h.body.length, lleno: h.body.length >= tope });
     }
   }
 
@@ -1512,32 +1714,75 @@ class Game {
       );
     }
 
-    // el cazador: serpiente roja, crece con los puntos
+    // el cazador: serpiente roja, crece con los puntos azules
     if (this.hunter) {
       const ritmo = 2;
-      const hAlpha = ((this.hunterTick % ritmo) + (this.state === 'running' ? clamp(this.acc / this.interval(), 0, 1) : 1)) / ritmo;
-      for (let i = this.hunter.body.length - 1; i >= 0; i--) {
+      const avance = ((this.hunterTick % ritmo) +
+        (this.state === 'running' ? clamp(this.acc / this.interval(), 0, 1) : 1)) / ritmo;
+      const puntosCaza = [];
+      for (let i = 0; i < this.hunter.body.length; i++) {
         const actual = this.hunter.body[i];
         const previo = this.hunter.prev[i] || actual;
         const salto = Math.abs(actual.x - previo.x) > 1 || Math.abs(actual.y - previo.y) > 1;
-        const px = Math.round(ox + (salto ? actual.x : previo.x + (actual.x - previo.x) * hAlpha) * cell);
-        const py = Math.round(oy + (salto ? actual.y : previo.y + (actual.y - previo.y) * hAlpha) * cell);
-        const margen = Math.max(1, Math.round(cell * 0.07));
-        ctx.fillStyle = i === 0 ? '#ff2b2b' : '#c91616';
-        ctx.fillRect(px + margen, py + margen, cell - margen * 2, cell - margen * 2);
-        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(px + margen + 0.5, py + margen + 0.5, cell - margen * 2 - 1, cell - margen * 2 - 1);
+        puntosCaza.push({
+          x: salto ? actual.x : previo.x + (actual.x - previo.x) * avance,
+          y: salto ? actual.y : previo.y + (actual.y - previo.y) * avance,
+        });
       }
-      const cabeza = this.hunter.body[0];
-      const tam = Math.max(2, Math.round(cell * 0.16));
-      ctx.fillStyle = '#000';
-      ctx.fillRect(
-        Math.round(ox + (cabeza.x + 0.5) * cell - tam / 2),
-        Math.round(oy + (cabeza.y + 0.5) * cell - tam / 2),
-        tam,
-        tam,
-      );
+
+      const largoCaza = puntosCaza.length;
+      const radioCaza = (i) => {
+        const cola = clamp((i - (largoCaza - 3)) / 3, 0, 1);
+        return cell * 0.4 * (1 - cola * 0.42);
+      };
+      const centroCaza = (p) => [ox + (p.x + 0.5) * cell, oy + (p.y + 0.5) * cell];
+
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (const [extra, color] of [
+        [Math.max(2, cell * 0.08), 'rgba(255,255,255,0.32)'],
+        [0, '#c21414'],
+      ]) {
+        ctx.strokeStyle = color;
+        for (let i = largoCaza - 1; i >= 1; i--) {
+          const a = puntosCaza[i];
+          const b = puntosCaza[i - 1];
+          if (Math.abs(a.x - b.x) > 1.2 || Math.abs(a.y - b.y) > 1.2) continue;
+          const [ax, ay] = centroCaza(a);
+          const [bx, by] = centroCaza(b);
+          ctx.lineWidth = Math.max(2, radioCaza(i) * 2) + extra;
+          ctx.beginPath();
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(bx, by);
+          ctx.stroke();
+        }
+      }
+
+      // cabeza del cazador: roja, con dos ojos negros
+      const jefe = puntosCaza[0];
+      if (jefe) {
+        const [hx, hy] = centroCaza(jefe);
+        const giro = Math.atan2(this.hunter.dir.y || 0, this.hunter.dir.x || 1) || 0;
+        const largo = cell * 0.86;
+        const alto = cell * 0.74;
+        ctx.save();
+        ctx.translate(hx, hy);
+        ctx.rotate(giro);
+        ctx.beginPath();
+        ctx.ellipse(0, 0, largo / 2, alto / 2, 0, 0, Math.PI * 2);
+        ctx.fillStyle = '#ff2b2b';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+        ctx.lineWidth = Math.max(1, cell * 0.045);
+        ctx.stroke();
+        const ojo = Math.max(1, cell * 0.07);
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(cell * 0.1, -cell * 0.17, ojo, 0, Math.PI * 2);
+        ctx.arc(cell * 0.1, cell * 0.17, ojo, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
     }
 
     // ---- luz ----
@@ -1594,33 +1839,100 @@ class Game {
     }
 
     const alpha = this.state === 'running' ? clamp(this.acc / this.interval(), 0, 1) : 1;
-    const gap = Math.max(1, Math.round(cell * 0.07));
     const ghost = this.ghosting;
-    for (let i = this.body.length - 1; i >= 0; i--) {
+    const puntos = [];
+    for (let i = 0; i < this.body.length; i++) {
       const p = this.posAt(i, alpha);
-      if (!p) continue;
-      const px = Math.round(ox + p.x * cell);
-      const py = Math.round(oy + p.y * cell);
-      if (ghost) {
-        ctx.fillStyle = 'rgba(255,255,255,0.18)';
-        ctx.fillRect(px + gap, py + gap, cell - gap * 2, cell - gap * 2);
-        ctx.strokeStyle = 'rgba(255,255,255,0.92)';
-        ctx.lineWidth = Math.max(1, cell * 0.05);
-        ctx.strokeRect(px + gap + 0.5, py + gap + 0.5, cell - gap * 2 - 1, cell - gap * 2 - 1);
-      } else {
-        ctx.fillStyle = i === 0 ? '#ffffff' : i < 3 ? '#f0f0f0' : '#d8d8d8';
-        ctx.fillRect(px + gap, py + gap, cell - gap * 2, cell - gap * 2);
-      }
+      if (p) puntos.push(p);
     }
 
-    const head = this.posAt(0, alpha);
-    if (head) {
-      const size = Math.max(2, Math.round(cell * 0.17));
-      const cx = ox + (head.x + 0.5) * cell + this.dir.x * cell * 0.19;
-      const cy = oy + (head.y + 0.5) * cell + this.dir.y * cell * 0.19;
-      ctx.fillStyle = ghost ? 'rgba(255,255,255,0.75)' : '#000';
-      ctx.fillRect(Math.round(cx - size / 2), Math.round(cy - size / 2), size, size);
+    // cuerpo: una cinta redonda que se afina hacia la cola, sin huecos entre casillas
+    const visibles = this.crash ? Math.max(1, puntos.length - this.crash.popped) : puntos.length;
+    const radio = (i) => {
+      // cuerpo de grosor constante y punta redondeada en los tres últimos anillos
+      const cola = clamp((i - (puntos.length - 3)) / 3, 0, 1);
+      return cell * 0.44 * (1 - cola * 0.42);
+    };
+    const ancho = (i) => Math.max(2, radio(i) * 2);
+    const centro = (p) => [ox + (p.x + 0.5) * cell, oy + (p.y + 0.5) * cell];
+    const saltos = (a, b) => Math.abs(a.x - b.x) > 1.2 || Math.abs(a.y - b.y) > 1.2;
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.save();
+    if (this.crash) ctx.globalAlpha = clamp(1 - (this.crash.t - 120) / 520, 0.15, 1);
+
+    const cinta = (extra, color) => {
+      ctx.strokeStyle = color;
+      for (let i = visibles - 1; i >= 1; i--) {
+        const a = puntos[i];
+        const b = puntos[i - 1];
+        if (!a || !b || saltos(a, b)) continue;
+        const [ax, ay] = centro(a);
+        const [bx, by] = centro(b);
+        ctx.lineWidth = ancho(i) + extra;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(bx, by);
+        ctx.stroke();
+      }
+    };
+
+    if (ghost) {
+      ctx.setLineDash([Math.max(3, cell * 0.26), Math.max(2, cell * 0.3)]);
+      cinta(0, 'rgba(255,255,255,0.82)');
+      ctx.setLineDash([]);
+    } else {
+      cinta(Math.max(2, cell * 0.085), 'rgba(255,255,255,0.16)');
+      cinta(0, '#ffffff');
     }
+
+    // cabeza: morro redondeado con dos ojos, mirando hacia donde vas
+    const cabezaPos = puntos[0];
+    if (cabezaPos && (!this.crash || this.crash.popped < 1)) {
+      const [hx, hy] = centro(cabezaPos);
+      const giro = Math.atan2(this.dir.y, this.dir.x);
+      const largo = cell * 0.92;
+      const alto = cell * 0.82;
+      const radioEsquina = cell * 0.34;
+      const redondo = (x, y, w, h, r) => {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+      };
+      ctx.save();
+      ctx.translate(hx, hy);
+      ctx.rotate(giro);
+      redondo(-largo * 0.44, -alto / 2, largo, alto, radioEsquina);
+      if (ghost) {
+        ctx.fillStyle = 'rgba(6,6,6,0.88)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+        ctx.lineWidth = Math.max(1.5, cell * 0.09);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+      }
+      const ojo = Math.max(1, cell * 0.075);
+      const separacion = cell * 0.19;
+      const adelante = cell * 0.11;
+      ctx.fillStyle = ghost ? '#ffffff' : '#000000';
+      ctx.beginPath();
+      ctx.arc(adelante, -separacion, ojo, 0, Math.PI * 2);
+      ctx.arc(adelante, separacion, ojo, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
 
     ctx.save();
     for (const p of this.particles) {
@@ -1638,30 +1950,40 @@ class Game {
       ctx.fillRect(0, 0, view.width, view.height);
     }
 
-    // ---- impacto: anillo y cruz donde te la pegaste ----
+    // ---- impacto: la casilla donde chocas queda marcada y saltan las grietas ----
     if (this.crash) {
       const c = this.crash;
-      const avance = clamp(c.t / 460, 0, 1);
-      const radio = cell * (0.4 + avance * 3.2);
-      const alpha = 1 - avance;
       const cx = ox + (c.x + 0.5) * cell;
       const cy = oy + (c.y + 0.5) * cell;
-      ctx.strokeStyle = `rgba(255,255,255,${(alpha * 0.9).toFixed(3)})`;
-      ctx.lineWidth = Math.max(1, 3 * (1 - avance));
-      ctx.beginPath();
-      ctx.arc(cx, cy, radio, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.strokeStyle = `rgba(255,255,255,${(alpha * 0.45).toFixed(3)})`;
-      ctx.lineWidth = 1;
-      const largo = cell * (0.6 + avance * 1.8);
-      ctx.beginPath();
-      ctx.moveTo(cx - largo, cy);
-      ctx.lineTo(cx + largo, cy);
-      ctx.moveTo(cx, cy - largo);
-      ctx.lineTo(cx, cy + largo);
-      ctx.stroke();
-      ctx.fillStyle = `rgba(255,255,255,${(alpha * alpha * 0.85).toFixed(3)})`;
-      ctx.fillRect(cx - cell * 0.18, cy - cell * 0.18, cell * 0.36, cell * 0.36);
+
+      const marca = clamp(1 - c.t / 200, 0, 1);
+      if (marca > 0.01) {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(cx - cell / 2, cy - cell / 2, cell, cell);
+        ctx.strokeStyle = `rgba(255,255,255,${marca.toFixed(3)})`;
+        ctx.lineWidth = Math.max(1.5, cell * 0.08);
+        ctx.strokeRect(cx - cell / 2 + 1, cy - cell / 2 + 1, cell - 2, cell - 2);
+      }
+
+      const avance = clamp((c.t - 30) / 430, 0, 1);
+      if (avance > 0 && avance < 1) {
+        const alfa = 1 - avance;
+        const desde = cell * 0.16;
+        const hasta = cell * (0.5 + avance * 1.05);
+        ctx.strokeStyle = `rgba(255,255,255,${(alfa * 0.85).toFixed(3)})`;
+        ctx.lineWidth = Math.max(1, cell * 0.06 * alfa);
+        ctx.beginPath();
+        for (const [dx, dy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+          ctx.moveTo(cx + dx * desde, cy + dy * desde);
+          ctx.lineTo(cx + dx * hasta, cy + dy * hasta);
+        }
+        ctx.stroke();
+
+        const marco = cell * (0.5 + avance * 1.1);
+        ctx.strokeStyle = `rgba(255,255,255,${(alfa * 0.45).toFixed(3)})`;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(cx - marco / 2, cy - marco / 2, marco, marco);
+      }
     }
   }
 }
@@ -1687,7 +2009,7 @@ function avisar(mensaje) {
 function comprobarPiezas() {
   const faltan = [];
   if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.portals || !MODES.hunter) faltan.push('modos');
-  if (!Array.isArray(LEVELS) || LEVELS.length !== 12) faltan.push('niveles');
+  if (!Array.isArray(LEVELS) || LEVELS.length !== 20) faltan.push('niveles');
   if (typeof Game !== 'function') faltan.push('motor');
   if (faltan.length) {
     avisar(`faltan piezas (${faltan.join(', ')}). casi seguro hay ficheros viejos en caché: pulsa recargar limpio.`);
@@ -1791,6 +2113,8 @@ const app = {
   demoModo: null,
   demoAcum: 0,
   menuSel: 0,
+  grupo: 0,
+  modoSel: 0,
   nivelSel: 0,
   marca: 0,
   reloj: 0,
@@ -1880,8 +2204,9 @@ function pantalla(nombre) {
 }
 
 const PISTAS = {
-  home: '↑↓ elegir · ←→ saltar de grupo · enter jugar',
-  levels: 'flechas nav · enter jugar · esc menú',
+  home: '↑↓ grupo · enter abrir',
+  modes: '↑↓ modo · ←→ grupo · enter jugar · esc volver',
+  levels: 'flechas nav · enter jugar · esc grupos',
   help: 'esc volver',
   playing: '',
   paused: 'P seguir · R reiniciar · esc menú',
@@ -1954,6 +2279,10 @@ function actualizarEfectos(juego) {
     if (juego.fx.ghost > 0) activos.push(['fantasma', juego.fx.ghost / POWER_INFO.ghost.ms]);
     if (juego.fx.slow > 0) activos.push(['lento', juego.fx.slow / POWER_INFO.slow.ms]);
     if (juego.turbo) activos.push(['turbo', 1]);
+    if (juego.cfg && juego.cfg.hunter && juego.hunter) {
+      const tope = juego.cfg.hunterCap || 18;
+      if (juego.hunter.body.length >= tope) activos.push(['cazador lleno', 1]);
+    }
   }
 
   for (const [nombre, chip] of app.chips) {
@@ -1980,21 +2309,8 @@ function actualizarEfectos(juego) {
 
 /* ---------------------------------------------------------- menú */
 
-function valorDerecha(modo) {
-  if (modo === 'campaign') return `${guardado.campaign.unlocked - 1}/${LEVELS.length}`;
-  const mejor = guardado.best[modo] || 0;
-  return mejor ? String(mejor) : '—';
-}
-
-// izquierda y derecha saltan de grupo
-function grupoDe(modo) {
-  return GROUPS.findIndex((g) => g.modes.includes(modo));
-}
-
-function primerModoDelGrupo(indice) {
-  const total = GROUPS.length;
-  const grupo = GROUPS[((indice % total) + total) % total];
-  return ORDEN.indexOf(grupo.modes[0]);
+function modosDelGrupo(indice = app.grupo) {
+  return GROUPS[((indice % GROUPS.length) + GROUPS.length) % GROUPS.length].modes;
 }
 
 function nombreModo(modo) {
@@ -2003,38 +2319,58 @@ function nombreModo(modo) {
 }
 
 function descripcion(modo) {
-  if (modo === 'campaign') {
-    return `campaña: ${LEVELS.length} niveles con muros`;
-  }
-  return MODES[modo].name.toLowerCase() + ': ' + MODES[modo].tag;
+  if (modo === 'campaign') return `20 niveles con muros · ${guardado.campaign.unlocked - 1} superados`;
+  return MODES[modo].tag;
+}
+
+function valorDerecha(modo) {
+  if (modo === 'campaign') return `${guardado.campaign.unlocked - 1}/${LEVELS.length}`;
+  const mejor = guardado.best[modo] || 0;
+  return mejor ? String(mejor) : '—';
+}
+
+function resumenGrupo(indice) {
+  const grupo = GROUPS[indice];
+  if (indice === 0) return `${guardado.campaign.unlocked - 1}/${LEVELS.length}`;
+  const hechos = grupo.modes.filter((m) => (guardado.best[m] || 0) > 0).length;
+  return `${hechos}/${grupo.modes.length}`;
+}
+
+// la portada enseña cada grupo; la demo es un modo que lo representa
+function modoDeGrupo(indice) {
+  const grupo = GROUPS[indice];
+  if (indice === 0) return 'campaign';
+  const conRecord = grupo.modes.filter((m) => (guardado.best[m] || 0) > 0);
+  return (conRecord[conRecord.length - 1]) || grupo.modes[0];
+}
+
+function filaModo(modo, i) {
+  return `<button class="row" type="button" data-modo="${modo}" data-i="${i}">
+    <span class="row-idx">${dosDigitos(i + 1)}</span>
+    <span class="row-name">${nombreModo(modo)}<small>${descripcion(modo)}</small></span>
+    <span class="row-right">${valorDerecha(modo)}</span>
+  </button>`;
 }
 
 function mostrarInicio() {
   pararTemporizador();
   app.juego = null;
-  app.menuSel = 0;
+  app.grupo = Math.min(app.grupo, GROUPS.length - 1);
   app.demoModo = null;
 
-  let indice = 0;
-  const filas = GROUPS.map((grupo) => {
-    const botones = grupo.modes.map((modo) => {
-      const i = indice++;
-      return `<button class="row" type="button" data-modo="${modo}" data-i="${i}">
-        <span class="row-idx">${dosDigitos(i + 1)}</span>
-        <span class="row-name">${nombreModo(modo)}<small>${descripcion(modo)}</small></span>
-        <span class="row-right">${valorDerecha(modo)}</span>
-      </button>`;
-    }).join('');
-    return `<p class="grupo">${grupo.name}</p>${botones}`;
-  }).join('');
+  const filas = GROUPS.map((grupo, i) => `<button class="row" type="button" data-grupo="${i}" data-i="${i}">
+      <span class="row-idx">${dosDigitos(i + 1)}</span>
+      <span class="row-name">${grupo.name}<small>${grupo.tag} · ${grupo.modes.length} ${grupo.modes.length === 1 ? 'modo' : 'modos'}</small></span>
+      <span class="row-right">${resumenGrupo(i)}</span>
+    </button>`).join('');
 
-  ponerOverlay(`<div class="panel inicio">
+  ponerOverlay(`<div class="panel inicio portada">
     <div class="inicio-texto">
       <header class="inicio-cabeza">
         <h1>snake<span class="dot">.</span></h1>
-        <p class="kicker">rejilla 20×20 · ${ORDEN.length} modos y una campaña</p>
+        <p class="kicker">rejilla 20×20 · ${LEVELS.length} niveles · 7 modos</p>
       </header>
-      <nav class="filas">${filas}</nav>
+      <nav class="filas" aria-label="grupos">${filas}</nav>
       <p class="pie">
         <button class="link" type="button" data-accion="help">controles</button>
         <span aria-hidden="true">·</span>
@@ -2045,13 +2381,13 @@ function mostrarInicio() {
     </div>
     <aside class="inicio-demo">
       <p class="kicker" id="demo-titulo">vista previa</p>
-      <canvas id="demo" aria-label="vista previa del modo elegido"></canvas>
-      <p class="nota" id="demo-nota">así se juega el modo que tienes marcado</p>
+      <canvas id="demo" aria-label="vista previa"></canvas>
+      <p class="nota" id="demo-nota">elige un grupo para ver sus modos</p>
     </aside>
   </div>`);
 
   el.score.textContent = '—';
-  el.meta.textContent = 'elige un modo';
+  el.meta.textContent = 'elige un grupo';
   if (el.timer) el.timer.hidden = true;
   el.best.textContent = '';
   el.mult.textContent = '';
@@ -2060,18 +2396,80 @@ function mostrarInicio() {
   el.pause.textContent = 'pausa';
   el.prompt.classList.remove('visible');
   pantalla('home');
+  seleccionarGrupo(app.grupo);
+  ajustarLienzo();
+}
+
+function seleccionarGrupo(i) {
+  const total = GROUPS.length;
+  app.grupo = ((i % total) + total) % total;
+  el.overlay.querySelectorAll('[data-grupo]').forEach((nodo) => {
+    if (nodo.classList.contains('tab')) return;
+    nodo.classList.toggle('sel', Number(nodo.dataset.grupo) === app.grupo);
+  });
+  const modo = modoDeGrupo(app.grupo);
+  if (app.demoModo !== modo) crearDemo(modo);
+  pintarTituloDemo(modo, 'grupo');
+}
+
+function mostrarModos(indice = app.grupo) {
+  pararTemporizador();
+  app.juego = null;
+  app.demo = null;
+  app.grupo = ((indice % GROUPS.length) + GROUPS.length) % GROUPS.length;
+  app.modoSel = 0;
+  app.demoModo = null;
+
+  const grupo = GROUPS[app.grupo];
+  const filas = grupo.modes.map((modo, i) => filaModo(modo, i)).join('');
+  const tabs = GROUPS.map((g, i) =>
+    `<button class="tab${i === app.grupo ? ' sel' : ''}" type="button" data-tab="${i}">${g.name}</button>`).join('');
+
+  ponerOverlay(`<div class="panel modos">
+    <div class="niveles-cabeza">
+      <div>
+        <p class="kicker">menú · ${dosDigitos(app.grupo + 1)}</p>
+        <h2>${grupo.name}</h2>
+      </div>
+      <button class="ghost" type="button" data-accion="home">grupos <kbd>esc</kbd></button>
+    </div>
+    <nav class="tabs" aria-label="cambiar de grupo">${tabs}</nav>
+    <div class="modos-cuerpo">
+      <nav class="filas" aria-label="modos">${filas}</nav>
+      <aside class="inicio-demo">
+        <p class="kicker" id="demo-titulo">vista previa</p>
+        <canvas id="demo" aria-label="vista previa del modo"></canvas>
+        <p class="nota" id="demo-nota"></p>
+      </aside>
+    </div>
+    <p class="pie"><span>↑↓ elegir · ←→ cambiar de grupo · enter jugar</span></p>
+  </div>`);
+
+  el.score.textContent = '—';
+  el.meta.textContent = grupo.name;
+  if (el.timer) el.timer.hidden = true;
+  el.best.textContent = '';
+  el.mult.textContent = '';
+  el.chain.style.width = '0%';
+  el.pause.disabled = true;
+  el.pause.textContent = 'pausa';
+  el.prompt.classList.remove('visible');
+  pantalla('modes');
   seleccionarModo(0);
   ajustarLienzo();
 }
 
 function seleccionarModo(i) {
-  const total = ORDEN.length;
-  app.menuSel = ((i % total) + total) % total;
-  el.overlay.querySelectorAll('.row').forEach((nodo, j) => {
-    nodo.classList.toggle('sel', j === app.menuSel);
+  const modos = modosDelGrupo();
+  const total = modos.length;
+  app.modoSel = ((i % total) + total) % total;
+  app.menuSel = ORDEN.indexOf(modos[app.modoSel]);
+  el.overlay.querySelectorAll('.row[data-modo]').forEach((nodo, j) => {
+    nodo.classList.toggle('sel', j === app.modoSel);
   });
-  const modo = ORDEN[app.menuSel];
+  const modo = modos[app.modoSel];
   if (app.demoModo !== modo) crearDemo(modo);
+  pintarTituloDemo(modo, 'modo');
 }
 
 function elegirModo(modo) {
@@ -2117,7 +2515,7 @@ function pintarNiveles() {
         <p class="kicker">campaña · ${guardado.campaign.unlocked - 1}/${LEVELS.length} superados</p>
         <h2>elige nivel</h2>
       </div>
-      <button class="ghost" type="button" data-accion="home">menú</button>
+      <button class="ghost" type="button" data-accion="modos">grupos <kbd>esc</kbd></button>
     </div>
     <div class="niveles-cuerpo">
       <div class="rejilla">${celdas}</div>
@@ -2207,7 +2605,7 @@ function mostrarAyuda() {
         <tr><th>turbo</th><td>espacio o mayús · toca el tablero</td></tr>
         <tr><th>pausa</th><td>P o esc</td></tr>
         <tr><th>reiniciar</th><td>R</td></tr>
-        <tr><th>menú</th><td>↑↓ elegir · ←→ saltar de grupo</td></tr>
+        <tr><th>menú</th><td>↑↓ grupo o modo · ←→ cambiar de grupo</td></tr>
         <tr><th>sonido</th><td>M</td></tr>
         <tr><th>mando</th><td>d-pad y sticks · A turbo · start pausa</td></tr>
       </tbody>
@@ -2217,11 +2615,14 @@ function mostrarAyuda() {
       <li>la comida encadena: dos frutas seguidas suben el multiplicador hasta ×5</li>
       <li>el rombo rojo caduca y da dos anillos de largo</li>
       <li>los iconos blancos dan poderes: círculo discontinuo fantasma (atraviesas todo), dos barras lento, cuadrado recorte</li>
-      <li>en cazador hay una serpiente roja: come los puntos azules y se hace más larga</li>
-      <li>si te toca cualquier anillo suyo, o su cabeza, pierdes; con el fantasma la atraviesas</li>
-      <li>en los portales, entrar por uno te saca por el otro</li>
-      <li>en ciego sólo ves un círculo a tu alrededor</li>
-      <li>en reloj empiezas con 45 segundos y cada fruta te da 2,6 más</li>
+      <li>la campaña son 20 niveles: se abre uno cada vez que cierras el anterior</li>
+      <li>clásico: pasadas 30 frutas empiezan a salir muros sueltos</li>
+      <li>frenesí: los bordes dan la vuelta y la velocidad sube sola</li>
+      <li>portales: entrar por un aro te saca por el otro, y cambian de sitio</li>
+      <li>cazador: la serpiente roja come puntos azules y crece; si te toca, pierdes</li>
+      <li>cuando el cazador está lleno va directo a por ti y se mueve al doble</li>
+      <li>en ciego sólo ves un círculo, y se abre poco a poco según comes</li>
+      <li>en reloj sales con 45 segundos, cada fruta suma 2,6 y el rombo 4 más</li>
       <li>en muro el mapa se llena de muros cada tres frutas</li>
       <li>al empezar cada partida el mapa se enciende desde tu cabeza</li>
     </ul>
@@ -2453,13 +2854,29 @@ function accion(nombre) {
   const esDireccion = ['up', 'down', 'left', 'right'].includes(nombre);
 
   if (app.pantalla === 'home') {
-    if (nombre === 'up') seleccionarModo(app.menuSel - 1);
-    else if (nombre === 'down') seleccionarModo(app.menuSel + 1);
-    else if (nombre === 'right') seleccionarModo(primerModoDelGrupo(grupoDe(ORDEN[app.menuSel]) + 1));
-    else if (nombre === 'left') seleccionarModo(primerModoDelGrupo(grupoDe(ORDEN[app.menuSel]) - 1));
+    if (nombre === 'up' || nombre === 'left') seleccionarGrupo(app.grupo - 1);
+    else if (nombre === 'down' || nombre === 'right') seleccionarGrupo(app.grupo + 1);
     else if (nombre === 'confirm') {
       audio.play('ui');
-      elegirModo(ORDEN[app.menuSel]);
+      mostrarModos(app.grupo);
+    }
+    return;
+  }
+
+  if (app.pantalla === 'modes') {
+    if (nombre === 'up') seleccionarModo(app.modoSel - 1);
+    else if (nombre === 'down') seleccionarModo(app.modoSel + 1);
+    else if (nombre === 'left') {
+      audio.play('ui');
+      mostrarModos(app.grupo - 1);
+    } else if (nombre === 'right') {
+      audio.play('ui');
+      mostrarModos(app.grupo + 1);
+    } else if (nombre === 'confirm') {
+      audio.play('ui');
+      elegirModo(modosDelGrupo()[app.modoSel]);
+    } else if (nombre === 'back' || nombre === 'pause') {
+      mostrarInicio();
     }
     return;
   }
@@ -2472,7 +2889,7 @@ function accion(nombre) {
     else if (nombre === 'confirm') {
       audio.play('ui');
       elegirNivel(app.nivelSel);
-    } else if (nombre === 'back' || nombre === 'pause') mostrarInicio();
+    } else if (nombre === 'back' || nombre === 'pause') mostrarModos(0);
     return;
   }
 
@@ -2536,6 +2953,9 @@ function ejecutar(nombre) {
       break;
     case 'home':
       mostrarInicio();
+      break;
+    case 'modos':
+      mostrarModos(0);
       break;
     case 'help':
       mostrarAyuda();
@@ -2605,17 +3025,22 @@ function crearDemo(modo = app.demoModo || ORDEN[app.menuSel] || 'classic') {
   pintarTituloDemo(modo);
 }
 
-function pintarTituloDemo(modo) {
+function pintarTituloDemo(modo, contexto = 'modo') {
   const titulo = document.getElementById('demo-titulo');
   const nota = document.getElementById('demo-nota');
   if (!titulo) return;
   if (modo === 'campaign') {
-    const nivel = LEVELS[Math.min(guardado.campaign.unlocked - 1, LEVELS.length - 1)];
-    titulo.textContent = `vista previa · nivel ${dosDigitos(LEVELS.indexOf(nivel) + 1)} ${nivel.name.toLowerCase()}`;
-    nota.textContent = 'así es el siguiente nivel de la campaña';
+    const indice = Math.min(guardado.campaign.unlocked - 1, LEVELS.length - 1);
+    const nivel = LEVELS[indice];
+    titulo.textContent = `vista previa · nivel ${dosDigitos(indice + 1)} ${nivel.name.toLowerCase()}`;
+    nota.textContent = contexto === 'grupo'
+      ? `la campaña sigue por aquí · ${guardado.campaign.unlocked - 1} de ${LEVELS.length} superados`
+      : 'así es el siguiente nivel de la campaña';
   } else {
     titulo.textContent = `vista previa · ${nombreModo(modo)}`;
-    nota.textContent = MODES[modo].tag;
+    nota.textContent = contexto === 'grupo'
+      ? `${MODES[modo].tag} · entra para ver los demás`
+      : MODES[modo].tag;
   }
 }
 
@@ -2642,6 +3067,18 @@ el.overlay.addEventListener('click', (e) => {
   const boton = e.target.closest('button');
   if (!boton) return;
   soltarFoco();
+  if (boton.dataset.grupo !== undefined) {
+    audio.unlock();
+    audio.play('ui');
+    mostrarModos(Number(boton.dataset.grupo));
+    return;
+  }
+  if (boton.dataset.tab !== undefined) {
+    audio.unlock();
+    audio.play('ui');
+    mostrarModos(Number(boton.dataset.tab));
+    return;
+  }
   if (boton.dataset.modo) {
     audio.unlock();
     audio.play('ui');
@@ -2662,7 +3099,12 @@ el.overlay.addEventListener('click', (e) => {
 el.overlay.addEventListener('pointerover', (e) => {
   const boton = e.target.closest('button');
   if (!boton) return;
-  if (app.pantalla === 'home' && boton.dataset.i) seleccionarModo(Number(boton.dataset.i));
+  if (app.pantalla === 'home' && boton.dataset.grupo !== undefined) {
+    seleccionarGrupo(Number(boton.dataset.grupo));
+  }
+  if (app.pantalla === 'modes' && boton.dataset.modo !== undefined) {
+    seleccionarModo(Number(boton.dataset.i));
+  }
   if (app.pantalla === 'levels' && boton.dataset.nivel !== undefined) {
     seleccionarNivel(Number(boton.dataset.nivel));
   }
@@ -2712,7 +3154,7 @@ function bucle(t) {
   const dt = app.reloj ? t - app.reloj : 16;
   app.reloj = t;
 
-  if (app.pantalla === 'home') {
+  if (app.pantalla === 'home' || app.pantalla === 'modes') {
     pasoDemo(dt);
   } else if (app.juego) {
     app.juego.update(dt);

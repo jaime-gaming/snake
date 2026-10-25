@@ -28,12 +28,17 @@ const diagonal = (x, y, len, dir = 1) => {
   for (let i = 0; i < len; i++) out.push([x + i, y + i * dir]);
   return out;
 };
+const dots = (...celdas) => celdas;
+// un corte deja hueco en un muro: es lo que convierte una barrera en un paso
+const cut = (...celdas) => celdas;
+const slit = (x, y, alto) => vline(x, y, alto);
 
-// grupos del menú: se navega en plano, se ve por secciones
+
+// grupos del menú: cada uno es una subpágina con sus modos
 export const GROUPS = [
-  { name: 'progreso', modes: ['campaign'] },
-  { name: 'infinitos', modes: ['classic', 'frenzy', 'portals', 'hunter'] },
-  { name: 'especiales', modes: ['blind', 'clock', 'wall'] },
+  { name: 'progreso', tag: 'campaña de 20 niveles', modes: ['campaign'] },
+  { name: 'infinitos', tag: 'puntuación sin final', modes: ['classic', 'frenzy', 'portals', 'hunter'] },
+  { name: 'especiales', tag: 'una regla rara cada vez', modes: ['blind', 'clock', 'wall'] },
 ];
 
 export const MODE_ORDER = GROUPS.flatMap((g) => g.modes);
@@ -52,30 +57,35 @@ export const MODES = {
     ...base,
     id: 'classic',
     name: 'CLÁSICO',
-    tag: 'muros, cada fruta acelera',
-    startSpeed: 126,
-    minSpeed: 60,
-    accelPerFood: 2.2,
+    tag: 'cada fruta acelera · pasados 30 puntos empiezan a salir muros',
+    startSpeed: 142,
+    minSpeed: 82,
+    accelPerFood: 1.5,
+    wallFrom: 30,
+    wallEvery: 6,
+    wallMax: 18,
   },
   frenzy: {
     ...base,
     id: 'frenzy',
     name: 'FRENESÍ',
-    tag: 'bordes abiertos, acelera solo',
-    startSpeed: 102,
-    minSpeed: 34,
-    accelPerFood: 1.2,
-    rampPerSec: 0.8,
+    tag: 'bordes abiertos y la velocidad sube sola',
+    startSpeed: 124,
+    minSpeed: 56,
+    accelPerFood: 0.8,
+    rampPerSec: 0.5,
+    wrap: true,
     bonusEvery: 4,
+    powerEvery: 5,
   },
   portals: {
     ...base,
     id: 'portals',
     name: 'PORTALES',
-    tag: 'dos aros que cambian de sitio',
-    startSpeed: 120,
-    minSpeed: 54,
-    accelPerFood: 1.8,
+    tag: 'dos aros que cambian de sitio cada tres frutas',
+    startSpeed: 138,
+    minSpeed: 78,
+    accelPerFood: 1.4,
     portals: true,
     portalEvery: 3,
   },
@@ -83,11 +93,14 @@ export const MODES = {
     ...base,
     id: 'hunter',
     name: 'CAZADOR',
-    tag: 'una serpiente roja te caza',
-    startSpeed: 122,
-    minSpeed: 62,
-    accelPerFood: 1.6,
+    tag: 'una serpiente roja come puntos azules y crece',
+    startSpeed: 140,
+    minSpeed: 86,
+    accelPerFood: 1.2,
     hunter: true,
+    hunterPellets: 3,
+    hunterCap: 18,
+    hunterSight: 5,
     bonusEvery: 6,
     powerEvery: 5,
   },
@@ -95,76 +108,99 @@ export const MODES = {
     ...base,
     id: 'blind',
     name: 'CIEGO',
-    tag: 'solo ves lo que tienes cerca',
-    startSpeed: 124,
-    minSpeed: 66,
-    accelPerFood: 1.8,
-    vision: 4.2,
+    tag: 'sólo ves un círculo, que se abre al comer',
+    startSpeed: 142,
+    minSpeed: 84,
+    accelPerFood: 1.4,
+    vision: 3.8,
+    visionGain: 0.07,
+    visionMax: 6.4,
     chainWindow: 3600,
   },
   clock: {
     ...base,
     id: 'clock',
     name: 'RELOJ',
-    tag: '45 segundos, cada fruta suma',
-    startSpeed: 118,
-    minSpeed: 58,
-    accelPerFood: 1.6,
+    tag: '45 segundos de salida, cada fruta suma 2,6',
+    startSpeed: 136,
+    minSpeed: 80,
+    accelPerFood: 1.3,
     timer: 45000,
     timePerFood: 2600,
+    bonusTime: 4000,
     bonusEvery: 4,
   },
   wall: {
     ...base,
     id: 'wall',
     name: 'MURO',
-    tag: 'el mapa se llena de muros',
-    startSpeed: 128,
-    minSpeed: 62,
-    accelPerFood: 1.8,
+    tag: 'un muro nuevo cada tres frutas',
+    startSpeed: 146,
+    minSpeed: 86,
+    accelPerFood: 1.3,
     spawnWalls: true,
     wallEvery: 3,
-    powerEvery: 5,
+    wallMax: 30,
+    powerEvery: 4,
   },
 };
 
-const level = (name, goal, speed, walls, extra = {}) => ({
-  name,
-  goal,
-  speed,
-  walls,
-  minSpeed: 62,
-  accelPerFood: 2,
-  bonusEvery: 4,
-  powerEvery: 6,
-  chainWindow: 3000,
-  ...extra,
-});
+// campaña: 20 niveles. empieza lento y acaba a 104 ms por casilla
+const level = (name, goal, speed, walls, extra = {}) => {
+  const { cut: cortes = [], ...resto } = extra;
+  const fuera = new Set(cortes.map(([x, y]) => `${x},${y}`));
+  const vistos = new Set();
+  const limpios = walls.filter(([x, y]) => {
+    const k = `${x},${y}`;
+    if (fuera.has(k) || vistos.has(k)) return false;
+    vistos.add(k);
+    return true;
+  });
+  return {
+    name,
+    goal,
+    speed,
+    walls: limpios,
+    minSpeed: Math.max(72, speed - 32),
+    accelPerFood: 1.2,
+    bonusEvery: 4,
+    powerEvery: 6,
+    chainWindow: 3400,
+    ...resto,
+  };
+};
+
+const nivel = (i, name, goal, walls, extra = {}) =>
+  level(name, goal, Math.round(155 - i * 2.6), walls, {
+    accelPerFood: Number((1.2 + i * 0.055).toFixed(2)),
+    chainWindow: Math.max(2600, 3400 - i * 32),
+    ...extra,
+  });
 
 export const LEVELS = [
-  level('LLANO', 4, 140, []),
+  nivel(0, 'LLANO', 4, []),
 
-  level('CRUZ', 5, 134, [...hline(9, 5, 8), ...vline(13, 2, 3), ...vline(13, 6, 4)]),
+  nivel(1, 'CRUZ', 5, [...hline(9, 5, 8), ...vline(13, 2, 3), ...vline(13, 6, 4)]),
 
-  level('PILARES', 6, 128, [
+  nivel(2, 'PILARES', 5, [
     ...rect(4, 4, 2, 2),
     ...rect(14, 4, 2, 2),
     ...rect(4, 14, 2, 2),
     ...rect(14, 14, 2, 2),
   ]),
 
-  level('ANILLO', 6, 124, [
+  nivel(3, 'ANILLO', 6, [
     ...holes(ring(6, 4, 8, 12), [[6, 9], [6, 10], [13, 9], [13, 10]]),
   ]),
 
-  level('ZIGZAG', 7, 120, [
+  nivel(4, 'ZIGZAG', 7, [
     ...hline(0, 4, 13),
     ...hline(7, 8, 13),
     ...hline(0, 12, 13),
     ...hline(7, 16, 13),
   ]),
 
-  level('COLUMNAS', 8, 116, [
+  nivel(5, 'COLUMNAS', 7, [
     ...vline(4, 0, 6),
     ...vline(9, 0, 6),
     ...vline(14, 0, 6),
@@ -173,7 +209,7 @@ export const LEVELS = [
     ...vline(14, 14, 6),
   ]),
 
-  level('DOBLE ANILLO', 8, 112, [
+  nivel(6, 'DOBLE ANILLO', 8, [
     ...holes(ring(2, 2, 16, 16), [
       [2, 9], [2, 10], [17, 9], [17, 10],
       [9, 2], [10, 2], [9, 17], [10, 17],
@@ -181,7 +217,7 @@ export const LEVELS = [
     ...holes(ring(7, 7, 6, 6), [[7, 9], [7, 10], [12, 9], [12, 10]]),
   ]),
 
-  level('REJILLA', 9, 108, [
+  nivel(7, 'REJILLA', 8, [
     ...hline(1, 3, 3),
     ...hline(9, 3, 3),
     ...hline(17, 3, 3),
@@ -194,7 +230,7 @@ export const LEVELS = [
     ...hline(13, 15, 3),
   ]),
 
-  level('JAULA', 9, 104, [
+  nivel(8, 'JAULA', 9, [
     ...holes(ring(3, 3, 14, 14), [
       [3, 9], [3, 10], [16, 9], [16, 10],
       [6, 3], [7, 3], [12, 3], [13, 3],
@@ -202,14 +238,14 @@ export const LEVELS = [
     ]),
   ]),
 
-  level('ASPAS', 10, 100, [
+  nivel(9, 'ASPAS', 9, [
     ...holes(diagonal(3, 5, 5, 1), [[5, 7]]),
     ...holes(diagonal(12, 5, 5, 1), [[14, 7]]),
     ...holes(diagonal(3, 14, 4, -1), [[4, 13]]),
     ...holes(diagonal(12, 14, 4, -1), [[13, 13]]),
   ]),
 
-  level('CUATRO ESQUINAS', 10, 96, [
+  nivel(10, 'CUATRO ESQUINAS', 10, [
     ...rect(0, 0, 5, 5),
     ...rect(15, 0, 5, 5),
     ...rect(0, 15, 5, 5),
@@ -218,7 +254,106 @@ export const LEVELS = [
     ...rect(9, 13, 2, 2),
   ]),
 
-  level('FINAL', 12, 98, [
+  nivel(11, 'CRUZ HUECA', 10, [...rect(8, 0, 4, 20), ...rect(0, 8, 20, 4)], {
+    cut: [
+      ...hline(8, 4, 4),
+      ...hline(8, 16, 4),
+      ...vline(4, 8, 4),
+      ...vline(15, 8, 4),
+    ],
+  }),
+
+  nivel(12, 'REJILLA DOBLE', 11, [
+    ...hline(3, 4, 14),
+    ...hline(3, 9, 14),
+    ...hline(3, 14, 14),
+    ...vline(3, 4, 11),
+    ...vline(9, 4, 11),
+    ...vline(16, 4, 11),
+  ], {
+    cut: [
+      [5, 4], [5, 9], [5, 14],
+      [14, 4], [14, 9], [14, 14],
+      [9, 6], [9, 11],
+    ],
+  }),
+
+  nivel(13, 'PASILLO', 11, [
+    ...rect(0, 6, 20, 2),
+    ...rect(0, 13, 20, 2),
+    ...dots([3, 10], [16, 10]),
+  ], {
+    cut: [
+      [4, 6], [4, 7],
+      [14, 6], [14, 7],
+      [7, 13], [7, 14],
+      [16, 13], [16, 14],
+    ],
+  }),
+
+  nivel(14, 'PUAS', 12, [
+    ...rect(4, 4, 3, 3),
+    ...rect(13, 4, 3, 3),
+    ...rect(4, 13, 3, 3),
+    ...rect(13, 13, 3, 3),
+    ...vline(9, 2, 5),
+    ...vline(10, 14, 5),
+    ...dots([9, 9], [10, 10], [9, 10], [10, 9]),
+  ]),
+
+  nivel(15, 'ESCALERA', 12, [
+    ...hline(2, 4, 6),
+    ...hline(8, 7, 6),
+    ...hline(2, 10, 6),
+    ...hline(8, 13, 6),
+    ...vline(2, 4, 10),
+    ...vline(13, 4, 10),
+    ...holes(vline(7, 4, 4), [[7, 6]]),
+    ...holes(vline(8, 10, 4), [[8, 12]]),
+  ]),
+
+  nivel(16, 'DIENTES', 13, [
+    ...vline(5, 0, 7),
+    ...vline(5, 10, 7),
+    ...vline(10, 3, 7),
+    ...vline(10, 13, 5),
+    ...vline(15, 0, 7),
+    ...vline(15, 10, 7),
+    ...holes(ring(6, 6, 8, 8), [
+      [6, 9], [6, 10], [13, 9], [13, 10],
+      [9, 6], [10, 6], [9, 13], [10, 13],
+    ]),
+  ]),
+
+  nivel(17, 'LABERINTO', 13, [
+    ...vline(3, 0, 16),
+    ...vline(7, 4, 16),
+    ...vline(11, 0, 16),
+    ...vline(15, 4, 16),
+  ], {
+    cut: [
+      [3, 3], [3, 12],
+      [7, 7], [7, 17],
+      [11, 5], [11, 15],
+      [15, 8], [15, 18],
+    ],
+  }),
+
+  nivel(18, 'DOS JAULAS', 14, [
+    ...ring(2, 2, 7, 7),
+    ...ring(11, 11, 7, 7),
+    ...ring(12, 2, 6, 6),
+    ...ring(2, 12, 6, 6),
+  ], {
+    cut: [
+      [5, 2], [6, 2], [5, 8], [6, 8], [2, 5], [3, 5], [8, 5], [7, 5],
+      [14, 11], [15, 11], [14, 17], [15, 17], [11, 14], [12, 14], [17, 14], [17, 13],
+      [14, 2], [15, 2], [14, 7], [15, 7], [12, 4], [13, 4], [17, 4], [17, 5],
+      [4, 12], [5, 12], [4, 17], [5, 17], [2, 14], [3, 14], [7, 14], [7, 15],
+    ],
+  }),
+
+  nivel(19, 'FINAL', 14, [
     ...rect(0, 0, 4, 4),
     ...rect(16, 0, 4, 4),
     ...rect(0, 16, 4, 4),
@@ -229,5 +364,7 @@ export const LEVELS = [
     ...rect(11, 11, 2, 2),
     ...hline(8, 2, 4),
     ...hline(8, 17, 4),
+    ...holes(vline(2, 7, 6), [[2, 9], [2, 10]]),
+    ...holes(vline(17, 7, 6), [[17, 9], [17, 10]]),
   ]),
 ];
