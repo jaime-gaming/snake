@@ -58,7 +58,8 @@ eso señala los trozos de `js/levels.js` (modo, grupo, rangos, mapas y modificad
 - **última fruta** — en la campaña, la fruta que cierra el nivel sale amarilla con el centro negro: es el último punto de la barra de progreso.
 - **arranque** — al empezar cada partida, la luz enciende el tablero por bloques, un escalón por casilla, hasta dejar el mapa entero a la vista. el borde se enciende con él, porque se dibuja dentro del tablero.
 - **rótulo** — el nombre de la portada lo escribe la propia serpiente: las letras son su cuerpo, la cara va al final de la `e` y cada tres segundos se estira a comerse el punto rojo.
-- **sonidos** — todo sintetizado con osciladores: tic por cada giro del sorteo, acorde al fijarse, nota distinta en cada segundo de la cuenta atrás, arpegio al revivir, escala que sube o baja según el rango y saltos secos al comer.
+- **sonidos** — todo sintetizado con osciladores: tic por cada giro del sorteo, acorde al fijarse, nota distinta en cada segundo de la cuenta atrás, arpegio al revivir, escala que sube o baja según el rango y saltos secos al comer. En competitivo suena un pulso de fondo que se acelera en los últimos diez segundos; se enciende y apaga desde la pantalla de rangos sin salir del modo.
+- **transiciones** — cambiar de pantalla barre la vieja con cubos en escalera; al subir de rango caen cubos y el nuevo icono se dibuja bloque a bloque.
 - **velocidad** — la campaña va de 155 a 106 ms por casilla y los infinitos arrancan entre 124 y 146, con suelo de 42 a 86 ms. cuesta más acelerar que antes, así que las partidas duran más.
 
 ## archivos

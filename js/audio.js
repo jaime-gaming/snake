@@ -154,6 +154,29 @@ const SONIDOS = {
   },
 };
 
+// BORRAR-COMPETITIVO · pulso de fondo del competitivo: un golpe grave cada
+// medio segundo, que se acorta y sube en los últimos diez segundos.
+const ambiente = { sonando: false, timer: 0, apurado: false };
+
+function pulsoAmbiente() {
+  ambiente.timer = 0;
+  if (!ambiente.sonando) return;
+  if (!audio.enabled || !build()) {
+    ambiente.sonando = false;
+    return;
+  }
+  const golpe = ambiente.apurado ? 96 : 72;
+  try {
+    tono(golpe, 0.16, { tipo: 'triangle', vol: ambiente.apurado ? 0.13 : 0.09 });
+    tono(golpe * 1.5, 0.05, { tipo: 'square', vol: 0.03, delay: 0.02 });
+  } catch (err) {
+    /* si el audio falla, el ambiente se calla y la partida sigue */
+    ambiente.sonando = false;
+    return;
+  }
+  ambiente.timer = setTimeout(pulsoAmbiente, ambiente.apurado ? 300 : 560);
+}
+
 export const audio = {
   enabled: true,
 
@@ -169,6 +192,37 @@ export const audio = {
   set(on) {
     this.enabled = !!on;
     if (master) master.gain.value = this.enabled ? 0.15 : 0;
+    if (!this.enabled) this.ambienteParar();
+  },
+
+  // BORRAR-COMPETITIVO · ambiente de la partida
+  ambienteEmpezar() {
+    if (!this.enabled) return;
+    if (ambiente.sonando) return;
+    if (!build()) return;
+    ambiente.sonando = true;
+    pulsoAmbiente();
+  },
+
+  ambienteParar() {
+    ambiente.sonando = false;
+    if (ambiente.timer) {
+      clearTimeout(ambiente.timer);
+      ambiente.timer = 0;
+    }
+  },
+
+  // en los últimos diez segundos el pulso se acelera (una sola vez por cambio)
+  ambienteApurado(si) {
+    const valor = !!si;
+    if (ambiente.apurado === valor) return;
+    ambiente.apurado = valor;
+    if (!ambiente.sonando) return;
+    if (ambiente.timer) {
+      clearTimeout(ambiente.timer);
+      ambiente.timer = 0;
+    }
+    pulsoAmbiente();
   },
 
   toggle() {

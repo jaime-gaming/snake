@@ -56,6 +56,8 @@ const el = {
   pause: $('#btn-pause'),
   hint: $('#hint'),
   avisoFoco: $('#aviso-foco'),
+  barrido: $('#barrido'), // transición de bloques entre pantallas
+  festejo: $('#festejo'), // BORRAR-COMPETITIVO
 };
 
 const pincel = el.canvas.getContext('2d', { alpha: false });
@@ -70,6 +72,7 @@ function nuevoRegistro() {
     comp: { rango: 0, dentro: 0, partidas: 0, victorias: 0 },
     sound: true,
     crt: true,
+    ambiente: true, // BORRAR-COMPETITIVO
   };
 }
 
@@ -116,6 +119,7 @@ function leerGuardado() {
   };
   if (typeof bruto.sound === 'boolean') datos.sound = bruto.sound;
   if (typeof bruto.crt === 'boolean') datos.crt = bruto.crt;
+  if (typeof bruto.ambiente === 'boolean') datos.ambiente = bruto.ambiente; // BORRAR-COMPETITIVO
   return datos;
 }
 
@@ -237,11 +241,55 @@ function ajustarMarca() {
   Object.assign(marca, { ancho, alto, dpr });
 }
 
+// números de 4x5 para cuando el rótulo escribe el récord
+const MARCA_DIGITOS = {
+  0: ['.##.', '#..#', '#..#', '#..#', '.##.'],
+  1: ['..#.', '.##.', '..#.', '..#.', '.###'],
+  2: ['.##.', '#..#', '..#.', '.#..', '####'],
+  3: ['###.', '...#', '.##.', '...#', '###.'],
+  4: ['#..#', '#..#', '####', '...#', '...#'],
+  5: ['###.', '#...', '###.', '...#', '###.'],
+  6: ['.##.', '#...', '###.', '#..#', '.##.'],
+  7: ['###.', '...#', '..#.', '.#..', '.#..'],
+  8: ['.##.', '#..#', '.##.', '#..#', '.##.'],
+  9: ['.##.', '#..#', '.###', '...#', '.##.'],
+};
+
+const CICLO_NOMBRE = 3200;
+const CICLO_RECORD = 3000;
+
+// el récord más alto de todo lo jugado: es lo que escribe la serpiente
+function mejorGlobal() {
+  let mejor = 0;
+  for (const valor of Object.values(guardado.best || {})) mejor = Math.max(mejor, Number(valor) || 0);
+  for (const valor of Object.values(guardado.campaign.best || {})) mejor = Math.max(mejor, Number(valor) || 0);
+  return Math.round(mejor);
+}
+
+function celdasDeGlifos(texto, glifos, ancho, hueco = 1) {
+  const celdas = [];
+  for (let i = 0; i < texto.length; i++) {
+    const glifo = glifos[texto[i]];
+    if (!glifo) continue;
+    for (let y = 0; y < 5; y++) {
+      for (let x = 0; x < ancho; x++) {
+        if (glifo[y][x] !== '#') continue;
+        celdas.push({ x: i * (ancho + hueco) + x, y });
+      }
+    }
+  }
+  return celdas;
+}
+
 function dibujarMarca(dt) {
   const lienzo = document.getElementById('marca');
   if (!lienzo || !marca.ancho) return;
   const ctx = lienzo.getContext('2d');
-  marca.t = (marca.t + dt) % 3200;
+
+  // el rótulo alterna: el nombre y, si ya hay récord, la cifra escrita igual
+  const record = mejorGlobal();
+  const total = record > 0 ? CICLO_NOMBRE * 2 + CICLO_RECORD : CICLO_NOMBRE;
+  marca.t = (marca.t + dt) % total;
 
   const lado = Math.floor(marca.ancho / COLS_MARCA);
   const sep = Math.max(1, Math.round(lado * 0.16));
@@ -252,14 +300,6 @@ function dibujarMarca(dt) {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, marca.ancho, marca.alto);
 
-  const t = marca.t;
-  // la cabeza se estira hacia el punto, lo come y vuelve (todo a bloques)
-  let avance = 0;
-  if (t >= 400 && t < 700) avance = Math.round(((t - 400) / 300) * 3) / 3;
-  else if (t >= 700 && t < 1900) avance = 1;
-  else if (t >= 1900 && t < 2200) avance = Math.round((1 - (t - 1900) / 300) * 3) / 3;
-  const comido = t >= 700 && t < 2200;
-
   const bloque = (cx, cy, color) => {
     ctx.fillStyle = color;
     ctx.fillRect(
@@ -269,6 +309,47 @@ function dibujarMarca(dt) {
       tam,
     );
   };
+
+  // la cabeza: un bloque blanco con dos ojos negros que miran al punto
+  const cara = (cx, cy, mira) => {
+    bloque(cx, cy, '#ffffff');
+    const ojo = Math.max(2, Math.round(tam * 0.2));
+    for (const s of [-1, 1]) {
+      const ex = aire + Math.round(cx * lado) + sep + tam / 2 + tam * mira;
+      const ey = Math.round(cy * lado) + sep + tam / 2 + s * tam * 0.2;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(Math.round(ex - ojo / 2), Math.round(ey - ojo / 2), ojo, ojo);
+    }
+  };
+
+  if (record > 0 && marca.t >= CICLO_NOMBRE * 2) {
+    // el récord: la serpiente se reescribe sobre la cifra, cubo a cubo, y
+    // acaba con la cara en el último bloque del número
+    const t = marca.t - CICLO_NOMBRE * 2;
+    const cifra = String(record).slice(-5);
+    const ancho = cifra.length * (ANCHO_GLIFO + 1) - 1;
+    const desfase = Math.max(0, Math.floor((COLS_MARCA - ancho) / 2));
+    const celdas = celdasDeGlifos(cifra, MARCA_DIGITOS, ANCHO_GLIFO)
+      .map((c) => ({ x: c.x + desfase, y: c.y }));
+    if (celdas.length < 2) return;
+    const visibles = celdas.slice(-(MARCA_CUERPO.length));
+    const escritos = Math.max(1, Math.min(visibles.length, Math.floor(Math.min(1, t / 900) * visibles.length)));
+    for (let i = 0; i < escritos - 1; i++) {
+      const c = visibles[i];
+      bloque(c.x, c.y, i % 5 === 4 ? '#cfcfcf' : '#e8e8e8');
+    }
+    const cabeza = visibles[escritos - 1];
+    cara(cabeza.x, cabeza.y, 0.16);
+    return;
+  }
+
+  const t = marca.t;
+  // la cabeza se estira hacia el punto, lo come y vuelve (todo a bloques)
+  let avance = 0;
+  if (t >= 400 && t < 700) avance = Math.round(((t - 400) / 300) * 3) / 3;
+  else if (t >= 700 && t < 1900) avance = 1;
+  else if (t >= 1900 && t < 2200) avance = Math.round((1 - (t - 1900) / 300) * 3) / 3;
+  const comido = t >= 700 && t < 2200;
 
   // cuerpo: las letras, de la cola a la cabeza
   for (let i = 0; i < MARCA_CUERPO.length - 1; i++) {
@@ -291,16 +372,7 @@ function dibujarMarca(dt) {
   // la cabeza, al final de la e, con los ojos mirando al punto
   const base = MARCA_CUERPO[MARCA_CUERPO.length - 1];
   const cx = base.x + avance * (MARCA_PUNTO.x - base.x); // se estira hasta tapar el punto
-  const cy = base.y;
-  bloque(cx, cy, '#ffffff');
-  const ojo = Math.max(2, Math.round(tam * 0.2));
-  const mira = avance > 0.05 ? 0.24 : 0.14;
-  for (const s of [-1, 1]) {
-    const ex = aire + Math.round(cx * lado) + sep + tam / 2 + tam * mira;
-    const ey = Math.round(cy * lado) + sep + tam / 2 + s * tam * 0.2;
-    ctx.fillStyle = '#000';
-    ctx.fillRect(Math.round(ex - ojo / 2), Math.round(ey - ojo / 2), ojo, ojo);
-  }
+  cara(cx, base.y, avance > 0.05 ? 0.24 : 0.14);
 }
 
 /* ---------------------------------------------------------- lienzo */
@@ -365,7 +437,95 @@ function ponerOverlay(html) {
   el.overlay.scrollTop = 0;
 }
 
+/* ------------------------------------------------- barrido de pantallas
+
+   cada cambio de pantalla tapa la vieja con una cortina de cubos y la vuelve a
+   descubrir en escalera. son bloques enteros: no hay fundidos ni medios tonos. */
+
+const barrido = { ctx: null, ancho: 0, alto: 0, dpr: 1, t: 0, activo: false, celdas: null };
+const DURACION_BARRIDO = 260;
+
+function sinMovimiento() {
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch (err) {
+    return false;
+  }
+}
+
+function ajustarBarrido() {
+  const lienzo = el.barrido;
+  if (!lienzo) return false;
+  const ancho = Math.max(1, Math.round(window.innerWidth || 480));
+  const alto = Math.max(1, Math.round(window.innerHeight || 480));
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if (barrido.ctx && barrido.ancho === ancho && barrido.alto === alto && barrido.dpr === dpr) return true;
+
+  lienzo.style.width = `${ancho}px`;
+  lienzo.style.height = `${alto}px`;
+  lienzo.width = Math.round(ancho * dpr);
+  lienzo.height = Math.round(alto * dpr);
+  barrido.ctx = lienzo.getContext('2d');
+  Object.assign(barrido, { ancho, alto, dpr });
+
+  // cubos de unos 56 px: pocos y grandes, se leen como bloques
+  const cols = Math.max(6, Math.round(ancho / 56));
+  const filas = Math.max(4, Math.round(alto / 56));
+  const cw = ancho / cols;
+  const ch = alto / filas;
+  const celdas = [];
+  for (let y = 0; y < filas; y++) {
+    for (let x = 0; x < cols; x++) {
+      celdas.push({
+        x: Math.floor(x * cw),
+        y: Math.floor(y * ch),
+        w: Math.ceil(cw) + 1,
+        h: Math.ceil(ch) + 1,
+        // el escalón va de la esquina de arriba a la izquierda a la de abajo a la derecha
+        orden: (x + y) / Math.max(1, cols + filas - 2),
+      });
+    }
+  }
+  barrido.celdas = celdas;
+  return true;
+}
+
+function pintarBarrido(quitado) {
+  const ctx = barrido.ctx;
+  if (!ctx || !barrido.celdas) return;
+  ctx.setTransform(barrido.dpr, 0, 0, barrido.dpr, 0, 0);
+  ctx.clearRect(0, 0, barrido.ancho, barrido.alto);
+  ctx.fillStyle = '#000';
+  for (const c of barrido.celdas) {
+    if (c.orden < quitado) continue;
+    ctx.fillRect(c.x, c.y, c.w, c.h);
+  }
+}
+
+// se llama al cambiar de pantalla: la cortina ya está pintada antes de que el
+// navegador dibuje, así que nunca se ve la pantalla nueva a medio montar
+function taparPantalla() {
+  if (!el.barrido || sinMovimiento()) return;
+  if (!ajustarBarrido()) return;
+  barrido.activo = true;
+  barrido.t = 0;
+  el.barrido.hidden = false;
+  pintarBarrido(0);
+}
+
+function pasoBarrido(dt) {
+  if (!barrido.activo) return;
+  barrido.t += dt;
+  const avance = Math.min(1, barrido.t / DURACION_BARRIDO);
+  pintarBarrido(avance);
+  if (avance >= 1) {
+    barrido.activo = false;
+    if (el.barrido) el.barrido.hidden = true;
+  }
+}
+
 function pantalla(nombre) {
+  const antes = app.pantalla;
   app.pantalla = nombre;
   document.body.dataset.screen = nombre;
   // BORRAR-COMPETITIVO · el reloj, las minis y la cuenta sólo existen jugando
@@ -374,7 +534,10 @@ function pantalla(nombre) {
     if (el.minis) el.minis.hidden = true;
     if (el.cuenta) el.cuenta.hidden = true;
     if (el.sorteo) el.sorteo.hidden = true;
+    audio.ambienteParar(); // BORRAR-COMPETITIVO · fuera de la partida no hay pulso
   }
+  if (antes === 'versus-fin' && nombre !== 'versus-fin') pararFestejo(); // BORRAR-COMPETITIVO
+  if (antes !== nombre) taparPantalla();
   actualizarPista();
 }
 
@@ -983,6 +1146,129 @@ function tiraRangos(rangoActual) {
   }</div>`;
 }
 
+/* BORRAR-COMPETITIVO · subir de rango se festeja con cubos: caen desde arriba y
+   el icono nuevo se completa bloque a bloque justo en su hueco */
+
+const festejo = {
+  ctx: null, ancho: 0, alto: 0, dpr: 1, t: 0, activo: false,
+  cubos: [], celdas: null, caja: null, icono: null,
+};
+const DURACION_FESTEJO = 2200;
+
+function ajustarFestejo() {
+  const lienzo = el.festejo;
+  if (!lienzo) return false;
+  const ancho = Math.max(1, Math.round(window.innerWidth || 480));
+  const alto = Math.max(1, Math.round(window.innerHeight || 480));
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if (festejo.ctx && festejo.ancho === ancho && festejo.alto === alto && festejo.dpr === dpr) return true;
+  lienzo.style.width = `${ancho}px`;
+  lienzo.style.height = `${alto}px`;
+  lienzo.width = Math.round(ancho * dpr);
+  lienzo.height = Math.round(alto * dpr);
+  festejo.ctx = lienzo.getContext('2d');
+  Object.assign(festejo, { ancho, alto, dpr });
+  return true;
+}
+
+function pararFestejo() {
+  festejo.activo = false;
+  festejo.caja = null;
+  festejo.celdas = null;
+  if (festejo.ctx) festejo.ctx.clearRect(0, 0, festejo.ancho, festejo.alto);
+  if (el.festejo) el.festejo.hidden = true;
+  if (festejo.icono) festejo.icono.style.visibility = '';
+  festejo.icono = null;
+}
+
+function festejar(indice) {
+  if (!el.festejo || sinMovimiento()) return;
+  if (!ajustarFestejo()) return;
+
+  const ancho = festejo.ancho;
+  const alto = festejo.alto;
+  festejo.cubos = [];
+  for (let i = 0; i < 84; i++) {
+    const lado = 6 + (i % 3) * 6; // 6, 12 o 18 px: siempre cubos enteros
+    festejo.cubos.push({
+      x: Math.random() * Math.max(1, ancho - lado),
+      y: -Math.random() * alto,
+      v: 170 + Math.random() * 340,
+      lado,
+      gris: i % 5 === 0 ? '#8a8a8a' : '#ffffff',
+    });
+  }
+
+  // el icono grande del resultado se tapa y se va dibujando encima, bloque a bloque
+  const svg = el.overlay.querySelector('.ico-rango.grande');
+  festejo.icono = svg || null;
+  festejo.caja = null;
+  festejo.celdas = null;
+  if (svg) {
+    const caja = svg.getBoundingClientRect();
+    if (caja.width > 0) {
+      const celdas = [];
+      for (const trozo of (RANGO_ICONO[indice] || '').match(/<rect[^>]*>/g) || []) {
+        const x = Number((trozo.match(/x="(-?[\d.]+)"/) || [])[1] || 0);
+        const y = Number((trozo.match(/y="(-?[\d.]+)"/) || [])[1] || 0);
+        celdas.push({ x, y });
+      }
+      festejo.caja = { x: caja.left, y: caja.top, lado: caja.width };
+      festejo.celdas = celdas;
+      svg.style.visibility = 'hidden';
+    }
+  }
+
+  festejo.t = 0;
+  festejo.activo = true;
+  el.festejo.hidden = false;
+}
+
+function pasoFestejo(dt) {
+  if (!festejo.activo) return;
+  const ctx = festejo.ctx;
+  if (!ctx) {
+    pararFestejo();
+    return;
+  }
+  festejo.t += dt;
+  const t = festejo.t;
+  ctx.setTransform(festejo.dpr, 0, 0, festejo.dpr, 0, 0);
+  ctx.clearRect(0, 0, festejo.ancho, festejo.alto);
+
+  for (const c of festejo.cubos) {
+    c.y += (c.v * dt) / 1000;
+    if (c.y > festejo.alto) c.y = -c.lado * 2;
+    ctx.fillStyle = c.gris;
+    ctx.fillRect(Math.round(c.x), Math.round(c.y), c.lado, c.lado);
+  }
+
+  if (festejo.caja && festejo.celdas) {
+    // el SVG mide 28 y los cubos van a 8 desde 2: se copia la misma rejilla
+    const u = festejo.caja.lado / 28;
+    const escritos = Math.min(festejo.celdas.length, Math.floor(t / 70));
+    ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < escritos; i++) {
+      const celda = festejo.celdas[i];
+      ctx.fillRect(
+        Math.round(festejo.caja.x + celda.x * u),
+        Math.round(festejo.caja.y + celda.y * u),
+        Math.max(1, Math.round(8 * u)),
+        Math.max(1, Math.round(8 * u)),
+      );
+    }
+  }
+
+  if (t >= DURACION_FESTEJO) pararFestejo();
+}
+
+// BORRAR-COMPETITIVO · el pulso de fondo sólo suena si está activado y en partida
+function empezarAmbiente() {
+  if (!guardado.ambiente) return;
+  if (!app.comp || !app.comp.activo || app.comp.fase !== 'juego') return;
+  audio.ambienteEmpezar();
+}
+
 function nombresDeMapas() {
   if (!app.mapasComp.length) {
     app.mapasComp = [
@@ -1023,7 +1309,10 @@ function mostrarRangos() {
     <div class="escalera" style="--paso:${info.rango}">${iconos}</div>
     <div class="comp-barra"><i style="width:${(info.progreso * 100).toFixed(0)}%"></i></div>
     <p class="nota">${info.siguiente ? `${info.dentro}/${COMPETITIVE.porRango} para ${info.siguiente}` : 'rango máximo'}</p>
-    <p class="pie"><span>1º +3 · 2º +1 · 3º −1 · 4º −2</span></p>
+    <p class="pie">
+      <span>1º +3 · 2º +1 · 3º −1 · 4º −2</span>
+      <button class="link" type="button" data-accion="comp-ambiente" aria-pressed="${guardado.ambiente}">ambiente ${guardado.ambiente ? 'sí' : 'no'}</button>
+    </p>
     <div class="acciones">
       <button class="principal" type="button" data-accion="comp-start">jugar <kbd>enter</kbd></button>
       <button type="button" data-accion="home">menú <kbd>esc</kbd></button>
@@ -1283,7 +1572,9 @@ function pintarReloj() {
     : Math.max(0, Math.ceil(c.restante / 1000));
   const texto = String(segundos);
   if (el.reloj.textContent !== texto) el.reloj.textContent = texto;
-  el.reloj.classList.toggle('apurado', c.fase === 'juego' && c.restante <= 10000);
+  const apurado = c.fase === 'juego' && c.restante <= 10000;
+  el.reloj.classList.toggle('apurado', apurado);
+  audio.ambienteApurado(apurado); // BORRAR-COMPETITIVO · el pulso se acelera al final
 }
 
 function pintarCuenta() {
@@ -1325,6 +1616,7 @@ function pasoCompetitivo(dt) {
       el.prompt.classList.remove('visible');
       pintarCuenta();
       audio.play('start');
+      empezarAmbiente();
     }
     return;
   }
@@ -1403,6 +1695,7 @@ function finCompetitivo() {
   el.prompt.classList.remove('visible');
   if (cambio.sube || cambio.baja) audio.play('rango', cambio.sube);
   else audio.play(yo.puesto === 1 ? 'level' : 'ui');
+  if (cambio.sube) festejar(despues.rango); // BORRAR-COMPETITIVO · cubos al subir
 }
 
 /* ---------------------------------------------------------- partida */
@@ -1660,6 +1953,7 @@ function reanudar() {
   pantalla('playing');
   el.pause.textContent = 'pausa';
   el.pause.disabled = false;
+  empezarAmbiente(); // BORRAR-COMPETITIVO · al seguir, vuelve el pulso
 }
 
 function alternarPausa() {
@@ -1885,6 +2179,18 @@ function ejecutar(nombre) {
     case 'comp-again':
       mostrarRangos();
       break;
+    case 'comp-ambiente': {
+      // el pulso de fondo del competitivo se enciende y apaga sin salir de aquí
+      guardado.ambiente = !guardado.ambiente;
+      guardar();
+      const boton = el.overlay.querySelector('button[data-accion="comp-ambiente"]');
+      if (boton) {
+        boton.textContent = `ambiente ${guardado.ambiente ? 'sí' : 'no'}`;
+        boton.setAttribute('aria-pressed', String(guardado.ambiente));
+      }
+      audio.play('ui');
+      break;
+    }
     default:
       break;
   }
@@ -1914,6 +2220,7 @@ function alternarSonido() {
   guardar();
   aplicarSonido();
   if (guardado.sound) audio.play('ui');
+  empezarAmbiente(); // BORRAR-COMPETITIVO
 }
 
 /* ---------------------------------------------------------- demo del menú */
@@ -2080,6 +2387,10 @@ function bucle(t) {
   const dt = app.reloj ? t - app.reloj : 16;
   app.reloj = t;
 
+  // transición de pantallas y festejo del rango, siempre por encima del resto
+  pasoBarrido(dt);
+  pasoFestejo(dt); // BORRAR-COMPETITIVO
+
   if (app.pantalla === 'home' || app.pantalla === 'modes') {
     pasoDemo(dt);
     dibujarMarca(dt);
@@ -2133,6 +2444,11 @@ if (location.hash === '#debug') {
   window.__snake = { app, guardado, accion, empezarPartida, mostrarInicio, crearDemo, mostrarFin };
   // BORRAR-COMPETITIVO
   window.__snake.mostrarRangos = mostrarRangos;
+  // rótulo y festejo: para poder mirarlos desde las pruebas
+  window.__snake.marca = marca;
+  window.__snake.mejorGlobal = mejorGlobal;
+  window.__snake.festejar = festejar;
+  window.__snake.dibujarMarca = dibujarMarca;
   window.__snake.sorteoCompetitivo = sorteoCompetitivo;
   window.__snake.empezarCompetitivo = empezarCompetitivo;
   window.__snake.finCompetitivo = finCompetitivo;

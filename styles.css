@@ -1420,3 +1420,29 @@ button.foco {
     font-size: 7px;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   transición de bloques entre pantallas
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+#barrido {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+  /* cubos nítidos, sin suavizar */
+  image-rendering: pixelated;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BORRAR-COMPETITIVO · cubos al subir de rango
+   grep -rn BORRAR-COMPETITIVO .
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+#festejo {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+  image-rendering: pixelated;
+}
