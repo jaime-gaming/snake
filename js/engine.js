@@ -67,6 +67,9 @@ export class Game {
     this.spawnFood();
     if (cfg.hunter) {
       this.placeHunter();
+      this.hunter.recarga = 0;
+      this.hunter.movido = 0;
+      this.hunter.paso = 0;
       const cuantos = Math.max(2, cfg.hunterPellets || 2);
       for (let i = 0; i < cuantos; i++) this.spawnPellet();
     }
@@ -200,6 +203,10 @@ export class Game {
   updateFx(dt) {
     const k = dt / 1000;
     if (this.reveal < 1) this.reveal = Math.min(1, this.reveal + dt / 1000);
+    if (this.hunter && this.hunter.recarga > 0) {
+      this.hunter.recarga -= dt;
+      if (this.hunter.recarga <= 0) this.renacerCazador();
+    }
     if (this.chomp > 0) this.chomp = Math.max(0, this.chomp - dt / 150);
     for (let i = this.pendingWalls.length - 1; i >= 0; i--) {
       const w = this.pendingWalls[i];
@@ -605,6 +612,55 @@ export class Game {
     this.emit('wall', { x: c.x, y: c.y });
   }
 
+  // el cazador se estrella contra ti: estalla, desaparece un momento y vuelve
+  // por la mitad de largo, lejos. matarlo no te da la partida, pero te da aire
+  matarCazador() {
+    const h = this.hunter;
+    for (const c of h.body) this.burst(c.x + 0.5, c.y + 0.5, 5, '#c21414', 4);
+    this.score += 100;
+    this.flash = 0.75;
+    this.shake = 6;
+    this.hitStop = 90;
+    h.recarga = 1100;
+    h.reaparece = Math.max(3, Math.ceil(h.body.length / 2));
+    h.aim = null;
+    h.cazando = false;
+    this.emit('hunterDies', { x: h.body[0].x, y: h.body[0].y });
+  }
+
+  renacerCazador() {
+    const h = this.hunter;
+    const largo = h.reaparece || 3;
+    this.placeHunter();
+    const nuevo = this.hunter;
+    const libre = (x, y) =>
+      x >= 0 && y >= 0 && x < this.cols && y < this.rows &&
+      !this.wallSet.has(K(x, y)) &&
+      !nuevo.body.some((c) => c.x === x && c.y === y) &&
+      !this.body.some((c) => c.x === x && c.y === y);
+    while (nuevo.body.length < largo) {
+      const cola = nuevo.body[nuevo.body.length - 1];
+      const antes = nuevo.body[nuevo.body.length - 2];
+      let siguiente = null;
+      for (const [dx, dy] of DIRS) {
+        const nx = cola.x + dx;
+        const ny = cola.y + dy;
+        if (antes && nx === antes.x && ny === antes.y) continue;
+        if (!libre(nx, ny)) continue;
+        siguiente = { x: nx, y: ny };
+        break;
+      }
+      if (!siguiente) break;
+      nuevo.body.push(siguiente);
+      nuevo.prev.push({ ...siguiente });
+    }
+    nuevo.recarga = 0;
+    nuevo.cazando = false;
+    nuevo.movido = this.time;
+    nuevo.paso = Math.max(1, this.hunterCadence() * this.interval());
+    this.flash = 0.3;
+  }
+
   // el cazador es una serpiente: empieza con tres anillos y crece comiendo
   placeHunter() {
     const cabeza = this.body[0];
@@ -677,9 +733,18 @@ export class Game {
     return h.body.length >= this.hunterUmbral() ? 2 : 4;
   }
 
+  // cuánto lleva andado el cazador hacia su casilla nueva (0 a 1), para que no salte
+  get hunterAvance() {
+    const h = this.hunter;
+    if (!h || h.recarga > 0) return 1;
+    if (this.state !== 'running') return 1;
+    return clamp((this.time - (h.movido || 0)) / Math.max(1, h.paso || 1), 0, 1);
+  }
+
   // ya te está cazando (antes sólo comía puntos)
   get hunterPelea() {
-    return !!this.hunter && this.hunter.body.length >= this.hunterUmbral();
+    return !!this.hunter && !(this.hunter.recarga > 0) &&
+      this.hunter.body.length >= this.hunterUmbral();
   }
 
   // cuándo deja de comer y empieza a cazarte: dos tercios de su tope
@@ -744,9 +809,12 @@ export class Game {
     const h = this.hunter;
     if (!h) return;
     this.hunterTick++;
+    if (h.recarga > 0) return;
     if (this.hunterTick % this.hunterCadence() !== 0) return;
 
     h.prev = h.body.map((p) => ({ ...p }));
+    h.movido = this.time;
+    h.paso = Math.max(1, this.hunterCadence() * this.interval());
     const cabeza = h.body[0];
     const objetivo = this.hunterTarget();
     // primer aviso: acaba de pasar de comer a cazarte
@@ -759,16 +827,17 @@ export class Game {
 
     const ocupadoCuerpo = new Set();
     for (let i = 0; i < h.body.length - 1; i++) ocupadoCuerpo.add(K(h.body[i].x, h.body[i].y));
-    // tu cuerpo también le estorba: no se te puede meter encima, tiene que rodearlo.
-    // la cabeza y la cola no cuentan: la cola se mueve y la cabeza es a lo que va.
+    // tu cuerpo le cuesta caro: puede cruzarlo, pero si se estrella revienta.
+    // la cabeza y la cola no cuentan aquí; la cabeza se mira aparte y la cola se mueve
     const cuerpoJugador = new Set(
       this.body.slice(1, -1).map((s) => K(s.x, s.y)),
     );
     // corto va a comer y no te toca: tu cabeza tampoco es paso para él.
     // a partir de siete anillos ya te caza, y ahí sí puede caer sobre ti
     const agresivo = this.hunterPelea;
-    const bloqueado = new Set([...this.wallSet, ...ocupadoCuerpo, ...cuerpoJugador]);
-    if (!agresivo) bloqueado.add(K(this.body[0].x, this.body[0].y));
+    const bloqueado = new Set([...this.wallSet, ...ocupadoCuerpo]);
+    const tuCabeza = K(this.body[0].x, this.body[0].y);
+    if (!agresivo) bloqueado.add(tuCabeza);
 
     // por dónde iría si no hubiera trampas: una casilla más cerca del objetivo
     const ideal = bfsStep({
@@ -808,6 +877,8 @@ export class Game {
       if (Math.abs(nx - this.body[0].x) + Math.abs(ny - this.body[0].y) === 1 && h.body.length < 5) {
         puntos -= 60;
       }
+      // tu cuerpo no le bloquea, pero estrellarse contra él lo revienta
+      if (cuerpoJugador.has(k)) puntos -= 400;
 
       if (puntos > mejorPunto) {
         mejorPunto = puntos;
@@ -830,10 +901,15 @@ export class Game {
     if (h.grow > 0) h.grow--;
     else h.body.pop();
 
-    // te muerde sólo si su cabeza cae sobre la tuya; su cuerpo te bloquea, no te mata
+    // te muerde sólo si su cabeza cae sobre la tuya
     if (this.state === 'running' && !this.ghosting &&
       this.body[0].x === elegido.x && this.body[0].y === elegido.y) {
       this.die('cazador', elegido.x, elegido.y);
+      return;
+    }
+    // y si se estrella contra tu cuerpo, revienta: muere y vuelve más corto
+    if (this.state === 'running' && this.body.some((c) => c.x === elegido.x && c.y === elegido.y)) {
+      this.matarCazador(elegido);
       return;
     }
 
@@ -893,7 +969,16 @@ export class Game {
     const cabeza = this.body[0] || { x: 0, y: 0 };
     const dist = Math.abs(cx - cabeza.x) + Math.abs(cy - cabeza.y);
     if (this.wallSet.has(K(cx, cy))) return 0.5;
-    // la onda de arranque enciende el borde a su paso, igual que el resto del tablero
+    const rumbo = this.dir || { x: 1, y: 0 };
+    const salida = rumbo.x < 0 ? 'izq' : rumbo.x > 0 ? 'der' : rumbo.y < 0 ? 'arriba' : 'abajo';
+    const esSalida = sentido === salida &&
+      (sentido === 'arriba' || sentido === 'abajo' ? cx === cabeza.x : cy === cabeza.y);
+    const pulso = Math.floor(this.time / 160) % 2 === 0 ? 0.95 : 0.6;
+    // si darse contra él mata, el borde es una pared y se ve siempre
+    if (!(this.cfg.wrap || this.ghosting)) {
+      return esSalida && dist <= 4 ? pulso : 0.34;
+    }
+    // si no mata (frenesí, fantasma), sólo se marca al acercarse
     if (this.reveal < 1) {
       const luz = this.cfg.vision
         ? this.cfg.vision * (0.35 + 0.65 * this.reveal)
@@ -902,12 +987,7 @@ export class Game {
       if (lejos <= luz + 1) return 0.26 * (1 - this.reveal);
     }
     if (dist > 4) return 0;
-    const rumbo = this.dir || { x: 1, y: 0 };
-    const salida = rumbo.x < 0 ? 'izq' : rumbo.x > 0 ? 'der' : rumbo.y < 0 ? 'arriba' : 'abajo';
-    const esSalida = sentido === salida &&
-      (sentido === 'arriba' || sentido === 'abajo' ? cx === cabeza.x : cy === cabeza.y);
-    if (!esSalida) return 0.16;
-    return Math.floor(this.time / 160) % 2 === 0 ? 0.92 : 0.5;
+    return esSalida ? pulso : 0.16;
   }
 
   draw(ctx, view) {
@@ -1058,10 +1138,8 @@ export class Game {
     }
 
     // el cazador: cubos rojos, uno por anillo, con la cabeza marcada
-    if (this.hunter) {
-      const ritmo = 2;
-      const avance = ((this.hunterTick % ritmo) +
-        (this.state === 'running' ? clamp(this.acc / this.interval(), 0, 1) : 1)) / ritmo;
+    if (this.hunter && this.hunter.recarga <= 0) {
+      const avance = this.hunterAvance;
       const m = Math.max(1, Math.round(cell * 0.07));
       const ancho = lado - m * 2;
       const centro = Math.max(2, Math.round(ancho * 0.22));

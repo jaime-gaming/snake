@@ -29,7 +29,7 @@ El menú son tres grupos y cada uno abre su propia subpágina con sus modos: `�
 
 - **clásico** — sin fin. cada fruta acelera y, pasadas 30, empiezan a salir muros sueltos.
 - **frenesí** — los bordes dan la vuelta y la velocidad sube sola con el reloj.
-- **cazador** — la serpiente roja empieza comiendo puntos azules y **no te toca**: se mueve despacio y tu cabeza tampoco es casilla para ella. cuando llega a dos tercios de su tope (12 anillos) se pone a cazar: marco blanco en la cabeza, aviso y ritmo doble. su cuerpo no te mata; si le muerdes un anillo se lo recortas. te come sólo si su cabeza cae sobre la tuya, y antes marca con un cubo rojo fino por dónde va a cortar. los puntos azules también son para ti: si te los comes, no crece. cada cubo hueco te da una vida nueva: vuelve a nacer lejos.
+- **cazador** — la serpiente roja empieza comiendo puntos azules y **no te toca**: se mueve despacio y tu cabeza tampoco es casilla para ella. cuando llega a dos tercios de su tope (12 anillos) se pone a cazar: marco blanco en la cabeza, aviso y ritmo doble. su cuerpo no te mata; si le muerdes un anillo se lo recortas. te come sólo si su cabeza cae sobre la tuya, y antes marca con un cubo rojo fino por dónde va a cortar. **si se estrella contra tu cuerpo revienta**: estalla, está un segundo fuera y vuelve a nacer lejos por la mitad de largo, así que tu cuerpo es también un arma. se mueve interpolado entre casillas, sin saltos. los puntos azules también son para ti: si te los comes, no crece. cada cubo hueco te da una vida nueva: vuelve a nacer lejos.
 
 **especiales**
 
@@ -44,7 +44,7 @@ los modos que sobraban (portales, reloj y muro) se han ido: sus reglas no aporta
 - **poderes** — todo son cubos: contorno discontinuo, fantasma (atraviesas muros, bordes y cazador durante cinco segundos); raya en medio, lento; cuadro relleno, recorte (pierdes anillos y ganas puntos). el fantasma no se corta de golpe: en el último segundo y medio se apaga en cuatro escalones y los cubos se van rellenando hasta volver a ser sólidos.
 - **turbo** — 0,68 del intervalo mientras lo mantengas.
 - **choque** — al morir la casilla del golpe queda marcada y tres marcos cuadrados se abren desde ella mientras la serpiente se deshace de la cabeza a la cola. la cifra final sube de 0 al total en medio segundo.
-- **borde** — el marco no es un adorno fijo. donde hay muro se marca; donde no, no se marca hasta que te acercas, y el bloque por el que vas a salir se enciende en blanco. al morir por el borde, el aviso ya estaba ahí.
+- **borde** — si chocar con él te mata, el borde se ve **siempre**: es una pared, no un adorno. donde hay muro va más marcado. con el fantasma puesto (o en frenesí, donde los bordes dan la vuelta y no matan) se apaga y sólo se marca al acercarte. el bloque por el que vas a salir se enciende en blanco.
 - **última fruta** — en la campaña, la fruta que cierra el nivel sale amarilla con el centro negro: es el último punto de la barra de progreso.
 - **arranque** — al empezar cada partida, la luz enciende el tablero por bloques, un escalón por casilla, hasta dejar el mapa entero a la vista. el borde se enciende con él, porque se dibuja dentro del tablero.
 - **velocidad** — la campaña va de 155 a 106 ms por casilla y los infinitos arrancan entre 124 y 146, con suelo de 42 a 86 ms. cuesta más acelerar que antes, así que las partidas duran más.

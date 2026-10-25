@@ -543,6 +543,9 @@ process.stdout.write('juego justo\n');
   // el cazador también te come a ti
   const juego = new Game({ ...MODES.hunter }, () => {});
   juego.state = 'running';
+  juego.body = [{ x: 5, y: 10 }, { x: 4, y: 10 }, { x: 3, y: 10 }];
+  juego.prevBody = juego.body.map((c) => ({ ...c }));
+  juego.dir = { x: 1, y: 0 };
   const cabezaJugador = juego.body[0];
   const anillos = Array.from({ length: juego.hunterUmbral() }, (_, i) => ({
     x: cabezaJugador.x + 1,
@@ -554,6 +557,7 @@ process.stdout.write('juego justo\n');
     dir: { x: 0, y: 0 },
     grow: 0,
     aim: null,
+    recarga: 0,
   };
   juego.hunterTick = 0;
   juego.hunterCadence = () => 1;
@@ -570,7 +574,7 @@ process.stdout.write('juego justo\n');
   comprobar(!!juego.hunter.aim, 'cazador: no marca a dónde va');
   process.stdout.write('  cazador: marca su corte antes de llegar\n');
 }
-// borde: sin muro no se marca hasta que te acercas, y se enciende la salida
+// borde: si mata, se ve siempre; si no mata, sólo al acercarse
 process.stdout.write('borde\n');
 {
   const juego = new Game({ ...MODES.classic }, () => {});
@@ -579,31 +583,42 @@ process.stdout.write('borde\n');
   juego.reveal = 1;
   juego.body = [{ x: 10, y: 10 }, { x: 9, y: 10 }];
   juego.dir = { x: 1, y: 0 };
-  comprobar(juego.alfaBorde(2, 0, 'arriba') === 0, 'borde: se marca lejos sin muro');
-  comprobar(juego.alfaBorde(8, 0, 'arriba') === 0, 'borde: se marca a media distancia sin muro');
+  const lejos = juego.alfaBorde(2, 0, 'arriba');
+  comprobar(lejos > 0.2 && lejos < 0.5, 'borde: el borde que mata no se ve siempre');
 
-  // cabeza pegada al borde de arriba, subiendo: ahí está la salida
-  juego.body = [{ x: 10, y: 2 }, { x: 10, y: 3 }];
-  juego.dir = { x: 0, y: -1 };
-  comprobar(juego.alfaBorde(10, 0, 'arriba') >= 0.5, 'borde: no enciende la salida al acercarse');
-  comprobar(juego.alfaBorde(8, 0, 'arriba') > 0 && juego.alfaBorde(8, 0, 'arriba') < 0.5,
-    'borde: no marca cerca de la cabeza');
+  // de cerca, el bloque por el que vas a salir se enciende
+  juego.body = [{ x: 17, y: 10 }, { x: 16, y: 10 }];
+  comprobar(juego.alfaBorde(19, 10, 'der') >= 0.5, 'borde: no enciende la salida al acercarse');
+  comprobar(juego.alfaBorde(19, 4, 'der') > 0 && juego.alfaBorde(19, 4, 'der') < 0.5,
+    'borde: marca la salida donde no toca');
 
-  // con muro en el borde, se marca siempre
+  // con muro, siempre marcado
   juego.body = [{ x: 10, y: 10 }, { x: 9, y: 10 }];
   juego.walls.push([5, 0]);
   juego.wallSet.add(K(5, 0));
   comprobar(juego.alfaBorde(5, 0, 'arriba') === 0.5, 'borde: no marca donde hay muro');
-  // la onda de arranque sí lo enciende a su paso
-  juego.wallSet.clear();
-  juego.reveal = 0.4;
-  juego.body = [{ x: 10, y: 4 }, { x: 10, y: 5 }];
-  juego.dir = { x: 0, y: -1 };
-  const conLuz = juego.alfaBorde(8, 0, 'arriba');
+
+  // si no mata (frenesí da la vuelta), no se marca de lejos
+  const giro = new Game({ ...MODES.frenzy }, () => {});
+  giro.reveal = 1;
+  giro.body = [{ x: 10, y: 10 }, { x: 9, y: 10 }];
+  giro.dir = { x: 1, y: 0 };
+  comprobar(giro.alfaBorde(2, 0, 'arriba') === 0, 'borde: se marca de lejos aunque no mate');
+
+  // con fantasma tampoco mata
+  const fantasma = new Game({ ...MODES.classic }, () => {});
+  fantasma.reveal = 1;
+  fantasma.fx.ghost = 4000;
+  fantasma.body = [{ x: 10, y: 10 }, { x: 9, y: 10 }];
+  comprobar(fantasma.alfaBorde(2, 0, 'arriba') === 0, 'borde: el fantasma no apaga el borde');
+
+  // la onda de arranque lo enciende a su paso cuando no mata
+  giro.reveal = 0.4;
+  giro.body = [{ x: 10, y: 4 }, { x: 10, y: 5 }];
+  giro.dir = { x: 0, y: -1 };
+  const conLuz = giro.alfaBorde(8, 0, 'arriba');
   comprobar(conLuz > 0 && conLuz < 0.26, 'borde: la luz de arranque no lo ilumina');
-  juego.reveal = 1;
-  comprobar(juego.alfaBorde(8, 0, 'arriba') !== conLuz, 'borde: sigue iluminado con el mapa ya encendido');
-  process.stdout.write('  borde: mudo lejos, avisa cerca y enciende la salida\n');
+  process.stdout.write('  borde: visible si mata, al acercarse si no, y la luz lo enciende\n');
 }
 
 // fantasma: se apaga a escalones, no de golpe
@@ -664,7 +679,61 @@ process.stdout.write('cazador esquivando\n');
   const cabeza = juego.hunter.body[0];
   const dentro = juego.body.slice(0, -1).some((c) => c.x === cabeza.x && c.y === cabeza.y);
   comprobar(!dentro, 'cazador: se mete dentro de tu cuerpo');
-  process.stdout.write('  cazador: rodea el cuerpo en vez de atravesarlo\n');
+  process.stdout.write('  cazador: rodea tu cuerpo cuando puede\n');
+}
+
+// el cazador se estrella contra ti y revienta; y se mueve interpolado, no a saltos
+process.stdout.write('cazador al choque\n');
+{
+  const juego = new Game({ ...MODES.hunter }, () => {});
+  juego.state = 'running';
+  juego.body = [{ x: 5, y: 5 }, { x: 9, y: 10 }, { x: 10, y: 11 }, { x: 11, y: 10 }];
+  juego.prevBody = juego.body.map((c) => ({ ...c }));
+  juego.dir = { x: 1, y: 0 };
+  juego.walls = [[10, 9]];
+  juego.wallSet = new Set([K(10, 9)]);
+  const anillosMuertos = Array.from({ length: 10 }, (_, i) => ({ x: 10, y: 10 + i }));
+  juego.hunter = {
+    body: anillosMuertos,
+    prev: anillosMuertos.map((c) => ({ ...c })),
+    dir: { x: 0, y: 1 },
+    grow: 0,
+    aim: null,
+    recarga: 0,
+  };
+  juego.hunterTick = 0;
+  juego.hunterCadence = () => 1;
+  const puntos = juego.score;
+  juego.moveHunter();
+  comprobar(juego.state === 'running', 'cazador: su choque contigo te mata a ti');
+  comprobar(juego.hunter.recarga > 0, 'cazador: se estrella contigo y no se muere');
+  comprobar(juego.score > puntos, 'cazador: matarlo no suma');
+  comprobar(juego.particles.length > 0, 'cazador: no estalla al morir');
+  const esperado = 5;
+  juego.updateFx(1200);
+  comprobar(juego.hunter.recarga <= 0, 'cazador: no vuelve nunca');
+  comprobar(juego.hunter.body.length === esperado, 'cazador: vuelve con otro largo');
+  comprobar(
+    Math.abs(juego.hunter.body[0].x - juego.body[0].x) + Math.abs(juego.hunter.body[0].y - juego.body[0].y) >= 5,
+    'cazador: vuelve a nacer encima de ti',
+  );
+  process.stdout.write('  cazador: se estrella, estalla y vuelve corto y lejos\n');
+}
+{
+  // movimiento interpolado: 0 justo al moverse, 1 cuando toca el siguiente paso
+  const juego = new Game({ ...MODES.hunter }, () => {});
+  juego.state = 'running';
+  juego.hunterCadence = () => 2;
+  juego.moveHunter();
+  juego.moveHunter();
+  const paso = juego.hunter.paso;
+  comprobar(paso > 0, 'cazador: no guarda cuánto dura su paso');
+  comprobar(juego.hunterAvance <= 0.02, 'cazador: empieza el paso ya avanzado');
+  juego.time += paso / 2;
+  comprobar(juego.hunterAvance > 0.4 && juego.hunterAvance < 0.6, 'cazador: no avanza suave a mitad de paso');
+  juego.time += paso;
+  comprobar(juego.hunterAvance === 1, 'cazador: no cierra el paso');
+  process.stdout.write('  cazador: avanza interpolado entre casillas\n');
 }
 
 process.stdout.write(fallos ? `\n${fallos} fallos\n` : '\ntodo en orden\n');

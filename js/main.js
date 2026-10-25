@@ -742,12 +742,13 @@ function mostrarAyuda() {
       <li>cazador: la serpiente roja empieza comiendo puntos azules y no te toca</li>
       <li>cuando llega a dos tercios de su largo se pone a cazar: marco blanco, aviso y a por ti</li>
       <li>su cuerpo no te mata: si le muerdes un anillo, lo recortas; sólo su cabeza te come</li>
+      <li>si el cazador se estrella contra tu cuerpo, revienta: está un segundo fuera y vuelve por la mitad de largo, lejos</li>
       <li>los puntos azules también te valen: cómetelos y el cazador no crece</li>
       <li>el cubo rojo fino marca por dónde va a cortar el cazador</li>
       <li>los muros avisan 700 ms antes: el cubo hueco dice dónde van a salir</li>
       <li>en ciego sólo ves un cuadrado de luz, y se abre poco a poco según comes</li>
       <li>al empezar cada partida el mapa se enciende desde tu cabeza y el borde se ilumina con él</li>
-      <li>el borde no es un marco: sólo se marca donde hay muro o cuando te acercas, y se enciende el bloque por el que vas a salir</li>
+      <li>el borde se ve siempre: si chocar con él te mata, es una pared y no se esconde. con el fantasma puesto (o en frenesí, que da la vuelta) se apaga y sólo se marca al acercarte, y el bloque por el que vas a salir se enciende</li>
       <li>en la campaña, la fruta que cierra el nivel sale amarilla</li>
       <li>el fantasma se apaga por escalones en el último segundo y medio: los cubos se van rellenando</li>
     </ul>
@@ -831,6 +832,10 @@ function eventosJuego(tipo, datos) {
     case 'hunterHunt':
       audio.play('alerta');
       parpadear(el.mult);
+      break;
+    case 'hunterDies':
+      audio.play('bonus');
+      parpadear(el.score);
       break;
     case 'combo':
       parpadear(el.mult);
