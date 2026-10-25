@@ -1,4 +1,4 @@
-/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-10-25 · v8).
+/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-10-25 · v9).
    no lo edites a mano: cambia js/*.js y vuelve a ejecutar node tools/build.mjs */
 (function () {
 'use strict';
@@ -190,7 +190,7 @@ const MODES = {
     ...base,
     id: 'blind',
     name: 'CIEGO',
-    tag: 'sólo ves un círculo, que se abre al comer',
+    tag: 'sólo ves un cuadrado de luz, que se abre al comer',
     startSpeed: 142,
     minSpeed: 84,
     accelPerFood: 1.4,
@@ -1605,6 +1605,13 @@ class Game {
     const { cell, ox, oy } = view;
     const W = this.cols * cell;
     const H = this.rows * cell;
+    const lado = Math.round(cell);
+    const caja = (x, y, margen, ancho) => [
+      Math.round(ox + x * cell) + margen,
+      Math.round(oy + y * cell) + margen,
+      Math.max(2, ancho),
+      Math.max(2, ancho),
+    ];
 
     ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
     ctx.fillStyle = '#000';
@@ -1613,332 +1620,240 @@ class Game {
     ctx.save();
     if (this.shake > 0.2) {
       const s = this.shake;
-      ctx.translate((Math.random() - 0.5) * s, (Math.random() - 0.5) * s);
+      ctx.translate(Math.round((Math.random() - 0.5) * s), Math.round((Math.random() - 0.5) * s));
     }
 
+    // rejilla de 1 px
     ctx.fillStyle = '#141414';
     for (let x = 1; x < this.cols; x++) ctx.fillRect(Math.round(ox + x * cell), oy, 1, H);
     for (let y = 1; y < this.rows; y++) ctx.fillRect(ox, Math.round(oy + y * cell), W, 1);
 
-    const inset = Math.max(1, Math.round(cell * 0.06));
+    // muros: cubo hueco
+    const inset = Math.max(1, Math.round(cell * 0.08));
     for (const [x, y] of this.walls) {
-      const px = Math.round(ox + x * cell);
-      const py = Math.round(oy + y * cell);
+      const [px, py, w] = caja(x, y, inset, lado - inset * 2);
       ctx.fillStyle = 'rgba(255,255,255,0.08)';
-      ctx.fillRect(px + inset, py + inset, cell - inset * 2, cell - inset * 2);
-      ctx.strokeStyle = 'rgba(255,255,255,0.34)';
+      ctx.fillRect(px, py, w, w);
+      ctx.strokeStyle = 'rgba(255,255,255,0.36)';
       ctx.lineWidth = 1;
-      ctx.strokeRect(px + inset + 0.5, py + inset + 0.5, cell - inset * 2 - 1, cell - inset * 2 - 1);
+      ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
     }
 
+    // portales: dos cubos huecos que laten
     if (this.portals) {
-      const t = this.time / 260;
+      const pulso = Math.floor(((this.time / 420) % 2)) * Math.max(1, Math.round(cell * 0.06));
       for (const p of this.portals) {
         for (const c of [p.a, p.b]) {
-          const cx = ox + (c.x + 0.5) * cell;
-          const cy = oy + (c.y + 0.5) * cell;
+          const m = inset + pulso;
+          const [px, py, w] = caja(c.x, c.y, m, lado - m * 2);
           ctx.strokeStyle = '#fff';
-          ctx.lineWidth = Math.max(1, cell * 0.055);
-          ctx.beginPath();
-          ctx.arc(cx, cy, cell * (0.3 + 0.03 * Math.sin(t)), 0, Math.PI * 2);
-          ctx.stroke();
+          ctx.lineWidth = Math.max(1, Math.round(cell * 0.07));
+          ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
+          const centro = Math.max(2, Math.round(w * 0.22));
           ctx.fillStyle = '#fff';
-          ctx.fillRect(Math.round(cx - 1), Math.round(cy - 1), 2, 2);
+          ctx.fillRect(
+            Math.round(px + (w - centro) / 2),
+            Math.round(py + (w - centro) / 2),
+            centro,
+            centro,
+          );
         }
       }
     }
 
+    // comida: cubo rojo que respira
     if (this.food) {
-      const pulse = 0.5 + 0.5 * Math.sin(this.time / 220);
-      const pad = cell * (0.2 - pulse * 0.045);
+      const pulso = Math.floor((0.5 + 0.5 * Math.sin(this.time / 220)) * 3);
+      const m = Math.round(cell * 0.16) + pulso;
+      const [px, py, w] = caja(this.food.x, this.food.y, m, lado - m * 2);
       ctx.fillStyle = '#ff2b2b';
-      ctx.fillRect(
-        Math.round(ox + this.food.x * cell + pad),
-        Math.round(oy + this.food.y * cell + pad),
-        Math.round(cell - pad * 2),
-        Math.round(cell - pad * 2),
-      );
+      ctx.fillRect(px, py, w, w);
     }
 
+    // premio: cubo rojo hueco, distinto de la fruta llena
     if (this.bonus && !(this.bonus.ttl < 1800 && Math.floor(this.time / 130) % 2 === 0)) {
-      const cx = ox + (this.bonus.x + 0.5) * cell;
-      const cy = oy + (this.bonus.y + 0.5) * cell;
-      const r = cell * 0.36;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - r);
-      ctx.lineTo(cx + r, cy);
-      ctx.lineTo(cx, cy + r);
-      ctx.lineTo(cx - r, cy);
-      ctx.closePath();
-      ctx.fillStyle = '#ff2b2b';
-      ctx.fill();
+      const m = Math.round(cell * 0.16);
+      const [px, py, w] = caja(this.bonus.x, this.bonus.y, m, lado - m * 2);
+      ctx.strokeStyle = '#ff2b2b';
+      ctx.lineWidth = Math.max(2, Math.round(cell * 0.14));
+      ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
       ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 1;
-      ctx.stroke();
+      ctx.lineWidth = Math.max(1, Math.round(cell * 0.05));
+      ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
     }
 
+    // poderes: cubos con su marca dentro
     if (this.power && !(this.power.ttl < 2200 && Math.floor(this.time / 140) % 2 === 0)) {
       const { kind } = this.power;
-      const cx = ox + (this.power.x + 0.5) * cell;
-      const cy = oy + (this.power.y + 0.5) * cell;
-      const r = cell * 0.3;
+      const m = Math.round(cell * 0.2);
+      const [px, py, w] = caja(this.power.x, this.power.y, m, lado - m * 2);
       ctx.strokeStyle = '#fff';
-      ctx.lineWidth = Math.max(1, cell * 0.06);
+      ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
       if (kind === 'ghost') {
-        ctx.setLineDash([Math.max(2, cell * 0.14), Math.max(2, cell * 0.14)]);
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.setLineDash([Math.max(2, Math.round(cell * 0.16)), Math.max(2, Math.round(cell * 0.16))]);
+        ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
         ctx.setLineDash([]);
       } else if (kind === 'slow') {
+        ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
         ctx.beginPath();
-        ctx.moveTo(cx - r * 0.7, cy - r * 0.32);
-        ctx.lineTo(cx + r * 0.7, cy - r * 0.32);
-        ctx.moveTo(cx - r * 0.7, cy + r * 0.32);
-        ctx.lineTo(cx + r * 0.7, cy + r * 0.32);
+        ctx.moveTo(px + w * 0.28, py + w * 0.5);
+        ctx.lineTo(px + w * 0.72, py + w * 0.5);
         ctx.stroke();
       } else {
-        ctx.strokeRect(cx - r, cy - r, r * 2, r * 2);
+        ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(Math.round(px + w * 0.36), Math.round(py + w * 0.36), Math.max(2, Math.round(w * 0.28)), Math.max(2, Math.round(w * 0.28)));
       }
     }
 
     // puntos azules del cazador
     for (const punto of this.pellets) {
-      const pad = cell * 0.33;
+      const [px, py, w] = caja(punto.x, punto.y, Math.round(cell * 0.33), lado - Math.round(cell * 0.66));
       ctx.fillStyle = '#3d7bff';
-      ctx.fillRect(
-        Math.round(ox + punto.x * cell + pad),
-        Math.round(oy + punto.y * cell + pad),
-        Math.round(cell - pad * 2),
-        Math.round(cell - pad * 2),
-      );
+      ctx.fillRect(px, py, w, w);
     }
 
-    // el cazador: serpiente roja, crece con los puntos azules
+    // el cazador: cubos rojos, uno por anillo, con la cabeza marcada
     if (this.hunter) {
       const ritmo = 2;
       const avance = ((this.hunterTick % ritmo) +
         (this.state === 'running' ? clamp(this.acc / this.interval(), 0, 1) : 1)) / ritmo;
-      const puntosCaza = [];
-      for (let i = 0; i < this.hunter.body.length; i++) {
+      const m = Math.max(1, Math.round(cell * 0.07));
+      const ancho = lado - m * 2;
+      const centro = Math.max(2, Math.round(ancho * 0.22));
+      for (let i = this.hunter.body.length - 1; i >= 0; i--) {
         const actual = this.hunter.body[i];
         const previo = this.hunter.prev[i] || actual;
         const salto = Math.abs(actual.x - previo.x) > 1 || Math.abs(actual.y - previo.y) > 1;
-        puntosCaza.push({
-          x: salto ? actual.x : previo.x + (actual.x - previo.x) * avance,
-          y: salto ? actual.y : previo.y + (actual.y - previo.y) * avance,
-        });
-      }
-
-      const largoCaza = puntosCaza.length;
-      const radioCaza = (i) => {
-        const cola = clamp((i - (largoCaza - 3)) / 3, 0, 1);
-        return cell * 0.4 * (1 - cola * 0.42);
-      };
-      const centroCaza = (p) => [ox + (p.x + 0.5) * cell, oy + (p.y + 0.5) * cell];
-
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      for (const [extra, color] of [
-        [Math.max(2, cell * 0.08), 'rgba(255,255,255,0.32)'],
-        [0, '#c21414'],
-      ]) {
-        ctx.strokeStyle = color;
-        for (let i = largoCaza - 1; i >= 1; i--) {
-          const a = puntosCaza[i];
-          const b = puntosCaza[i - 1];
-          if (Math.abs(a.x - b.x) > 1.2 || Math.abs(a.y - b.y) > 1.2) continue;
-          const [ax, ay] = centroCaza(a);
-          const [bx, by] = centroCaza(b);
-          ctx.lineWidth = Math.max(2, radioCaza(i) * 2) + extra;
-          ctx.beginPath();
-          ctx.moveTo(ax, ay);
-          ctx.lineTo(bx, by);
-          ctx.stroke();
+        const px = salto ? actual.x : previo.x + (actual.x - previo.x) * avance;
+        const py = salto ? actual.y : previo.y + (actual.y - previo.y) * avance;
+        const x0 = Math.round(ox + px * cell) + m;
+        const y0 = Math.round(oy + py * cell) + m;
+        ctx.fillStyle = i === 0 ? '#ff2b2b' : '#c21414';
+        ctx.fillRect(x0, y0, ancho, ancho);
+        ctx.strokeStyle = i === 0 ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x0 + 0.5, y0 + 0.5, ancho - 1, ancho - 1);
+        if (i === 0) {
+          const dx = this.hunter.dir.x || 0;
+          const dy = this.hunter.dir.y || 0;
+          ctx.fillStyle = '#000';
+          for (const ladoOjo of [-1, 1]) {
+            const ex = x0 + ancho / 2 + dx * ancho * 0.16 + (dy !== 0 ? ladoOjo * ancho * 0.18 : 0);
+            const ey = y0 + ancho / 2 + dy * ancho * 0.16 + (dx !== 0 ? ladoOjo * ancho * 0.18 : 0);
+            ctx.fillRect(Math.round(ex - centro / 2), Math.round(ey - centro / 2), centro, centro);
+          }
         }
-      }
-
-      // cabeza del cazador: roja, con dos ojos negros
-      const jefe = puntosCaza[0];
-      if (jefe) {
-        const [hx, hy] = centroCaza(jefe);
-        const giro = Math.atan2(this.hunter.dir.y || 0, this.hunter.dir.x || 1) || 0;
-        const largo = cell * 0.86;
-        const alto = cell * 0.74;
-        ctx.save();
-        ctx.translate(hx, hy);
-        ctx.rotate(giro);
-        ctx.beginPath();
-        ctx.ellipse(0, 0, largo / 2, alto / 2, 0, 0, Math.PI * 2);
-        ctx.fillStyle = '#ff2b2b';
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-        ctx.lineWidth = Math.max(1, cell * 0.045);
-        ctx.stroke();
-        const ojo = Math.max(1, cell * 0.07);
-        ctx.fillStyle = '#000';
-        ctx.beginPath();
-        ctx.arc(cell * 0.1, -cell * 0.17, ojo, 0, Math.PI * 2);
-        ctx.arc(cell * 0.1, cell * 0.17, ojo, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
       }
     }
 
-    // ---- luz ----
+    // ---- luz: todo a bloques, un escalón por casilla ----
     const cabeza = this.body[0];
     const centroX = ox + (cabeza.x + 0.5) * cell;
     const centroY = oy + (cabeza.y + 0.5) * cell;
 
-    // sombra: un solo degradado radial sobre el tablero (suave y barato)
-    const sombra = (cx, cy, dentro, fuera, tramos) => {
-      const radioDentro = Math.max(0, dentro) * cell;
-      const radioFuera = Math.max(radioDentro + cell * 0.5, fuera * cell);
-      const g = ctx.createRadialGradient(cx, cy, radioDentro, cx, cy, radioFuera);
-      for (const [parada, alfa] of tramos) {
-        g.addColorStop(parada, `rgba(0,0,0,${alfa})`);
+    const sombra = (cx, cy, dentro, fuera, maxAlpha, pasos) => {
+      for (let y = 0; y < this.rows; y++) {
+        for (let x = 0; x < this.cols; x++) {
+          const dx = Math.abs(x + 0.5 - cx);
+          const dy = Math.abs(y + 0.5 - cy);
+          const dist = Math.max(dx, dy);
+          if (dist <= dentro) continue;
+          const bruto = clamp((dist - dentro) / fuera, 0, 1);
+          const alpha = (Math.ceil(bruto * pasos) / pasos) * maxAlpha;
+          if (alpha < 0.04) continue;
+          ctx.fillStyle = `rgba(0,0,0,${alpha.toFixed(2)})`;
+          ctx.fillRect(
+            Math.floor(ox + x * cell),
+            Math.floor(oy + y * cell),
+            Math.ceil(cell) + 1,
+            Math.ceil(cell) + 1,
+          );
+        }
       }
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, view.width, view.height);
     };
 
     if (this.cfg.vision) {
-      // modo ciego: sólo se ve lo que tienes cerca, y la claridad crece al arrancar
+      // ciego: un cuadrado de luz alrededor de la cabeza, con el borde a bloques
       const radio = this.cfg.vision * (0.35 + 0.65 * this.reveal);
-      sombra(centroX, centroY, radio * 0.6, radio * 1.25, [
-        [0, 0], [0.45, 0], [0.72, 0.72], [1, 0.97],
-      ]);
-      for (let i = 1; i < Math.min(this.body.length, 7); i++) {
-        const tramo = this.body[i];
-        const opaco = clamp(0.42 - i * 0.06, 0, 1);
-        if (opaco < 0.04) continue;
-        sombra(ox + (tramo.x + 0.5) * cell, oy + (tramo.y + 0.5) * cell, cell * 0.4, cell * 2, [
-          [0, 0], [0.5, opaco * 0.5], [1, opaco],
-        ]);
-      }
-      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(centroX, centroY, radio * cell, 0, Math.PI * 2);
-      ctx.stroke();
+      sombra(cabeza.x + 0.5, cabeza.y + 0.5, radio * 0.6, radio * 0.85, 0.97, 4);
     } else if (this.reveal < 1) {
-      // arranque: una onda de luz enciende el tablero desde la cabeza
+      // arranque: la luz avanza en cuadros desde la cabeza
       const alcance = 1.2 + this.reveal * 17;
-      sombra(centroX, centroY, alcance, alcance + 3.2, [
-        [0, 0], [0.55, 0.35], [1, 1],
-      ]);
-
+      sombra(cabeza.x + 0.5, cabeza.y + 0.5, alcance, 3.4, 1, 5);
       const filo = Math.sin(Math.PI * Math.min(1, this.reveal * 1.15));
-      if (filo > 0.03) {
+      if (filo > 0.03 && alcance * cell < Math.max(W, H) * 1.4) {
+        const r = alcance * cell;
         ctx.strokeStyle = `rgba(255,255,255,${(filo * 0.5).toFixed(3)})`;
-        ctx.lineWidth = Math.max(1.5, cell * 0.06);
-        ctx.beginPath();
-        ctx.arc(centroX, centroY, alcance * cell, 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.lineWidth = Math.max(1, Math.round(cell * 0.08));
+        ctx.strokeRect(
+          Math.round(centroX - r) + 0.5,
+          Math.round(centroY - r) + 0.5,
+          Math.round(r * 2),
+          Math.round(r * 2),
+        );
       }
     }
 
+    // la serpiente: un cubo por casilla, todos iguales
     const alpha = this.state === 'running' ? clamp(this.acc / this.interval(), 0, 1) : 1;
-    const ghost = this.ghosting;
-    const puntos = [];
-    for (let i = 0; i < this.body.length; i++) {
-      const p = this.posAt(i, alpha);
-      if (p) puntos.push(p);
-    }
+    const hueco = Math.max(1, Math.round(cell * 0.1));
+    const tamano = lado - hueco * 2;
+    const fantasma = this.ghosting;
+    const visibles = this.crash ? Math.max(0, this.body.length - this.crash.popped) : this.body.length;
 
-    // cuerpo: una cinta redonda que se afina hacia la cola, sin huecos entre casillas
-    const visibles = this.crash ? Math.max(1, puntos.length - this.crash.popped) : puntos.length;
-    const radio = (i) => {
-      // cuerpo de grosor constante y punta redondeada en los tres últimos anillos
-      const cola = clamp((i - (puntos.length - 3)) / 3, 0, 1);
-      return cell * 0.44 * (1 - cola * 0.42);
-    };
-    const ancho = (i) => Math.max(2, radio(i) * 2);
-    const centro = (p) => [ox + (p.x + 0.5) * cell, oy + (p.y + 0.5) * cell];
-    const saltos = (a, b) => Math.abs(a.x - b.x) > 1.2 || Math.abs(a.y - b.y) > 1.2;
-
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
     ctx.save();
-    if (this.crash) ctx.globalAlpha = clamp(1 - (this.crash.t - 120) / 520, 0.15, 1);
-
-    const cinta = (extra, color) => {
-      ctx.strokeStyle = color;
-      for (let i = visibles - 1; i >= 1; i--) {
-        const a = puntos[i];
-        const b = puntos[i - 1];
-        if (!a || !b || saltos(a, b)) continue;
-        const [ax, ay] = centro(a);
-        const [bx, by] = centro(b);
-        ctx.lineWidth = ancho(i) + extra;
-        ctx.beginPath();
-        ctx.moveTo(ax, ay);
-        ctx.lineTo(bx, by);
-        ctx.stroke();
-      }
-    };
-
-    if (ghost) {
-      ctx.setLineDash([Math.max(3, cell * 0.26), Math.max(2, cell * 0.3)]);
-      cinta(0, 'rgba(255,255,255,0.82)');
-      ctx.setLineDash([]);
-    } else {
-      cinta(Math.max(2, cell * 0.085), 'rgba(255,255,255,0.16)');
-      cinta(0, '#ffffff');
-    }
-
-    // cabeza: morro redondeado con dos ojos, mirando hacia donde vas
-    const cabezaPos = puntos[0];
-    if (cabezaPos && (!this.crash || this.crash.popped < 1)) {
-      const [hx, hy] = centro(cabezaPos);
-      const giro = Math.atan2(this.dir.y, this.dir.x);
-      const largo = cell * 0.92;
-      const alto = cell * 0.82;
-      const radioEsquina = cell * 0.34;
-      const redondo = (x, y, w, h, r) => {
-        ctx.beginPath();
-        ctx.moveTo(x + r, y);
-        ctx.lineTo(x + w - r, y);
-        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-        ctx.lineTo(x + w, y + h - r);
-        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-        ctx.lineTo(x + r, y + h);
-        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-        ctx.lineTo(x, y + r);
-        ctx.quadraticCurveTo(x, y, x + r, y);
-        ctx.closePath();
-      };
-      ctx.save();
-      ctx.translate(hx, hy);
-      ctx.rotate(giro);
-      redondo(-largo * 0.44, -alto / 2, largo, alto, radioEsquina);
-      if (ghost) {
-        ctx.fillStyle = 'rgba(6,6,6,0.88)';
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-        ctx.lineWidth = Math.max(1.5, cell * 0.09);
-        ctx.stroke();
+    if (this.crash) ctx.globalAlpha = clamp(1 - (this.crash.t - 120) / 520, 0.12, 1);
+    for (let i = visibles - 1; i >= 0; i--) {
+      const p = this.posAt(i, alpha);
+      if (!p) continue;
+      const x0 = Math.round(ox + p.x * cell) + hueco;
+      const y0 = Math.round(oy + p.y * cell) + hueco;
+      if (fantasma) {
+        ctx.fillStyle = 'rgba(255,255,255,0.16)';
+        ctx.fillRect(x0, y0, tamano, tamano);
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
+        ctx.strokeRect(x0 + 0.5, y0 + 0.5, tamano - 1, tamano - 1);
       } else {
-        ctx.fillStyle = '#ffffff';
-        ctx.fill();
+        ctx.fillStyle = i === 0 ? '#ffffff' : '#e8e8e8';
+        ctx.fillRect(x0, y0, tamano, tamano);
       }
-      const ojo = Math.max(1, cell * 0.075);
-      const separacion = cell * 0.19;
-      const adelante = cell * 0.11;
-      ctx.fillStyle = ghost ? '#ffffff' : '#000000';
-      ctx.beginPath();
-      ctx.arc(adelante, -separacion, ojo, 0, Math.PI * 2);
-      ctx.arc(adelante, separacion, ojo, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
     }
     ctx.restore();
 
+    // cabeza: el mismo cubo, con dos ojos cuadrados mirando hacia donde vas
+    const punta = visibles > 0 ? this.posAt(0, alpha) : null;
+    if (punta) {
+      const x0 = Math.round(ox + punta.x * cell) + hueco;
+      const y0 = Math.round(oy + punta.y * cell) + hueco;
+      if (fantasma) {
+        ctx.fillStyle = 'rgba(255,255,255,0.16)';
+        ctx.fillRect(x0, y0, tamano, tamano);
+        ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+        ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
+        ctx.strokeRect(x0 + 0.5, y0 + 0.5, tamano - 1, tamano - 1);
+      } else {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(x0, y0, tamano, tamano);
+      }
+      const ojo = Math.max(2, Math.round(tamano * 0.2));
+      const dx = this.dir.x;
+      const dy = this.dir.y;
+      ctx.fillStyle = fantasma ? '#ffffff' : '#000000';
+      for (const s of [-1, 1]) {
+        const ex = x0 + tamano / 2 + dx * tamano * 0.18 + (dy !== 0 ? s * tamano * 0.2 : 0);
+        const ey = y0 + tamano / 2 + dy * tamano * 0.18 + (dx !== 0 ? s * tamano * 0.2 : 0);
+        ctx.fillRect(Math.round(ex - ojo / 2), Math.round(ey - ojo / 2), ojo, ojo);
+      }
+    }
+
+    // chispas: también cuadradas
     ctx.save();
     for (const p of this.particles) {
       ctx.globalAlpha = clamp(p.life / p.max, 0, 1);
       ctx.fillStyle = p.color;
-      const s = Math.max(1, p.size);
+      const s = Math.max(1, Math.round(p.size));
       ctx.fillRect(Math.round(ox + p.x * cell), Math.round(oy + p.y * cell), s, s);
     }
     ctx.restore();
@@ -1950,39 +1865,37 @@ class Game {
       ctx.fillRect(0, 0, view.width, view.height);
     }
 
-    // ---- impacto: la casilla donde chocas queda marcada y saltan las grietas ----
+    // ---- choque: la casilla del golpe y tres marcos cuadrados que se abren ----
     if (this.crash) {
       const c = this.crash;
-      const cx = ox + (c.x + 0.5) * cell;
-      const cy = oy + (c.y + 0.5) * cell;
+      const x0 = Math.round(ox + c.x * cell);
+      const y0 = Math.round(oy + c.y * cell);
 
-      const marca = clamp(1 - c.t / 200, 0, 1);
+      const marca = clamp(1 - c.t / 220, 0, 1);
       if (marca > 0.01) {
         ctx.fillStyle = '#000';
-        ctx.fillRect(cx - cell / 2, cy - cell / 2, cell, cell);
+        ctx.fillRect(x0, y0, lado, lado);
         ctx.strokeStyle = `rgba(255,255,255,${marca.toFixed(3)})`;
-        ctx.lineWidth = Math.max(1.5, cell * 0.08);
-        ctx.strokeRect(cx - cell / 2 + 1, cy - cell / 2 + 1, cell - 2, cell - 2);
+        ctx.lineWidth = Math.max(1, Math.round(cell * 0.1));
+        ctx.strokeRect(x0 + 0.5, y0 + 0.5, lado - 1, lado - 1);
       }
 
-      const avance = clamp((c.t - 30) / 430, 0, 1);
+      const avance = clamp((c.t - 40) / 420, 0, 1);
       if (avance > 0 && avance < 1) {
-        const alfa = 1 - avance;
-        const desde = cell * 0.16;
-        const hasta = cell * (0.5 + avance * 1.05);
-        ctx.strokeStyle = `rgba(255,255,255,${(alfa * 0.85).toFixed(3)})`;
-        ctx.lineWidth = Math.max(1, cell * 0.06 * alfa);
-        ctx.beginPath();
-        for (const [dx, dy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
-          ctx.moveTo(cx + dx * desde, cy + dy * desde);
-          ctx.lineTo(cx + dx * hasta, cy + dy * hasta);
+        for (let n = 0; n < 3; n++) {
+          const paso = (avance + n * 0.22) % 1;
+          const alfa = (1 - paso) * (1 - n * 0.22);
+          if (alfa <= 0.02) continue;
+          const crece = lado * (0.5 + paso * 2.6);
+          ctx.strokeStyle = `rgba(255,255,255,${(alfa * 0.7).toFixed(3)})`;
+          ctx.lineWidth = Math.max(1, Math.round(cell * 0.07 * (1 - paso)));
+          ctx.strokeRect(
+            Math.round(x0 + lado / 2 - crece / 2) + 0.5,
+            Math.round(y0 + lado / 2 - crece / 2) + 0.5,
+            Math.round(crece),
+            Math.round(crece),
+          );
         }
-        ctx.stroke();
-
-        const marco = cell * (0.5 + avance * 1.1);
-        ctx.strokeStyle = `rgba(255,255,255,${(alfa * 0.45).toFixed(3)})`;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(cx - marco / 2, cy - marco / 2, marco, marco);
       }
     }
   }
@@ -2021,7 +1934,6 @@ function comprobarPiezas() {
 const ORDEN = MODE_ORDER;
 const CLAVE = 'snake.v2';
 const CLAVE_ANTIGUA = 'snake.frenzy.v1';
-const COLUMNAS_NIVELES = 4;
 
 const el = {
   stage: $('#stage'),
@@ -2190,6 +2102,7 @@ function ponerOverlay(html) {
   if (!html) {
     el.overlay.classList.remove('abierto');
     el.overlay.innerHTML = '';
+    foco.indice = -1;
     return;
   }
   el.overlay.innerHTML = html;
@@ -2307,6 +2220,132 @@ function actualizarEfectos(juego) {
   }
 }
 
+/* ---------------------------------------------------------- foco de botones */
+
+const foco = { indice: -1 };
+
+// botones que se pueden alcanzar con las flechas en la capa abierta
+function botonesUI() {
+  if (!el.overlay.classList.contains('abierto')) return [];
+  return [...el.overlay.querySelectorAll('button')].filter((b) => !b.disabled);
+}
+
+function pintarFoco() {
+  const lista = botonesUI();
+  lista.forEach((boton, i) => boton.classList.toggle('foco', i === foco.indice));
+}
+
+function marcar(boton) {
+  // al enfocar una fila o una casilla, la selección va con ella
+  if (!boton || !boton.dataset) return;
+  if (app.pantalla === 'home' && boton.dataset.grupo !== undefined) {
+    seleccionarGrupo(Number(boton.dataset.grupo));
+  } else if (app.pantalla === 'modes' && boton.dataset.modo !== undefined) {
+    seleccionarModo(Number(boton.dataset.i));
+  } else if (app.pantalla === 'levels' && boton.dataset.nivel !== undefined) {
+    seleccionarNivel(Number(boton.dataset.nivel));
+  }
+}
+
+function enfocarUI(indice) {
+  const lista = botonesUI();
+  if (!lista.length) {
+    foco.indice = -1;
+    return;
+  }
+  foco.indice = ((indice % lista.length) + lista.length) % lista.length;
+  pintarFoco();
+  marcar(lista[foco.indice]);
+  const activo = lista[foco.indice];
+  if (activo && typeof activo.scrollIntoView === 'function') {
+    try {
+      activo.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    } catch (err) {
+      /* sin scroll, no pasa nada */
+    }
+  }
+}
+
+function enfocarPrimero(selector) {
+  const lista = botonesUI();
+  const indice = lista.findIndex((b) => b.matches(selector));
+  enfocarUI(indice >= 0 ? indice : 0);
+}
+
+// botones que forman el recorrido de las flechas en cada pantalla
+function anilloFoco() {
+  const todos = botonesUI();
+  if (app.pantalla === 'home') {
+    return todos.filter((b) => b.dataset.grupo !== undefined || b.classList.contains('link'));
+  }
+  if (app.pantalla === 'modes') return todos.filter((b) => b.dataset.modo !== undefined);
+  if (app.pantalla === 'levels') return todos.filter((b) => b.dataset.nivel !== undefined);
+  return todos;
+}
+
+// cuántas casillas hay por fila en la rejilla de niveles (4 por defecto)
+function columnasRejilla(lista) {
+  const tops = [];
+  for (const boton of lista) {
+    const top = Math.round(boton.getBoundingClientRect().top);
+    if (!tops.includes(top)) tops.push(top);
+    if (tops.length > 1) break;
+  }
+  if (tops.length < 2) return 4;
+  const cuenta = lista.filter((b) => Math.round(b.getBoundingClientRect().top) === tops[0]).length;
+  return cuenta > 0 ? cuenta : 4;
+}
+
+function fijarFoco(boton) {
+  if (!boton) return;
+  const lista = botonesUI();
+  const indice = lista.indexOf(boton);
+  if (indice < 0) return;
+  foco.indice = indice;
+  pintarFoco();
+  marcar(boton);
+  if (typeof boton.scrollIntoView === 'function') {
+    try {
+      boton.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    } catch (err) {
+      /* sin scroll, no pasa nada */
+    }
+  }
+}
+
+// flechas: recorren el anillo de la pantalla; en la rejilla, ↑↓ saltan de fila
+function moverFoco(dx, dy) {
+  const anillo = anilloFoco();
+  if (!anillo.length) return;
+  const actual = botonesUI()[foco.indice];
+  let i = anillo.indexOf(actual);
+  if (i < 0) {
+    fijarFoco(anillo[0]);
+    return;
+  }
+  let paso;
+  if (app.pantalla === 'levels') {
+    paso = dy !== 0 ? dy * columnasRejilla(anillo) : dx;
+  } else {
+    paso = dx !== 0 ? dx : dy;
+  }
+  const total = anillo.length;
+  const siguiente = i + paso;
+  // en la rejilla de niveles no se da la vuelta: se queda en el borde
+  if (app.pantalla === 'levels' && (siguiente < 0 || siguiente >= total)) return;
+  const destino = anillo[((siguiente % total) + total) % total];
+  fijarFoco(destino);
+}
+
+function activarFoco() {
+  const lista = botonesUI();
+  const boton = lista[foco.indice];
+  if (!boton) return false;
+  audio.play('ui');
+  boton.click();
+  return true;
+}
+
 /* ---------------------------------------------------------- menú */
 
 function modosDelGrupo(indice = app.grupo) {
@@ -2397,6 +2436,7 @@ function mostrarInicio() {
   el.prompt.classList.remove('visible');
   pantalla('home');
   seleccionarGrupo(app.grupo);
+  enfocarPrimero(`.row[data-grupo="${app.grupo}"]`);
   ajustarLienzo();
 }
 
@@ -2456,6 +2496,7 @@ function mostrarModos(indice = app.grupo) {
   el.prompt.classList.remove('visible');
   pantalla('modes');
   seleccionarModo(0);
+  enfocarPrimero('.row[data-modo]');
   ajustarLienzo();
 }
 
@@ -2530,6 +2571,7 @@ function pintarNiveles() {
 
   pantalla('levels');
   seleccionarNivel(app.nivelSel);
+  enfocarPrimero(`.celda[data-nivel="${app.nivelSel}"]`);
 }
 
 function seleccionarNivel(i) {
@@ -2613,22 +2655,23 @@ function mostrarAyuda() {
     <p class="kicker">reglas</p>
     <ul class="reglas">
       <li>la comida encadena: dos frutas seguidas suben el multiplicador hasta ×5</li>
-      <li>el rombo rojo caduca y da dos anillos de largo</li>
-      <li>los iconos blancos dan poderes: círculo discontinuo fantasma (atraviesas todo), dos barras lento, cuadrado recorte</li>
+      <li>el cubo rojo hueco caduca y da dos anillos de largo</li>
+      <li>los cuadros blancos dan poderes: contorno discontinuo fantasma (atraviesas todo), raya en medio lento, cuadro relleno recorte</li>
       <li>la campaña son 20 niveles: se abre uno cada vez que cierras el anterior</li>
       <li>clásico: pasadas 30 frutas empiezan a salir muros sueltos</li>
       <li>frenesí: los bordes dan la vuelta y la velocidad sube sola</li>
       <li>portales: entrar por un aro te saca por el otro, y cambian de sitio</li>
       <li>cazador: la serpiente roja come puntos azules y crece; si te toca, pierdes</li>
       <li>cuando el cazador está lleno va directo a por ti y se mueve al doble</li>
-      <li>en ciego sólo ves un círculo, y se abre poco a poco según comes</li>
-      <li>en reloj sales con 45 segundos, cada fruta suma 2,6 y el rombo 4 más</li>
+      <li>en ciego sólo ves un cuadrado de luz, y se abre poco a poco según comes</li>
+      <li>en reloj sales con 45 segundos, cada fruta suma 2,6 y el cubo hueco 4 más</li>
       <li>en muro el mapa se llena de muros cada tres frutas</li>
       <li>al empezar cada partida el mapa se enciende desde tu cabeza</li>
     </ul>
     <p class="pie"><span>osciladores y ruido en directo · sin ficheros de audio</span></p>
   </div>`);
   pantalla('help');
+  enfocarPrimero('button[data-accion="home"]');
 }
 
 /* ---------------------------------------------------------- partida */
@@ -2747,6 +2790,7 @@ function mostrarFin() {
     </div>
   </div>`);
   pantalla('dead');
+  enfocarPrimero('button[data-accion="retry"]');
   el.pause.disabled = true;
   el.prompt.classList.remove('visible');
   actualizarMarcador();
@@ -2771,6 +2815,7 @@ function mostrarNivelSuperado() {
     </div>
   </div>`);
   pantalla('cleared');
+  enfocarPrimero('button.principal');
   el.pause.disabled = true;
   el.prompt.classList.remove('visible');
 }
@@ -2800,6 +2845,7 @@ function pausar() {
     </div>
   </div>`);
   pantalla('paused');
+  enfocarPrimero('button[data-accion="resume"]');
   el.pause.textContent = 'seguir';
   el.pause.disabled = false;
   el.prompt.classList.remove('visible');
@@ -2809,6 +2855,7 @@ function reanudar() {
   if (!app.juego) return;
   app.juego.resume();
   ponerOverlay(null);
+  foco.indice = -1;
   pantalla('playing');
   el.pause.textContent = 'pausa';
   el.pause.disabled = false;
@@ -2854,27 +2901,39 @@ function accion(nombre) {
   const esDireccion = ['up', 'down', 'left', 'right'].includes(nombre);
 
   if (app.pantalla === 'home') {
-    if (nombre === 'up' || nombre === 'left') seleccionarGrupo(app.grupo - 1);
-    else if (nombre === 'down' || nombre === 'right') seleccionarGrupo(app.grupo + 1);
-    else if (nombre === 'confirm') {
-      audio.play('ui');
-      mostrarModos(app.grupo);
+    if (nombre === 'up') moverFoco(0, -1);
+    else if (nombre === 'down') moverFoco(0, 1);
+    else if (nombre === 'left' || nombre === 'right') {
+      const paso = nombre === 'left' ? -1 : 1;
+      const total = GROUPS.length;
+      const destino = ((app.grupo + paso) % total + total) % total;
+      seleccionarGrupo(destino);
+      enfocarPrimero(`.row[data-grupo="${destino}"]`);
+    } else if (nombre === 'confirm') {
+      if (!activarFoco()) {
+        audio.play('ui');
+        mostrarModos(app.grupo);
+      }
     }
     return;
   }
 
   if (app.pantalla === 'modes') {
-    if (nombre === 'up') seleccionarModo(app.modoSel - 1);
-    else if (nombre === 'down') seleccionarModo(app.modoSel + 1);
-    else if (nombre === 'left') {
+    if (nombre === 'up') moverFoco(0, -1);
+    else if (nombre === 'down') moverFoco(0, 1);
+    else if (nombre === 'left' || nombre === 'right') {
       audio.play('ui');
-      mostrarModos(app.grupo - 1);
-    } else if (nombre === 'right') {
-      audio.play('ui');
-      mostrarModos(app.grupo + 1);
+      mostrarModos(app.grupo + (nombre === 'left' ? -1 : 1));
     } else if (nombre === 'confirm') {
-      audio.play('ui');
-      elegirModo(modosDelGrupo()[app.modoSel]);
+      const lista = botonesUI();
+      const actual = lista[foco.indice];
+      if (actual && actual.dataset.modo !== undefined) {
+        audio.play('ui');
+        elegirModo(actual.dataset.modo);
+      } else if (!activarFoco()) {
+        audio.play('ui');
+        elegirModo(modosDelGrupo()[app.modoSel]);
+      }
     } else if (nombre === 'back' || nombre === 'pause') {
       mostrarInicio();
     }
@@ -2882,41 +2941,44 @@ function accion(nombre) {
   }
 
   if (app.pantalla === 'levels') {
-    if (nombre === 'up') seleccionarNivel(app.nivelSel - COLUMNAS_NIVELES);
-    else if (nombre === 'down') seleccionarNivel(app.nivelSel + COLUMNAS_NIVELES);
-    else if (nombre === 'left') seleccionarNivel(app.nivelSel - 1);
-    else if (nombre === 'right') seleccionarNivel(app.nivelSel + 1);
+    if (nombre === 'up') moverFoco(0, -1);
+    else if (nombre === 'down') moverFoco(0, 1);
+    else if (nombre === 'left') moverFoco(-1, 0);
+    else if (nombre === 'right') moverFoco(1, 0);
     else if (nombre === 'confirm') {
       audio.play('ui');
-      elegirNivel(app.nivelSel);
+      const lista = botonesUI();
+      const actual = lista[foco.indice];
+      if (actual && actual.dataset.nivel !== undefined) elegirNivel(Number(actual.dataset.nivel));
+      else if (!activarFoco()) elegirNivel(app.nivelSel);
     } else if (nombre === 'back' || nombre === 'pause') mostrarModos(0);
     return;
   }
 
   if (app.pantalla === 'help') {
-    if (nombre === 'back' || nombre === 'pause' || nombre === 'confirm') mostrarInicio();
+    if (nombre === 'up' || nombre === 'down' || nombre === 'left' || nombre === 'right') {
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
+    } else if (nombre === 'back' || nombre === 'pause' || nombre === 'confirm') mostrarInicio();
     return;
   }
 
-  if (app.pantalla === 'paused') {
-    if (nombre === 'pause' || nombre === 'confirm') reanudar();
-    else if (nombre === 'back') mostrarInicio();
-    else if (nombre === 'restart') empezarPartida(app.modo, app.nivel);
-    return;
-  }
-
-  if (app.pantalla === 'dead') {
-    if (nombre === 'confirm' || nombre === 'restart') empezarPartida(app.modo, app.nivel);
-    else if (nombre === 'back') mostrarInicio();
-    return;
-  }
-
-  if (app.pantalla === 'cleared') {
+  if (app.pantalla === 'paused' || app.pantalla === 'dead' || app.pantalla === 'cleared') {
+    if (esDireccion) {
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
+      return;
+    }
     if (nombre === 'confirm') {
-      if (app.nivel >= LEVELS.length - 1) mostrarInicio();
-      else empezarPartida('campaign', app.nivel + 1);
-    } else if (nombre === 'restart') empezarPartida('campaign', app.nivel);
-    else if (nombre === 'back') mostrarInicio();
+      activarFoco();
+      return;
+    }
+    if (nombre === 'restart') {
+      if (app.pantalla === 'paused') empezarPartida(app.modo, app.nivel);
+      else if (app.pantalla === 'cleared') empezarPartida('campaign', app.nivel);
+      else empezarPartida(app.modo, app.nivel);
+      return;
+    }
+    if (nombre === 'back') mostrarInicio();
+    else if (nombre === 'pause' && app.pantalla === 'paused') reanudar();
     return;
   }
 
@@ -3099,6 +3161,12 @@ el.overlay.addEventListener('click', (e) => {
 el.overlay.addEventListener('pointerover', (e) => {
   const boton = e.target.closest('button');
   if (!boton) return;
+  const lista = botonesUI();
+  const indice = lista.indexOf(boton);
+  if (indice >= 0 && indice !== foco.indice) {
+    foco.indice = indice;
+    pintarFoco();
+  }
   if (app.pantalla === 'home' && boton.dataset.grupo !== undefined) {
     seleccionarGrupo(Number(boton.dataset.grupo));
   }

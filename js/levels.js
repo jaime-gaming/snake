@@ -108,7 +108,7 @@ export const MODES = {
     ...base,
     id: 'blind',
     name: 'CIEGO',
-    tag: 'sólo ves un círculo, que se abre al comer',
+    tag: 'sólo ves un cuadrado de luz, que se abre al comer',
     startSpeed: 142,
     minSpeed: 84,
     accelPerFood: 1.4,

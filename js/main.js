@@ -25,7 +25,6 @@ function comprobarPiezas() {
 const ORDEN = MODE_ORDER;
 const CLAVE = 'snake.v2';
 const CLAVE_ANTIGUA = 'snake.frenzy.v1';
-const COLUMNAS_NIVELES = 4;
 
 const el = {
   stage: $('#stage'),
@@ -194,6 +193,7 @@ function ponerOverlay(html) {
   if (!html) {
     el.overlay.classList.remove('abierto');
     el.overlay.innerHTML = '';
+    foco.indice = -1;
     return;
   }
   el.overlay.innerHTML = html;
@@ -311,6 +311,132 @@ function actualizarEfectos(juego) {
   }
 }
 
+/* ---------------------------------------------------------- foco de botones */
+
+const foco = { indice: -1 };
+
+// botones que se pueden alcanzar con las flechas en la capa abierta
+function botonesUI() {
+  if (!el.overlay.classList.contains('abierto')) return [];
+  return [...el.overlay.querySelectorAll('button')].filter((b) => !b.disabled);
+}
+
+function pintarFoco() {
+  const lista = botonesUI();
+  lista.forEach((boton, i) => boton.classList.toggle('foco', i === foco.indice));
+}
+
+function marcar(boton) {
+  // al enfocar una fila o una casilla, la selección va con ella
+  if (!boton || !boton.dataset) return;
+  if (app.pantalla === 'home' && boton.dataset.grupo !== undefined) {
+    seleccionarGrupo(Number(boton.dataset.grupo));
+  } else if (app.pantalla === 'modes' && boton.dataset.modo !== undefined) {
+    seleccionarModo(Number(boton.dataset.i));
+  } else if (app.pantalla === 'levels' && boton.dataset.nivel !== undefined) {
+    seleccionarNivel(Number(boton.dataset.nivel));
+  }
+}
+
+function enfocarUI(indice) {
+  const lista = botonesUI();
+  if (!lista.length) {
+    foco.indice = -1;
+    return;
+  }
+  foco.indice = ((indice % lista.length) + lista.length) % lista.length;
+  pintarFoco();
+  marcar(lista[foco.indice]);
+  const activo = lista[foco.indice];
+  if (activo && typeof activo.scrollIntoView === 'function') {
+    try {
+      activo.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    } catch (err) {
+      /* sin scroll, no pasa nada */
+    }
+  }
+}
+
+function enfocarPrimero(selector) {
+  const lista = botonesUI();
+  const indice = lista.findIndex((b) => b.matches(selector));
+  enfocarUI(indice >= 0 ? indice : 0);
+}
+
+// botones que forman el recorrido de las flechas en cada pantalla
+function anilloFoco() {
+  const todos = botonesUI();
+  if (app.pantalla === 'home') {
+    return todos.filter((b) => b.dataset.grupo !== undefined || b.classList.contains('link'));
+  }
+  if (app.pantalla === 'modes') return todos.filter((b) => b.dataset.modo !== undefined);
+  if (app.pantalla === 'levels') return todos.filter((b) => b.dataset.nivel !== undefined);
+  return todos;
+}
+
+// cuántas casillas hay por fila en la rejilla de niveles (4 por defecto)
+function columnasRejilla(lista) {
+  const tops = [];
+  for (const boton of lista) {
+    const top = Math.round(boton.getBoundingClientRect().top);
+    if (!tops.includes(top)) tops.push(top);
+    if (tops.length > 1) break;
+  }
+  if (tops.length < 2) return 4;
+  const cuenta = lista.filter((b) => Math.round(b.getBoundingClientRect().top) === tops[0]).length;
+  return cuenta > 0 ? cuenta : 4;
+}
+
+function fijarFoco(boton) {
+  if (!boton) return;
+  const lista = botonesUI();
+  const indice = lista.indexOf(boton);
+  if (indice < 0) return;
+  foco.indice = indice;
+  pintarFoco();
+  marcar(boton);
+  if (typeof boton.scrollIntoView === 'function') {
+    try {
+      boton.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    } catch (err) {
+      /* sin scroll, no pasa nada */
+    }
+  }
+}
+
+// flechas: recorren el anillo de la pantalla; en la rejilla, ↑↓ saltan de fila
+function moverFoco(dx, dy) {
+  const anillo = anilloFoco();
+  if (!anillo.length) return;
+  const actual = botonesUI()[foco.indice];
+  let i = anillo.indexOf(actual);
+  if (i < 0) {
+    fijarFoco(anillo[0]);
+    return;
+  }
+  let paso;
+  if (app.pantalla === 'levels') {
+    paso = dy !== 0 ? dy * columnasRejilla(anillo) : dx;
+  } else {
+    paso = dx !== 0 ? dx : dy;
+  }
+  const total = anillo.length;
+  const siguiente = i + paso;
+  // en la rejilla de niveles no se da la vuelta: se queda en el borde
+  if (app.pantalla === 'levels' && (siguiente < 0 || siguiente >= total)) return;
+  const destino = anillo[((siguiente % total) + total) % total];
+  fijarFoco(destino);
+}
+
+function activarFoco() {
+  const lista = botonesUI();
+  const boton = lista[foco.indice];
+  if (!boton) return false;
+  audio.play('ui');
+  boton.click();
+  return true;
+}
+
 /* ---------------------------------------------------------- menú */
 
 function modosDelGrupo(indice = app.grupo) {
@@ -401,6 +527,7 @@ function mostrarInicio() {
   el.prompt.classList.remove('visible');
   pantalla('home');
   seleccionarGrupo(app.grupo);
+  enfocarPrimero(`.row[data-grupo="${app.grupo}"]`);
   ajustarLienzo();
 }
 
@@ -460,6 +587,7 @@ function mostrarModos(indice = app.grupo) {
   el.prompt.classList.remove('visible');
   pantalla('modes');
   seleccionarModo(0);
+  enfocarPrimero('.row[data-modo]');
   ajustarLienzo();
 }
 
@@ -534,6 +662,7 @@ function pintarNiveles() {
 
   pantalla('levels');
   seleccionarNivel(app.nivelSel);
+  enfocarPrimero(`.celda[data-nivel="${app.nivelSel}"]`);
 }
 
 function seleccionarNivel(i) {
@@ -617,22 +746,23 @@ function mostrarAyuda() {
     <p class="kicker">reglas</p>
     <ul class="reglas">
       <li>la comida encadena: dos frutas seguidas suben el multiplicador hasta ×5</li>
-      <li>el rombo rojo caduca y da dos anillos de largo</li>
-      <li>los iconos blancos dan poderes: círculo discontinuo fantasma (atraviesas todo), dos barras lento, cuadrado recorte</li>
+      <li>el cubo rojo hueco caduca y da dos anillos de largo</li>
+      <li>los cuadros blancos dan poderes: contorno discontinuo fantasma (atraviesas todo), raya en medio lento, cuadro relleno recorte</li>
       <li>la campaña son 20 niveles: se abre uno cada vez que cierras el anterior</li>
       <li>clásico: pasadas 30 frutas empiezan a salir muros sueltos</li>
       <li>frenesí: los bordes dan la vuelta y la velocidad sube sola</li>
       <li>portales: entrar por un aro te saca por el otro, y cambian de sitio</li>
       <li>cazador: la serpiente roja come puntos azules y crece; si te toca, pierdes</li>
       <li>cuando el cazador está lleno va directo a por ti y se mueve al doble</li>
-      <li>en ciego sólo ves un círculo, y se abre poco a poco según comes</li>
-      <li>en reloj sales con 45 segundos, cada fruta suma 2,6 y el rombo 4 más</li>
+      <li>en ciego sólo ves un cuadrado de luz, y se abre poco a poco según comes</li>
+      <li>en reloj sales con 45 segundos, cada fruta suma 2,6 y el cubo hueco 4 más</li>
       <li>en muro el mapa se llena de muros cada tres frutas</li>
       <li>al empezar cada partida el mapa se enciende desde tu cabeza</li>
     </ul>
     <p class="pie"><span>osciladores y ruido en directo · sin ficheros de audio</span></p>
   </div>`);
   pantalla('help');
+  enfocarPrimero('button[data-accion="home"]');
 }
 
 /* ---------------------------------------------------------- partida */
@@ -751,6 +881,7 @@ function mostrarFin() {
     </div>
   </div>`);
   pantalla('dead');
+  enfocarPrimero('button[data-accion="retry"]');
   el.pause.disabled = true;
   el.prompt.classList.remove('visible');
   actualizarMarcador();
@@ -775,6 +906,7 @@ function mostrarNivelSuperado() {
     </div>
   </div>`);
   pantalla('cleared');
+  enfocarPrimero('button.principal');
   el.pause.disabled = true;
   el.prompt.classList.remove('visible');
 }
@@ -804,6 +936,7 @@ function pausar() {
     </div>
   </div>`);
   pantalla('paused');
+  enfocarPrimero('button[data-accion="resume"]');
   el.pause.textContent = 'seguir';
   el.pause.disabled = false;
   el.prompt.classList.remove('visible');
@@ -813,6 +946,7 @@ function reanudar() {
   if (!app.juego) return;
   app.juego.resume();
   ponerOverlay(null);
+  foco.indice = -1;
   pantalla('playing');
   el.pause.textContent = 'pausa';
   el.pause.disabled = false;
@@ -858,27 +992,39 @@ function accion(nombre) {
   const esDireccion = ['up', 'down', 'left', 'right'].includes(nombre);
 
   if (app.pantalla === 'home') {
-    if (nombre === 'up' || nombre === 'left') seleccionarGrupo(app.grupo - 1);
-    else if (nombre === 'down' || nombre === 'right') seleccionarGrupo(app.grupo + 1);
-    else if (nombre === 'confirm') {
-      audio.play('ui');
-      mostrarModos(app.grupo);
+    if (nombre === 'up') moverFoco(0, -1);
+    else if (nombre === 'down') moverFoco(0, 1);
+    else if (nombre === 'left' || nombre === 'right') {
+      const paso = nombre === 'left' ? -1 : 1;
+      const total = GROUPS.length;
+      const destino = ((app.grupo + paso) % total + total) % total;
+      seleccionarGrupo(destino);
+      enfocarPrimero(`.row[data-grupo="${destino}"]`);
+    } else if (nombre === 'confirm') {
+      if (!activarFoco()) {
+        audio.play('ui');
+        mostrarModos(app.grupo);
+      }
     }
     return;
   }
 
   if (app.pantalla === 'modes') {
-    if (nombre === 'up') seleccionarModo(app.modoSel - 1);
-    else if (nombre === 'down') seleccionarModo(app.modoSel + 1);
-    else if (nombre === 'left') {
+    if (nombre === 'up') moverFoco(0, -1);
+    else if (nombre === 'down') moverFoco(0, 1);
+    else if (nombre === 'left' || nombre === 'right') {
       audio.play('ui');
-      mostrarModos(app.grupo - 1);
-    } else if (nombre === 'right') {
-      audio.play('ui');
-      mostrarModos(app.grupo + 1);
+      mostrarModos(app.grupo + (nombre === 'left' ? -1 : 1));
     } else if (nombre === 'confirm') {
-      audio.play('ui');
-      elegirModo(modosDelGrupo()[app.modoSel]);
+      const lista = botonesUI();
+      const actual = lista[foco.indice];
+      if (actual && actual.dataset.modo !== undefined) {
+        audio.play('ui');
+        elegirModo(actual.dataset.modo);
+      } else if (!activarFoco()) {
+        audio.play('ui');
+        elegirModo(modosDelGrupo()[app.modoSel]);
+      }
     } else if (nombre === 'back' || nombre === 'pause') {
       mostrarInicio();
     }
@@ -886,41 +1032,44 @@ function accion(nombre) {
   }
 
   if (app.pantalla === 'levels') {
-    if (nombre === 'up') seleccionarNivel(app.nivelSel - COLUMNAS_NIVELES);
-    else if (nombre === 'down') seleccionarNivel(app.nivelSel + COLUMNAS_NIVELES);
-    else if (nombre === 'left') seleccionarNivel(app.nivelSel - 1);
-    else if (nombre === 'right') seleccionarNivel(app.nivelSel + 1);
+    if (nombre === 'up') moverFoco(0, -1);
+    else if (nombre === 'down') moverFoco(0, 1);
+    else if (nombre === 'left') moverFoco(-1, 0);
+    else if (nombre === 'right') moverFoco(1, 0);
     else if (nombre === 'confirm') {
       audio.play('ui');
-      elegirNivel(app.nivelSel);
+      const lista = botonesUI();
+      const actual = lista[foco.indice];
+      if (actual && actual.dataset.nivel !== undefined) elegirNivel(Number(actual.dataset.nivel));
+      else if (!activarFoco()) elegirNivel(app.nivelSel);
     } else if (nombre === 'back' || nombre === 'pause') mostrarModos(0);
     return;
   }
 
   if (app.pantalla === 'help') {
-    if (nombre === 'back' || nombre === 'pause' || nombre === 'confirm') mostrarInicio();
+    if (nombre === 'up' || nombre === 'down' || nombre === 'left' || nombre === 'right') {
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
+    } else if (nombre === 'back' || nombre === 'pause' || nombre === 'confirm') mostrarInicio();
     return;
   }
 
-  if (app.pantalla === 'paused') {
-    if (nombre === 'pause' || nombre === 'confirm') reanudar();
-    else if (nombre === 'back') mostrarInicio();
-    else if (nombre === 'restart') empezarPartida(app.modo, app.nivel);
-    return;
-  }
-
-  if (app.pantalla === 'dead') {
-    if (nombre === 'confirm' || nombre === 'restart') empezarPartida(app.modo, app.nivel);
-    else if (nombre === 'back') mostrarInicio();
-    return;
-  }
-
-  if (app.pantalla === 'cleared') {
+  if (app.pantalla === 'paused' || app.pantalla === 'dead' || app.pantalla === 'cleared') {
+    if (esDireccion) {
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
+      return;
+    }
     if (nombre === 'confirm') {
-      if (app.nivel >= LEVELS.length - 1) mostrarInicio();
-      else empezarPartida('campaign', app.nivel + 1);
-    } else if (nombre === 'restart') empezarPartida('campaign', app.nivel);
-    else if (nombre === 'back') mostrarInicio();
+      activarFoco();
+      return;
+    }
+    if (nombre === 'restart') {
+      if (app.pantalla === 'paused') empezarPartida(app.modo, app.nivel);
+      else if (app.pantalla === 'cleared') empezarPartida('campaign', app.nivel);
+      else empezarPartida(app.modo, app.nivel);
+      return;
+    }
+    if (nombre === 'back') mostrarInicio();
+    else if (nombre === 'pause' && app.pantalla === 'paused') reanudar();
     return;
   }
 
@@ -1103,6 +1252,12 @@ el.overlay.addEventListener('click', (e) => {
 el.overlay.addEventListener('pointerover', (e) => {
   const boton = e.target.closest('button');
   if (!boton) return;
+  const lista = botonesUI();
+  const indice = lista.indexOf(boton);
+  if (indice >= 0 && indice !== foco.indice) {
+    foco.indice = indice;
+    pintarFoco();
+  }
   if (app.pantalla === 'home' && boton.dataset.grupo !== undefined) {
     seleccionarGrupo(Number(boton.dataset.grupo));
   }

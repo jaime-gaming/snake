@@ -11,6 +11,9 @@ Snake de rejilla, en blanco y negro y sin adornos. HTML, CSS y JavaScript a pelo
 | pausa | P o esc | botón pausa |
 | reiniciar | R | botón |
 | sonido | M | botón sonido |
+| menús | flechas + enter | toca |
+
+Todo lo que sale en pantalla (grupos, modos, niveles, pausa, fin, ayuda) se maneja con las **flechas** y **enter**: el botón enfocado lleva un marco de 2 px. En la rejilla de niveles `↑↓` saltan de fila.
 
 Mando: d-pad y sticks para girar, A para turbo, start para pausar.
 
@@ -27,22 +30,22 @@ El menú son tres grupos y cada uno abre su propia subpágina con sus modos: `�
 - **clásico** — sin fin. cada fruta acelera y, pasadas 30, empiezan a salir muros sueltos.
 - **frenesí** — los bordes dan la vuelta y la velocidad sube sola con el reloj.
 - **portales** — dos aros que se recolocan cada tres frutas. entras por uno y sales por el otro.
-- **cazador** — una serpiente roja te persigue por el laberinto. come puntos azules y se hace más larga: cada anillo que gana es una casilla más que te puede tapar. cuando llega a 18 anillos va directo a por ti y se mueve al doble. si se queda sin salida se muda a otra zona. vuelve a nacer lejos cada vez que coges un rombo.
+- **cazador** — una serpiente roja te persigue por el laberinto. come puntos azules y se hace más larga: cada anillo que gana es una casilla más que te puede tapar. cuando llega a 18 anillos va directo a por ti y se mueve al doble. si se queda sin salida se muda a otra zona. vuelve a nacer lejos cada vez que coges el cubo hueco.
 
 **especiales**
 
-- **ciego** — sólo ves un círculo a tu alrededor, y se abre poco a poco según comes.
-- **reloj** — sales con 45 segundos, cada fruta suma 2,6 y el rombo 4 más.
+- **ciego** — sólo ves un cuadrado de luz a tu alrededor, y se abre poco a poco según comes.
+- **reloj** — sales con 45 segundos, cada fruta suma 2,6 y el cubo hueco 4 más.
 - **muro** — un muro nuevo cada tres frutas, con tope de 30, y más poderes para compensar.
 
 ## piezas
 
 - **cadena** — dos frutas seguidas suben el multiplicador hasta ×5. la barra de abajo es el tiempo que te queda para encadenar.
-- **rombo** — aparece cada pocas frutas, caduca y da dos anillos de largo.
-- **poderes** — círculo discontinuo: fantasma, atraviesas muros, bordes y cazador durante cinco segundos. dos barras: lento, todo va más despacio. cuadrado: recorte, pierdes anillos y ganas puntos.
+- **premio** — un cubo rojo hueco aparece cada pocas frutas, caduca y da dos anillos de largo.
+- **poderes** — todo son cubos: contorno discontinuo, fantasma (atraviesas muros, bordes y cazador durante cinco segundos); raya en medio, lento; cuadro relleno, recorte (pierdes anillos y ganas puntos).
 - **turbo** — 0,68 del intervalo mientras lo mantengas.
-- **choque** — al morir la casilla del golpe queda marcada, saltan cuatro grietas y la serpiente se deshace de la cabeza a la cola.
-- **arranque** — al empezar cada partida, la cabeza va encendiendo el tablero: una onda de luz revela casillas hasta dejar el mapa entero a la vista.
+- **choque** — al morir la casilla del golpe queda marcada y tres marcos cuadrados se abren desde ella mientras la serpiente se deshace de la cabeza a la cola.
+- **arranque** — al empezar cada partida, la luz enciende el tablero por bloques, un escalón por casilla, hasta dejar el mapa entero a la vista.
 - **velocidad** — la campaña va de 155 a 106 ms por casilla y los infinitos arrancan entre 124 y 146, con suelo de 42 a 86 ms. cuesta más acelerar que antes, así que las partidas duran más.
 
 ## archivos

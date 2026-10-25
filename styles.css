@@ -44,9 +44,11 @@ html.trama body::after {
   inset: 0;
   z-index: 99;
   pointer-events: none;
-  background:
-    repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.028) 0 1px, transparent 1px 3px),
-    radial-gradient(ellipse at 50% 50%, transparent 52%, rgba(0, 0, 0, 0.6) 100%);
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.028) 0 1px,
+    transparent 1px 3px
+  );
 }
 
 button {
@@ -438,6 +440,26 @@ h2 {
   width: 100%;
   max-width: 232px;
   box-shadow: 0 0 0 1px var(--line2);
+}
+
+/* foco de teclado: un marco de 2 px, sin sombras ni adornos */
+
+button.foco {
+  outline: 2px solid #ffffff;
+  outline-offset: -2px;
+}
+
+.row.sel.foco,
+.celda.sel.foco,
+.tab.sel.foco,
+.acciones button.principal.foco {
+  outline-color: #000000;
+}
+
+.link.foco {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+  color: #ffffff;
 }
 
 /* portada: tres grupos, cada uno abre su subpágina */
