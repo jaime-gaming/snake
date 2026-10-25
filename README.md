@@ -33,7 +33,7 @@ El menú son tres grupos y cada uno abre su propia subpágina con sus modos: `�
 
 **competitivo**
 
-- **competitivo** — 1 vs 1 vs 1 vs 1 con límite de **60 segundos**. cada jugador tiene **su propia cuadrícula** (tú y tres bots: `pulso`, `ruido` y `onda`) y no ve las de los demás: el marcador de la esquina lleva la cuenta en vivo. cada partida sortea un **mapa** (las cinco arenas del modo o cualquiera de los 20 niveles) y un **modificador** que cambia la partida para los cuatro a la vez: `sin muros`, `muros`, `rápido`, `lento`, `hambre` (un poder cada tres frutas) o `sin premios`. hay **siete rangos** — hierro, cobre, bronce, plata, oro, platino y obsidiana — y cada 12 puntos de rango se sube uno. al terminar, el 1º suma 3, el 2º suma 1, el 3º resta 1 y el 4º resta 2. los bots aprietan más cuanto más alto es tu rango (de un 30 % más lentos a un 7 % más rápidos que tú). si te matas, la partida se cierra y cuenta la clasificación.
+- **competitivo** — 1 vs 1 vs 1 vs 1 contra tres bots (`pulso`, `ruido` y `onda`), **60 segundos** con el reloj centrado sobre el tablero. cada uno juega en **su propia cuadrícula**: las tres de los bots se ven en directo como miniaturas debajo de la tuya y el marcador de la esquina lleva la cuenta. la partida sortea **mapa** (5 arenas o cualquiera de los 20 niveles) y **modificador** para los cuatro: `sin muros`, `muros`, `rápido`, `lento`, `hambre` o `sin premios`. siete rangos (hierro, cobre, bronce, plata, oro, platino y obsidiana) en bloques, sin listas: 1º +3, 2º +1, 3º −1, 4º −2. **si te matas revives** en el centro con 1,4 s de gracia, conservas las frutas y pagas un 20 % de tus puntos (mínimo 40).
 
 los modos que sobraban (portales, reloj, muro y ciego) se han ido: sus reglas no aportaban nada que la campaña y el clásico no dieran ya, y cada uno era una forma más de romper el juego.
 
@@ -45,7 +45,7 @@ el competitivo es un modo temporal y está marcado para poder borrarlo entero de
 grep -rn BORRAR-COMPETITIVO .
 ```
 
-eso señala los trozos de `js/levels.js` (modo, grupo, rangos, mapas y modificadores), `js/main.js` (sala, partida, marcador, reloj y clasificación), `index.html` (reloj y marcador), `styles.css` (sus estilos), `tools/check.mjs` (sus pruebas, que además comprueban que la marca sigue puesta) y este readme. si se quita el modo, hay que volver a dejar `MODES` en tres modos y el menú en tres grupos.
+eso señala los trozos de `js/levels.js` (modo, grupo, rangos, mapas y modificadores), `js/main.js` (sala, partida, minis, reloj y clasificación), `js/engine.js` (revivir y la gracia), `index.html` (reloj, minis y marcador), `styles.css` (sus estilos), `tools/check.mjs` (sus pruebas, que además comprueban que la marca sigue puesta) y este readme. si se quita el modo, hay que volver a dejar `MODES` en tres modos y el menú en tres grupos.
 
 ## piezas
 

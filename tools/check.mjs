@@ -12,7 +12,7 @@ import {
   MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS,
   // BORRAR-COMPETITIVO
   COMPETITIVE, mapaDePartida, modificadorDePartida, configCompetitivo,
-  ajustarRango, rangoInfo, escalaBots,
+  ajustarRango, rangoInfo, escalaBots, castigoMuerte,
 } from '../js/levels.js';
 
 const K = (x, y) => y * 4096 + x;
@@ -762,6 +762,8 @@ process.stdout.write('cazador al choque\n');
    BORRAR-COMPETITIVO · pruebas del modo competitivo. se van con el modo.
    ═══════════════════════════════════════════════════════════════════════════ */
 process.stdout.write('competitivo\n');
+// BORRAR-COMPETITIVO · raíz del repo, para leer los ficheros con la marca
+const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 {
   comprobar(COMPETITIVE.rangos.length === 7, 'competitivo: no hay siete rangos');
   comprobar(
@@ -823,6 +825,8 @@ process.stdout.write('competitivo\n');
   comprobar(info.nombre === COMPETITIVE.rangos[2], 'competitivo: el rango no coincide con su nombre');
   comprobar(info.siguiente === COMPETITIVE.rangos[3], 'competitivo: no dice cuál es el siguiente');
   comprobar(Math.abs(info.progreso - 0.5) < 1e-9, 'competitivo: la barra del rango miente');
+  comprobar(info.nivel === 3 && info.total === 7, 'competitivo: el rango no dice en qué peldaño está');
+  comprobar(COMPETITIVE.rangos.every((r) => r.length <= 10), 'competitivo: algún rango se va de largo');
   comprobar(rangoInfo({ rango: 6, dentro: 11 }).siguiente === null, 'competitivo: el último rango tiene siguiente');
 
   // los bots aprietan más según tu rango
@@ -846,9 +850,62 @@ process.stdout.write('competitivo\n');
   comprobar(jugadores.slice(1).every((j) => j.walls !== jugadores[0].walls), 'competitivo: dos jugadores con la misma cuadrícula');
   process.stdout.write(`  partida de prueba: ${jugadores.map((j) => j.score).join(' · ')} puntos\n`);
 
+  // morirse no cierra la partida: revives, sigues con tus frutas y pagas puntos
+  {
+    const juego = new Game(configCompetitivo(mapa, mod), () => {});
+    juego.state = 'running';
+    let revives = 0;
+    juego.onEvent = (tipo) => { if (tipo === 'revive') revives++; };
+    juego.score = 300;
+    juego.fruits = 9;
+    juego.body = [{ x: 19, y: 10 }, { x: 18, y: 10 }, { x: 17, y: 10 }, { x: 16, y: 10 }];
+    juego.dir = { x: 1, y: 0 };
+    juego.prevBody = juego.body.map((c) => ({ ...c }));
+    juego.step(); // se sale del tablero
+    comprobar(juego.state === 'dead', 'competitivo: morirse no te mata');
+
+    const castigo = castigoMuerte(juego.score);
+    comprobar(castigo === Math.max(COMPETITIVE.castigo.minimo, Math.round(300 * 0.2)),
+      'competitivo: el castigo no es un 20 % con mínimo');
+    const puntosAntes = juego.score;
+    const pagado = juego.revivir(castigo);
+    comprobar(revives === 1, 'competitivo: revivir no avisa');
+    comprobar(pagado === castigo && juego.score === puntosAntes - castigo, 'competitivo: revivir no descuenta puntos');
+    comprobar(juego.state === 'running', 'competitivo: no vuelves a jugar tras morir');
+    comprobar(juego.fruits === 9, 'competitivo: revivir te borra las frutas');
+    comprobar(juego.gracia > 0, 'competitivo: revives sin gracia y te matas otra vez');
+    comprobar(!juego.crash, 'competitivo: el choque se queda colgado al revivir');
+
+    // durante la gracia no te matas
+    juego.body = [{ x: 19, y: 10 }, { x: 18, y: 10 }, { x: 17, y: 10 }, { x: 16, y: 10 }];
+    juego.dir = { x: 1, y: 0 };
+    juego.prevBody = juego.body.map((c) => ({ ...c }));
+    juego.step();
+    comprobar(juego.state === 'running', 'competitivo: la gracia no te protege al revivir');
+    juego.gracia = 0;
+
+    // el castigo nunca deja la puntuación por debajo de cero
+    juego.score = 10;
+    const pagado2 = juego.revivir(castigoMuerte(juego.score));
+    comprobar(juego.score === 0 && pagado2 === 10, 'competitivo: el castigo deja puntos negativos');
+    process.stdout.write(`  revivir: ${castigo} puntos de castigo, ${juego.gracia} ms de gracia\n`);
+  }
+
+  // poco texto: la ayuda no puede volver a llenarse de párrafos
+  {
+    const fuente = fs.readFileSync(path.join(RAIZ, 'js/main.js'), 'utf8');
+    const bloque = fuente.slice(fuente.indexOf('<ul class="reglas">'), fuente.indexOf('</ul>', fuente.indexOf('<ul class="reglas">')));
+    const reglas = [...bloque.matchAll(/<li>([^<]+)<\/li>/g)].map((m) => m[1]);
+    comprobar(reglas.length > 4 && reglas.length <= 12, `minimalismo: ${reglas.length} reglas en la ayuda`);
+    const larga = reglas.find((r) => r.length > 80);
+    comprobar(!larga, `minimalismo: una regla pasa de 80 letras («${larga}»)`);
+    const sala = fuente.slice(fuente.indexOf('class="panel versus"'), fuente.indexOf('function crearRivales'));
+    comprobar(!/<p class="nota">[^<]{90,}/.test(sala), 'minimalismo: la sala del competitivo tiene un párrafo largo');
+    process.stdout.write(`  ${reglas.length} reglas de ${Math.max(...reglas.map((r) => r.length))} letras como mucho\n`);
+  }
+
   // la marca de borrado tiene que seguir ahí, en todos los ficheros que toca
-  const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  const marcados = ['js/levels.js', 'js/main.js', 'index.html', 'styles.css', 'tools/check.mjs', 'README.md'];
+  const marcados = ['js/levels.js', 'js/main.js', 'js/engine.js', 'index.html', 'styles.css', 'tools/check.mjs', 'README.md'];
   for (const rel of marcados) {
     const texto = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     comprobar(texto.includes('BORRAR-COMPETITIVO'), `competitivo: falta la marca BORRAR-COMPETITIVO en ${rel}`);

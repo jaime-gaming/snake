@@ -350,7 +350,10 @@ export const COMPETITIVE = {
   tiempo: 60000,
   jugadores: 4,
   porRango: 12,
+  // BORRAR-COMPETITIVO: siete peldaños, de hierro a obsidiana
   rangos: ['hierro', 'cobre', 'bronce', 'plata', 'oro', 'platino', 'obsidiana'],
+  // lo que cuesta morirse: un 20 % de lo que llevas, con un mínimo
+  castigo: { fraccion: 0.2, minimo: 40 },
   // puntos que da cada puesto al terminar: 1º, 2º, 3º y 4º
   premios: [3, 1, -1, -2],
   bots: ['pulso', 'ruido', 'onda'],
@@ -481,12 +484,21 @@ export function rangoInfo(estado) {
   const dentro = Math.min(COMPETITIVE.porRango, Math.max(0, Number(estado && estado.dentro) || 0));
   return {
     rango,
+    nivel: rango + 1,
+    total,
     nombre: COMPETITIVE.rangos[rango],
     siguiente: rango < total - 1 ? COMPETITIVE.rangos[rango + 1] : null,
     dentro,
     falta: COMPETITIVE.porRango - dentro,
     progreso: dentro / COMPETITIVE.porRango,
   };
+}
+
+// BORRAR-COMPETITIVO: lo que te cuesta morirte en la partida
+export function castigoMuerte(puntos) {
+  const { fraccion, minimo } = COMPETITIVE.castigo;
+  if (!(puntos > 0)) return minimo;
+  return Math.max(minimo, Math.round(puntos * fraccion));
 }
 
 // BORRAR-COMPETITIVO: cuánto aprietan los bots según tu rango (1,30 lento → 0,93 rápido)

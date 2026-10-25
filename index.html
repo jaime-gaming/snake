@@ -8,7 +8,7 @@
 <meta name="description" content="Snake de rejilla: campaña de 20 niveles, clásico, frenesí, cazador y competitivo contra bots.">
 <title>snake</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Crect x='2' y='7' width='4' height='4' fill='%23fff'/%3E%3Crect x='6' y='7' width='4' height='4' fill='%23fff'/%3E%3Crect x='10' y='7' width='2' height='4' fill='%23fff'/%3E%3Crect x='13' y='2' width='3' height='3' fill='%23ff2b2b'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="styles.css?v=12">
+<link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body data-screen="home">
   <div id="app">
@@ -16,8 +16,6 @@
       <span class="brand">snake<span class="dot">.</span></span>
       <div class="stats">
         <span id="hud-meta" class="meta">cargando…</span>
-        <!-- BORRAR-COMPETITIVO · reloj de la partida -->
-        <span id="hud-timer" class="timer" hidden>0 s</span>
         <span id="hud-score" class="score">—</span>
         <span id="hud-mult" class="mult"></span>
         <span id="hud-best" class="best"></span>
@@ -31,8 +29,13 @@
     </header>
 
     <main id="stage">
-      <canvas id="board" aria-label="tablero"></canvas>
-      <!-- BORRAR-COMPETITIVO · marcador de los cuatro jugadores -->
+      <!-- BORRAR-COMPETITIVO · reloj centrado y las cuatro cuadrículas en directo -->
+      <div id="reloj" hidden aria-label="tiempo de partida">60</div>
+      <div id="pila">
+        <canvas id="board" aria-label="tablero"></canvas>
+        <div id="minis" hidden aria-label="cuadrículas de los rivales"></div>
+      </div>
+      <div id="aviso" aria-live="polite"></div>
       <div id="marcador" hidden aria-hidden="true"></div>
       <div id="prompt">pulsa una dirección</div>
       <div id="overlay"></div>
@@ -107,6 +110,6 @@
     })();
   </script>
 
-  <script src="snake.js?v=12"></script>
+  <script src="snake.js?v=13"></script>
 </body>
 </html>

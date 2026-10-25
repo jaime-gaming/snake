@@ -1,4 +1,4 @@
-/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-10-25 · v12).
+/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-10-25 · v13).
    no lo edites a mano: cambia js/*.js y vuelve a ejecutar node tools/build.mjs */
 (function () {
 'use strict';
@@ -425,7 +425,10 @@ const COMPETITIVE = {
   tiempo: 60000,
   jugadores: 4,
   porRango: 12,
+  // BORRAR-COMPETITIVO: siete peldaños, de hierro a obsidiana
   rangos: ['hierro', 'cobre', 'bronce', 'plata', 'oro', 'platino', 'obsidiana'],
+  // lo que cuesta morirse: un 20 % de lo que llevas, con un mínimo
+  castigo: { fraccion: 0.2, minimo: 40 },
   // puntos que da cada puesto al terminar: 1º, 2º, 3º y 4º
   premios: [3, 1, -1, -2],
   bots: ['pulso', 'ruido', 'onda'],
@@ -556,12 +559,21 @@ function rangoInfo(estado) {
   const dentro = Math.min(COMPETITIVE.porRango, Math.max(0, Number(estado && estado.dentro) || 0));
   return {
     rango,
+    nivel: rango + 1,
+    total,
     nombre: COMPETITIVE.rangos[rango],
     siguiente: rango < total - 1 ? COMPETITIVE.rangos[rango + 1] : null,
     dentro,
     falta: COMPETITIVE.porRango - dentro,
     progreso: dentro / COMPETITIVE.porRango,
   };
+}
+
+// BORRAR-COMPETITIVO: lo que te cuesta morirte en la partida
+function castigoMuerte(puntos) {
+  const { fraccion, minimo } = COMPETITIVE.castigo;
+  if (!(puntos > 0)) return minimo;
+  return Math.max(minimo, Math.round(puntos * fraccion));
 }
 
 // BORRAR-COMPETITIVO: cuánto aprietan los bots según tu rango (1,30 lento → 0,93 rápido)
@@ -571,7 +583,7 @@ function escalaBots(rango) {
   return 1.3 - (r / (total - 1)) * 0.37;
 }
 
-  Object.assign(modulo, { COLS, ROWS, GROUPS, MODE_ORDER, MODES, LEVELS, COMPETITIVE, mapaDePartida, modificadorDePartida, configCompetitivo, ajustarRango, rangoInfo, escalaBots });
+  Object.assign(modulo, { COLS, ROWS, GROUPS, MODE_ORDER, MODES, LEVELS, COMPETITIVE, mapaDePartida, modificadorDePartida, configCompetitivo, ajustarRango, rangoInfo, castigoMuerte, escalaBots });
 })(modulos['levels']);
 
 // ---- audio ----
@@ -932,6 +944,7 @@ class Game {
     this.pellets = [];
     this.reveal = 0;
     this.chomp = 0;
+    this.gracia = 0; // BORRAR-COMPETITIVO
     this.pendingWalls = [];
     this.turbo = false;
     this.time = 0;
@@ -1078,6 +1091,7 @@ class Game {
   updateFx(dt) {
     const k = dt / 1000;
     if (this.reveal < 1) this.reveal = Math.min(1, this.reveal + dt / 1000);
+    if (this.gracia > 0) this.gracia = Math.max(0, this.gracia - dt); // BORRAR-COMPETITIVO
     if (this.hunter && this.hunter.recarga > 0) {
       this.hunter.recarga -= dt;
       if (this.hunter.recarga <= 0) this.renacerCazador();
@@ -1128,17 +1142,19 @@ class Game {
     let hx = this.body[0].x + this.dir.x;
     let hy = this.body[0].y + this.dir.y;
 
-    if (cfg.wrap || ghost) {
+    // BORRAR-COMPETITIVO: al revivir hay 1,4 s de gracia en los que nada te mata
+    const gracia = this.gracia > 0;
+    if (cfg.wrap || ghost || gracia) {
       hx = (hx + this.cols) % this.cols;
       hy = (hy + this.rows) % this.rows;
     } else if (hx < 0 || hy < 0 || hx >= this.cols || hy >= this.rows) {
       return this.die('borde', clamp(hx, 0, this.cols - 1), clamp(hy, 0, this.rows - 1));
     }
 
-    if (!ghost && this.wallSet.has(K(hx, hy))) return this.die('muro', hx, hy);
+    if (!ghost && !gracia && this.wallSet.has(K(hx, hy))) return this.die('muro', hx, hy);
     // el cuerpo del cazador no te mata: le muerdes el anillo y sigues.
     // sólo su cabeza puede comerte (y sólo si cae sobre la tuya)
-    if (!ghost && this.hunter) {
+    if (!ghost && !gracia && this.hunter) {
       const golpe = this.hunter.body.findIndex((c) => c.x === hx && c.y === hy);
       if (golpe === 0) return this.die('cazador', hx, hy);
       if (golpe > 0) {
@@ -1158,7 +1174,7 @@ class Game {
     const willGrow = this.grow > 0 || eats || takesBonus;
 
     // con el fantasma puesto atraviesas también tu propio cuerpo
-    if (!ghost) {
+    if (!ghost && !gracia) {
       for (let i = 0; i < this.body.length; i++) {
         if (!willGrow && i === this.body.length - 1) continue;
         if (this.body[i].x === hx && this.body[i].y === hy) return this.die('cola', hx, hy);
@@ -1255,6 +1271,33 @@ class Game {
       this.score += 30;
     }
     this.emit('power', { kind: p.kind, label: POWER_INFO[p.kind].label });
+  }
+
+  // BORRAR-COMPETITIVO · en competitivo morirse no cierra la partida:
+  // vuelves al centro, conservas tus frutas y pagas puntos
+  revivir(castigo = 0) {
+    const pagado = Math.min(this.score, Math.max(0, Math.round(castigo)));
+    this.score -= pagado;
+    this.crash = null;
+    this.particles.length = 0;
+    this.hitStop = 0;
+    this.shake = 0;
+    const start = this.findStart();
+    this.body = [];
+    for (let i = 0; i < 4; i++) {
+      this.body.push({ x: start.x - start.dir.x * i, y: start.y - start.dir.y * i });
+    }
+    this.prevBody = this.body.map((p) => ({ ...p }));
+    this.dir = { ...start.dir };
+    this.queue = [];
+    this.grow = 0;
+    this.acc = 0;
+    this.turbo = false;
+    this.gracia = 1400;
+    this.state = 'running';
+    this.savedState = 'running';
+    this.emit('revive', { castigo: pagado, score: this.score });
+    return pagado;
   }
 
   die(reason, x, y) {
@@ -1877,6 +1920,9 @@ class Game {
       Math.max(2, ancho),
     ];
 
+    // BORRAR-COMPETITIVO · miniatura: sin rejilla, sin luz ni adornos, sólo lo que importa
+    const mini = !!view.mini;
+
     ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, view.width, view.height);
@@ -1887,16 +1933,18 @@ class Game {
       ctx.translate(Math.round((Math.random() - 0.5) * s), Math.round((Math.random() - 0.5) * s));
     }
 
-    // rejilla de 1 px
-    ctx.fillStyle = '#141414';
-    for (let x = 1; x < this.cols; x++) ctx.fillRect(Math.round(ox + x * cell), oy, 1, H);
-    for (let y = 1; y < this.rows; y++) ctx.fillRect(ox, Math.round(oy + y * cell), W, 1);
+    // rejilla de 1 px (en la miniatura sobra: se come la serpiente)
+    if (!mini) {
+      ctx.fillStyle = '#141414';
+      for (let x = 1; x < this.cols; x++) ctx.fillRect(Math.round(ox + x * cell), oy, 1, H);
+      for (let y = 1; y < this.rows; y++) ctx.fillRect(ox, Math.round(oy + y * cell), W, 1);
+    }
 
     // ---- borde: bloques. donde hay muro se marca; donde no, sólo al acercarte,
     // y el bloque por el que vas a salir se enciende (aviso de salida)
     const grosor = Math.max(2, Math.round(cell * 0.2));
     const tramoBorde = (x0, y0, w, h, cx, cy, sentido) => {
-      const alfa = this.alfaBorde(cx, cy, sentido);
+      const alfa = mini ? 0.3 : this.alfaBorde(cx, cy, sentido);
       if (alfa < 0.02) return;
       ctx.fillStyle = `rgba(255,255,255,${alfa.toFixed(2)})`;
       ctx.fillRect(Math.round(x0), Math.round(y0), Math.round(w), Math.round(h));
@@ -1913,6 +1961,13 @@ class Game {
     // muros: cubo hueco
     const inset = Math.max(1, Math.round(cell * 0.08));
     for (const [x, y] of this.walls) {
+      if (mini) {
+        // un muro es un bloque gris, sin contorno de 1 px
+        const [mx, my, mw] = caja(x, y, Math.round(cell * 0.12), lado - Math.round(cell * 0.24));
+        ctx.fillStyle = 'rgba(255,255,255,0.26)';
+        ctx.fillRect(mx, my, mw, mw);
+        continue;
+      }
       const [px, py, w] = caja(x, y, inset, lado - inset * 2);
       ctx.fillStyle = 'rgba(255,255,255,0.08)';
       ctx.fillRect(px, py, w, w);
@@ -1922,7 +1977,7 @@ class Game {
     }
 
     // muros que van a salir: un cubo hueco que parpadea y se cierra
-    for (const w of this.pendingWalls) {
+    for (const w of (mini ? [] : this.pendingWalls)) {
       const avance = clamp(w.t / w.dur, 0, 1);
       const [px, py, w2] = caja(w.x, w.y, Math.round(cell * 0.16), lado - Math.round(cell * 0.32));
       ctx.strokeStyle = `rgba(255,255,255,${(0.3 + avance * 0.55).toFixed(2)})`;
@@ -2075,7 +2130,7 @@ class Game {
       }
     };
 
-    if (this.reveal < 1) {
+    if (this.reveal < 1 && !mini) {
       // arranque: la luz avanza en cuadros desde la cabeza
       const alcance = 1.2 + this.reveal * 17;
       sombra(cabeza.x + 0.5, cabeza.y + 0.5, alcance, 3.4, 1, 5);
@@ -2110,6 +2165,10 @@ class Game {
 
     ctx.save();
     if (this.crash) ctx.globalAlpha = clamp(1 - (this.crash.t - 120) / 520, 0.12, 1);
+    else if (this.gracia > 0) {
+      // BORRAR-COMPETITIVO: parpadeo por bloques mientras dura la gracia
+      ctx.globalAlpha = Math.floor(this.gracia / 110) % 2 === 0 ? 0.45 : 1;
+    }
     for (let i = visibles - 1; i >= 0; i--) {
       const p = this.posAt(i, alpha);
       if (!p) continue;
@@ -2160,7 +2219,8 @@ class Game {
       }
     }
 
-    // chispas: también cuadradas
+    // chispas: también cuadradas (en la miniatura, fuera)
+    if (mini) this.particles.length = 0;
     ctx.save();
     for (const p of this.particles) {
       ctx.globalAlpha = clamp(p.life / p.max, 0, 1);
@@ -2221,7 +2281,7 @@ class Game {
 'use strict';
 const { Game, POWER_INFO } = modulos['engine'];
 const { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS, // BORRAR-COMPETITIVO
-  COMPETITIVE, mapaDePartida, modificadorDePartida, configCompetitivo, ajustarRango, rangoInfo, escalaBots } = modulos['levels'];
+  COMPETITIVE, mapaDePartida, modificadorDePartida, configCompetitivo, ajustarRango, rangoInfo, escalaBots, castigoMuerte } = modulos['levels'];
 const { audio } = modulos['audio'];
 const { attachInput } = modulos['input'];
 
@@ -2257,7 +2317,9 @@ const el = {
   prompt: $('#prompt'),
   meta: $('#hud-meta'),
   score: $('#hud-score'),
-  timer: $('#hud-timer'), // BORRAR-COMPETITIVO
+  reloj: $('#reloj'), // BORRAR-COMPETITIVO
+  minis: $('#minis'), // BORRAR-COMPETITIVO
+  aviso: $('#aviso'), // BORRAR-COMPETITIVO
   marcador: $('#marcador'), // BORRAR-COMPETITIVO
   best: $('#hud-best'),
   mult: $('#hud-mult'),
@@ -2395,8 +2457,10 @@ function ajustarLienzo() {
   // tiramos de la ventana para no quedarnos con un tablero de 0 px
   const anchoCaja = caja.width || window.innerWidth || 480;
   const altoCaja = caja.height || Math.max(240, (window.innerHeight || 720) * 0.6);
+  // BORRAR-COMPETITIVO · con las minis abajo, el tablero les deja su franja
+  const franja = app.comp && app.comp.activo && el.minis && !el.minis.hidden ? 96 : 0;
   // el tablero ocupa todo el hueco: celdas fraccionarias, sin bordes muertos
-  const lado = Math.max(160, Math.min(anchoCaja, altoCaja) - 2);
+  const lado = Math.max(160, Math.min(anchoCaja, altoCaja - franja) - 2);
   const celda = lado / Math.max(COLS, ROWS);
   const ancho = lado;
   const alto = lado;
@@ -2442,10 +2506,11 @@ function ponerOverlay(html) {
 function pantalla(nombre) {
   app.pantalla = nombre;
   document.body.dataset.screen = nombre;
-  // BORRAR-COMPETITIVO · el marcador y el reloj sólo existen durante la partida
+  // BORRAR-COMPETITIVO · el marcador, el reloj y las minis sólo existen jugando
   if (nombre !== 'playing' && nombre !== 'paused') {
     if (el.marcador) el.marcador.hidden = true;
-    if (el.timer && !(app.comp && app.comp.activo)) el.timer.hidden = true;
+    if (el.reloj) el.reloj.hidden = true;
+    if (el.minis) el.minis.hidden = true;
   }
   actualizarPista();
 }
@@ -2492,7 +2557,7 @@ function actualizarMarcador() {
     const info = rangoInfo(guardado.comp);
     const puestos = tablaCompetitivo(app.comp);
     const puesto = Math.max(1, puestos.findIndex((f) => f.yo) + 1);
-    meta = `${info.nombre} · ${puesto}º/${puestos.length} · ${app.comp.mod.nombre}`;
+    meta = `${info.nombre} · ${puesto}º/${puestos.length}`;
   } else if (app.modo === 'campaign') {
     const nivel = LEVELS[app.nivel];
     meta = `${dosDigitos(app.nivel + 1)} ${nivel.name.toLowerCase()} · ${Math.min(juego.fruits, nivel.goal)}/${nivel.goal}`;
@@ -2501,15 +2566,15 @@ function actualizarMarcador() {
   }
   if (el.meta.textContent !== meta) el.meta.textContent = meta;
 
-  // BORRAR-COMPETITIVO · cuenta atrás de la partida
-  if (el.timer) {
+  // BORRAR-COMPETITIVO · cuenta atrás centrada sobre el tablero
+  if (el.reloj) {
     const conReloj = app.modo === 'competitive' && !!app.comp && app.comp.activo;
-    el.timer.hidden = !conReloj;
+    el.reloj.hidden = !conReloj;
     if (conReloj) {
       const segundos = Math.max(0, Math.ceil(app.comp.restante / 1000));
-      const texto = `${segundos} s`;
-      if (el.timer.textContent !== texto) el.timer.textContent = texto;
-      el.timer.classList.toggle('apurado', app.comp.restante <= 10000);
+      const texto = String(segundos);
+      if (el.reloj.textContent !== texto) el.reloj.textContent = texto;
+      el.reloj.classList.toggle('apurado', app.comp.restante <= 10000);
     }
   }
 
@@ -3004,27 +3069,18 @@ function mostrarAyuda() {
     </table>
     <p class="kicker">reglas</p>
     <ul class="reglas">
-      <li>la comida encadena: dos frutas seguidas suben el multiplicador hasta ×5</li>
-      <li>el cubo rojo hueco caduca y da dos anillos de largo</li>
-      <li>comer sin dejar que se enfríe la barra suma un extra por cadena</li>
-      <li>los cuadros blancos dan poderes: contorno discontinuo fantasma (atraviesas todo), raya en medio lento, cuadro relleno recorte</li>
-      <li>la campaña son 20 niveles: se abre uno cada vez que cierras el anterior</li>
-      <li>clásico: pasadas 30 frutas empiezan a salir muros sueltos</li>
-      <li>frenesí: los bordes dan la vuelta y la velocidad sube sola</li>
-      <li>cazador: la serpiente roja empieza comiendo puntos azules y no te toca</li>
-      <li>cuando llega a dos tercios de su largo se pone a cazar: marco blanco, aviso y a por ti</li>
-      <li>su cuerpo no te mata: si le muerdes un anillo, lo recortas; sólo su cabeza te come</li>
-      <li>si el cazador se estrella contra tu cuerpo, revienta: está un segundo fuera y vuelve por la mitad de largo, lejos</li>
-      <li>los puntos azules también te valen: cómetelos y el cazador no crece</li>
-      <li>el cubo rojo fino marca por dónde va a cortar el cazador</li>
-      <li>los muros avisan 700 ms antes: el cubo hueco dice dónde van a salir</li>
-      <li>competitivo: cuatro serpientes, cuatro cuadrículas y un mapa con modificador. 60 segundos y gana el que más puntos tenga</li>
-      <li>en competitivo el marcador de la esquina lleva la cuenta de los bots; los bots aprietan más según tu rango</li>
-      <li>al empezar cada partida el mapa se enciende desde tu cabeza y el borde se ilumina con él</li>
-      <li>el borde se ve siempre: si chocar con él te mata, es una pared y no se esconde. con el fantasma puesto (o en frenesí, que da la vuelta) se apaga y sólo se marca al acercarte, y el bloque por el que vas a salir se enciende</li>
-      <li>en la campaña, la fruta que cierra el nivel sale amarilla</li>
-      <li>el fantasma se apaga por escalones en el último segundo y medio: los cubos se van rellenando</li>
-      <li>con el fantasma puesto no te matas tú: atraviesas muros, bordes y tu propio cuerpo</li>
+      <li>dos frutas seguidas suben el multiplicador hasta ×5</li>
+      <li>cubo rojo hueco: caduca y alarga dos anillos</li>
+      <li>cuadros blancos: fantasma, lento y recorte</li>
+      <li>el fantasma atraviesa todo, también tu cuerpo</li>
+      <li>el borde que mata se ve siempre</li>
+      <li>campaña: la fruta que cierra el nivel es amarilla</li>
+      <li>clásico: pasadas 30 frutas salen muros</li>
+      <li>frenesí: los bordes dan la vuelta</li>
+      <li>cazador: come puntos hasta 12 anillos y luego te caza</li>
+      <li>cazador: su cuerpo no te mata; si choca contigo, revienta</li>
+      <li>competitivo: 4 cuadrículas, 60 s, gana el que más puntos tiene</li>
+      <li>competitivo: si te matas revives, pero pierdes un 20 %</li>
     </ul>
     <p class="pie"><span>osciladores y ruido en directo · sin ficheros de audio</span></p>
   </div>`);
@@ -3052,40 +3108,30 @@ function mostrarCompetitivo() {
   app.modComp = modificadorDePartida();
   const info = rangoInfo(guardado.comp);
 
-  const escalera = COMPETITIVE.rangos.map((nombre, i) => {
-    const clase = i === info.rango ? ' class="aqui"' : i < info.rango ? ' class="hecho"' : '';
-    return `<li${clase}><span class="p">${dosDigitos(i + 1)}</span><span class="n">${nombre}</span></li>`;
+  // BORRAR-COMPETITIVO · siete bloques, sin listas ni párrafos
+  const rangos = COMPETITIVE.rangos.map((nombre, i) => {
+    const clase = i === info.rango ? ' aqui' : i < info.rango ? ' hecho' : '';
+    return `<span class="bloque${clase}" title="${nombre}">${i + 1}</span>`;
   }).join('');
 
   ponerOverlay(`<div class="panel versus">
     <div class="niveles-cabeza">
       <div>
-        <p class="kicker">competitivo · 1 vs 1 vs 1 vs 1 · ${COMPETITIVE.tiempo / 1000} s</p>
-        <h2>rango ${info.nombre}</h2>
+        <p class="kicker">competitivo · 4 jugadores · ${COMPETITIVE.tiempo / 1000} s</p>
+        <h2>${info.nombre}</h2>
       </div>
       <button class="ghost" type="button" data-accion="modos">grupos <kbd>esc</kbd></button>
     </div>
-    <div class="versus-cuerpo">
-      <div class="versus-lado">
-        <p class="kicker">tu rango</p>
-        <div class="comp-barra"><i style="width:${(info.progreso * 100).toFixed(0)}%"></i></div>
-        <p class="nota">${textoRango(info)}</p>
-        <ol class="comp-escalera">${escalera}</ol>
-      </div>
-      <div class="versus-lado">
-        <p class="kicker">esta partida</p>
-        <dl class="comp-datos">
-          <div><dt>mapa</dt><dd>${app.mapaComp.nombre}</dd></div>
-          <div><dt>modificador</dt><dd>${app.modComp.nombre}</dd></div>
-          <div><dt>rivales</dt><dd>${COMPETITIVE.bots.join(' · ')}</dd></div>
-          <div><dt>límite</dt><dd>${COMPETITIVE.tiempo / 1000} s</dd></div>
-        </dl>
-        <p class="nota">${app.modComp.tag}</p>
-        <p class="nota">cada uno juega en su propia cuadrícula y no ve las demás: el marcador de la esquina lleva la cuenta. el 1º suma 3 de rango, el 2º suma 1, el 3º resta 1 y el 4º resta 2.</p>
-      </div>
+    <div class="rangos" aria-label="rango ${info.nivel} de ${info.total}">${rangos}</div>
+    <p class="nota">${info.siguiente ? `${info.falta} para ${info.siguiente}` : 'rango máximo'}</p>
+    <div class="sellos">
+      <span><b>mapa</b>${app.mapaComp.nombre}</span>
+      <span><b>modificador</b>${app.modComp.nombre}</span>
+      <span><b>rivales</b>${COMPETITIVE.bots.join(' · ')}</span>
     </div>
+    <p class="pie"><span>1º +3 · 2º +1 · 3º −1 · 4º −2 · si te matas, −20 %</span></p>
     <div class="acciones">
-      <button class="principal" type="button" data-accion="comp-start">empezar <kbd>enter</kbd></button>
+      <button class="principal" type="button" data-accion="comp-start">jugar <kbd>enter</kbd></button>
       <button type="button" data-accion="home">menú <kbd>esc</kbd></button>
     </div>
   </div>`);
@@ -3099,6 +3145,68 @@ function mostrarCompetitivo() {
   el.prompt.classList.remove('visible');
   pantalla('versus');
   enfocarPrimero('button[data-accion="comp-start"]');
+}
+
+/* BORRAR-COMPETITIVO · las cuatro cuadrículas en directo */
+
+function montarMinis() {
+  if (!el.minis || !app.comp) return;
+  const gente = app.comp.rivales.map((r) => ({ nombre: r.nombre, juego: r.juego }));
+  el.minis.innerHTML = gente.map((p, i) => `<figure class="mini" data-i="${i}">
+      <canvas aria-hidden="true"></canvas>
+      <figcaption>${p.nombre}</figcaption>
+    </figure>`).join('');
+  el.minis.hidden = false;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  app.comp.minis = gente.map((p, i) => {
+    const figura = el.minis.querySelector(`.mini[data-i="${i}"]`);
+    const lienzo = figura.querySelector('canvas');
+    const ancho = Math.round(figura.getBoundingClientRect().width) || 64;
+    lienzo.style.width = `${ancho}px`;
+    lienzo.style.height = `${ancho}px`;
+    lienzo.width = Math.round(ancho * dpr);
+    lienzo.height = Math.round(ancho * dpr);
+    return {
+      figura,
+      lienzo,
+      ctx: lienzo.getContext('2d'),
+      juego: p.juego,
+      lado: ancho,
+      dpr,
+      cap: figura.querySelector('figcaption'),
+    };
+  });
+}
+
+function dibujarMinis() {
+  const c = app.comp;
+  if (!c || !c.minis || !el.minis || el.minis.hidden) return;
+  for (const m of c.minis) {
+    m.juego.draw(m.ctx, {
+      cell: m.lado / COLS,
+      ox: 0,
+      oy: 0,
+      width: m.lado,
+      height: m.lado,
+      dpr: m.dpr,
+      mini: true,
+    });
+  }
+}
+
+function quitarMinis() {
+  if (!el.minis) return;
+  el.minis.hidden = true;
+  el.minis.innerHTML = '';
+  if (app.comp) app.comp.minis = null;
+}
+
+function avisarCastigo(mensaje) {
+  if (!el.aviso) return;
+  el.aviso.textContent = mensaje;
+  el.aviso.classList.add('ver');
+  clearTimeout(avisarCastigo.turno);
+  avisarCastigo.turno = setTimeout(() => el.aviso.classList.remove('ver'), 1100);
 }
 
 function crearRivales(cfg) {
@@ -3130,7 +3238,8 @@ function empezarCompetitivo() {
     mapa: app.mapaComp,
     mod: app.modComp,
     rivales: [],
-    muerto: false,
+    muertes: 0,
+    minis: null,
     resultado: null,
   };
   app.comp.rivales = crearRivales(cfg);
@@ -3143,6 +3252,8 @@ function empezarCompetitivo() {
   ponerOverlay(null);
   pantalla('playing');
   if (el.marcador) el.marcador.hidden = false;
+  if (el.reloj) el.reloj.hidden = false;
+  montarMinis();
   ajustarLienzo();
   pintarMarcador();
   actualizarMarcador();
@@ -3233,7 +3344,7 @@ function finCompetitivo() {
     <div class="fin-cabeza">
       <p class="kicker">competitivo · ${c.mod.nombre} · ${c.mapa.nombre}</p>
       <p class="cifra">${titulo}</p>
-      <p class="nota">${signo} de rango · ${movimiento}</p>
+      <p class="nota">${signo} de rango · ${movimiento}${c.muertes ? ` · reviviste ${c.muertes}×` : ''}</p>
     </div>
     <ol class="comp-tabla">${tabla}</ol>
     <div class="acciones">
@@ -3242,9 +3353,11 @@ function finCompetitivo() {
     </div>
   </div>`);
   pantalla('versus-fin');
+  quitarMinis();
   enfocarPrimero('button[data-accion="comp-again"]');
   if (el.marcador) el.marcador.hidden = true;
-  if (el.timer) el.timer.hidden = true;
+  if (el.reloj) el.reloj.hidden = true;
+  if (el.minis) el.minis.hidden = true;
   el.pause.disabled = true;
   el.prompt.classList.remove('visible');
   audio.play(yo.puesto === 1 ? 'level' : 'ui');
@@ -3276,7 +3389,9 @@ function empezarPartida(modo, nivel = 0) {
   app.demo = null;
   app.comp = null; // BORRAR-COMPETITIVO
   if (el.marcador) el.marcador.hidden = true; // BORRAR-COMPETITIVO
-  if (el.timer) el.timer.hidden = true; // BORRAR-COMPETITIVO
+  if (el.reloj) el.reloj.hidden = true; // BORRAR-COMPETITIVO
+  if (el.minis) el.minis.innerHTML = ''; // BORRAR-COMPETITIVO
+  if (el.minis) el.minis.hidden = true; // BORRAR-COMPETITIVO
   app.modo = modo;
   app.nivel = nivel;
   app.record = false;
@@ -3337,12 +3452,17 @@ function eventosJuego(tipo, datos) {
       break;
     case 'die':
       audio.play('death');
-      guardarMarca();
-      // BORRAR-COMPETITIVO
+      // BORRAR-COMPETITIVO · en competitivo te mueres y vuelves, pagando puntos
       if (app.comp && app.comp.activo) {
-        app.comp.muerto = true;
-        app.temporizador = setTimeout(finCompetitivo, 900);
+        const castigo = castigoMuerte(app.juego ? app.juego.score : 0);
+        app.temporizador = setTimeout(() => {
+          if (!app.comp || !app.comp.activo || !app.juego) return;
+          const pagado = app.juego.revivir(castigo);
+          app.comp.muertes += 1;
+          avisarCastigo(`−${pagado}`);
+        }, 620);
       } else {
+        guardarMarca();
         app.temporizador = setTimeout(mostrarFin, 900);
       }
       break;
@@ -3903,6 +4023,7 @@ function bucle(t) {
       app.juego.update(dt);
     }
     app.juego.draw(pincel, vista);
+    if (app.comp && app.comp.activo) dibujarMinis(); // BORRAR-COMPETITIVO
     actualizarMarcador();
   }
 
