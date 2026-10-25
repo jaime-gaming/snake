@@ -120,6 +120,35 @@ const SONIDOS = {
   ui() {
     tono(440, 0.03, { vol: 0.1 });
   },
+  // BORRAR-COMPETITIVO · cuenta atrás, sorteo y rangos
+  cuenta(paso) {
+    // 3 y 2 secos; el 1 ya avisa de que arranca
+    const base = paso >= 2 ? 420 : 620;
+    tono(base, 0.07, { vol: 0.16 });
+    if (paso <= 1) {
+      tono(880, 0.12, { vol: 0.18, delay: 0.02 });
+      ruido(0.1, { desde: 1800, hasta: 300, vol: 0.12 });
+    }
+  },
+  sorteo() {
+    tono(980, 0.022, { tipo: 'square', vol: 0.05 });
+  },
+  fija() {
+    tono(520, 0.06, { vol: 0.16 });
+    tono(780, 0.08, { vol: 0.16, delay: 0.06 });
+    tono(1040, 0.1, { vol: 0.14, delay: 0.13 });
+    ruido(0.08, { desde: 1200, hasta: 400, vol: 0.1 });
+  },
+  revive() {
+    tono(180, 0.22, { tipo: 'triangle', vol: 0.18, fin: 620 });
+    tono(440, 0.14, { vol: 0.1, delay: 0.1 });
+    ruido(0.18, { desde: 2400, hasta: 500, vol: 0.14 });
+  },
+  rango(sube = true) {
+    const notas = sube ? [392, 523, 659, 784] : [392, 311, 262, 196];
+    notas.forEach((f, i) => tono(f, 0.1, { vol: 0.18, delay: i * 0.085, fin: sube ? f * 1.02 : f * 0.98 }));
+    tono(sube ? 1568 : 130, 0.16, { tipo: 'triangle', vol: 0.14, delay: 0.3 });
+  },
   locked() {
     tono(120, 0.08, { vol: 0.14 });
   },

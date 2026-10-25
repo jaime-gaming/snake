@@ -311,6 +311,21 @@ h1 .dot {
   color: var(--accent);
 }
 
+/* el rótulo es un lienzo: la serpiente escribe su nombre */
+h1.marca {
+  line-height: 0;
+  font-size: 0;
+  letter-spacing: 0;
+}
+
+h1.marca canvas {
+  display: block;
+  width: min(300px, 100%);
+  height: auto;
+  /* bloques nítidos, sin suavizado */
+  image-rendering: pixelated;
+}
+
 h2 {
   margin: 0;
   font-size: clamp(15px, 3vw, 19px);
@@ -1168,7 +1183,12 @@ button.foco {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #cuenta.pop { animation: none; opacity: 1; }
+  #cuenta.pop,
+  .escalon,
+  #sorteo.gira .v,
+  #sorteo.fijo .v,
+  .mini.suma canvas { animation: none; }
+  .comp-barra i { transition: none; }
 }
 
 #aviso {
@@ -1188,6 +1208,119 @@ button.foco {
 
 #aviso.ver {
   opacity: 1;
+}
+
+/* escalera de rangos grande, en la pantalla previa */
+.escalera {
+  display: flex;
+  gap: 4px;
+  margin: 2px 0;
+}
+
+.escalon {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 8px 0 5px;
+  background: #0b0b0b;
+  border: 1px solid var(--line);
+  color: #4a4a4a;
+  animation: escalon 0.24s steps(2, end) both;
+}
+
+.escalon:nth-child(1) { animation-delay: 0.02s; }
+.escalon:nth-child(2) { animation-delay: 0.06s; }
+.escalon:nth-child(3) { animation-delay: 0.1s; }
+.escalon:nth-child(4) { animation-delay: 0.14s; }
+.escalon:nth-child(5) { animation-delay: 0.18s; }
+.escalon:nth-child(6) { animation-delay: 0.22s; }
+.escalon:nth-child(7) { animation-delay: 0.26s; }
+
+.escalon svg {
+  width: 26px;
+  height: 26px;
+  fill: currentColor;
+}
+
+.escalon figcaption {
+  font-size: 7px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #6a6a6a;
+}
+
+.escalon.hecho {
+  background: #171717;
+  color: #bdbdbd;
+}
+
+.escalon.aqui {
+  background: var(--fg);
+  border-color: var(--fg);
+  color: #000;
+}
+
+.escalon.aqui figcaption {
+  color: #000;
+}
+
+@keyframes escalon {
+  0% { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: none; }
+}
+
+.comp-barra {
+  height: 6px;
+  background: #1a1a1a;
+  border: 1px solid var(--line2);
+}
+
+.comp-barra i {
+  display: block;
+  height: 100%;
+  background: var(--fg);
+  /* la barra se llena a bloques, no de forma continua */
+  transition: width 0.32s steps(12, end);
+}
+
+/* el sorteo: cada giro entra de un bloque */
+#sorteo .v {
+  transition: none;
+}
+
+#sorteo.gira .v {
+  animation: girar 0.085s steps(1, end);
+}
+
+@keyframes girar {
+  0% { opacity: 0.45; transform: translateY(-5px); }
+  100% { opacity: 1; transform: none; }
+}
+
+#sorteo.fijo .v {
+  animation: fijar 0.3s steps(3, end);
+}
+
+@keyframes fijar {
+  0% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+/* cuando un bot come, su cuadrícula da un salto */
+.mini.suma canvas {
+  animation: suma 0.24s steps(2, end);
+}
+
+.mini.suma figcaption b {
+  color: var(--fg);
+}
+
+@keyframes suma {
+  0% { outline-color: var(--fg); outline-width: 2px; }
+  100% { outline-color: var(--line2); outline-width: 1px; }
 }
 
 /* rangos: siete cubos SVG */

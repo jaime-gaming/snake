@@ -33,7 +33,7 @@ El menú son tres grupos y cada uno abre su propia subpágina con sus modos: `�
 
 **competitivo**
 
-- **competitivo** — 1 vs 1 vs 1 vs 1 contra tres bots (`pulso`, `ruido` y `onda`) y **60 segundos**, con una **cuenta atrás 3-2-1** para que los cuatro empiecen a la vez. desde el menú entra directo, sin subpágina. antes de jugar hay un **sorteo** en el propio tablero: el mapa y el modificador van girando y se quedan fijados (mapa entre 5 arenas o cualquiera de los 20 niveles; modificador entre `sin muros`, `muros`, `rápido`, `lento`, `hambre` y `sin premios`). tu tablero va a la izquierda y las **tres cuadrículas rivales a la derecha, en directo**, con el nombre y los puntos de cada uno. el reloj va centrado arriba. siete rangos con **icono SVG** (hierro, cobre, bronce, plata, oro, platino y obsidiana): 1º +3, 2º +1, 3º −1, 4º −2. **si te matas revives** en el centro con 1,4 s de gracia, conservas las frutas y pagas un 20 % de tus puntos (mínimo 40).
+- **competitivo** — 1 vs 1 vs 1 vs 1 contra tres bots (`pulso`, `ruido` y `onda`) y **60 segundos**, con una **cuenta atrás 3-2-1** para que los cuatro empiecen a la vez. desde el menú entra directo a la pantalla de **rangos** (los siete iconos, tu posición y la barra), y de ahí se le da a jugar. al darle a jugar hay un **sorteo animado** en el propio tablero: el mapa y el modificador van girando y se quedan fijados (mapa entre 5 arenas o cualquiera de los 20 niveles; modificador entre `sin muros`, `muros`, `rápido`, `lento`, `hambre` y `sin premios`). tu tablero va a la izquierda y las **tres cuadrículas rivales a la derecha, en directo**, con el nombre y los puntos de cada uno. el reloj va centrado arriba. siete rangos con **icono SVG** (hierro, cobre, bronce, plata, oro, platino y obsidiana): 1º +3, 2º +1, 3º −1, 4º −2. **si te matas revives** en el centro con 1,4 s de gracia, conservas las frutas y pagas un 20 % de tus puntos (mínimo 40).
 
 los modos que sobraban (portales, reloj, muro y ciego) se han ido: sus reglas no aportaban nada que la campaña y el clásico no dieran ya, y cada uno era una forma más de romper el juego.
 
@@ -57,6 +57,8 @@ eso señala los trozos de `js/levels.js` (modo, grupo, rangos, mapas y modificad
 - **borde** — si chocar con él te mata, el borde se ve **siempre**: es una pared, no un adorno. donde hay muro va más marcado. con el fantasma puesto (o en frenesí, donde los bordes dan la vuelta y no matan) se apaga y sólo se marca al acercarte. el bloque por el que vas a salir se enciende en blanco.
 - **última fruta** — en la campaña, la fruta que cierra el nivel sale amarilla con el centro negro: es el último punto de la barra de progreso.
 - **arranque** — al empezar cada partida, la luz enciende el tablero por bloques, un escalón por casilla, hasta dejar el mapa entero a la vista. el borde se enciende con él, porque se dibuja dentro del tablero.
+- **rótulo** — el nombre de la portada lo escribe la propia serpiente: las letras son su cuerpo, la cara va al final de la `e` y cada tres segundos se estira a comerse el punto rojo.
+- **sonidos** — todo sintetizado con osciladores: tic por cada giro del sorteo, acorde al fijarse, nota distinta en cada segundo de la cuenta atrás, arpegio al revivir, escala que sube o baja según el rango y saltos secos al comer.
 - **velocidad** — la campaña va de 155 a 106 ms por casilla y los infinitos arrancan entre 124 y 146, con suelo de 42 a 86 ms. cuesta más acelerar que antes, así que las partidas duran más.
 
 ## archivos

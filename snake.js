@@ -711,6 +711,35 @@ const SONIDOS = {
   ui() {
     tono(440, 0.03, { vol: 0.1 });
   },
+  // BORRAR-COMPETITIVO · cuenta atrás, sorteo y rangos
+  cuenta(paso) {
+    // 3 y 2 secos; el 1 ya avisa de que arranca
+    const base = paso >= 2 ? 420 : 620;
+    tono(base, 0.07, { vol: 0.16 });
+    if (paso <= 1) {
+      tono(880, 0.12, { vol: 0.18, delay: 0.02 });
+      ruido(0.1, { desde: 1800, hasta: 300, vol: 0.12 });
+    }
+  },
+  sorteo() {
+    tono(980, 0.022, { tipo: 'square', vol: 0.05 });
+  },
+  fija() {
+    tono(520, 0.06, { vol: 0.16 });
+    tono(780, 0.08, { vol: 0.16, delay: 0.06 });
+    tono(1040, 0.1, { vol: 0.14, delay: 0.13 });
+    ruido(0.08, { desde: 1200, hasta: 400, vol: 0.1 });
+  },
+  revive() {
+    tono(180, 0.22, { tipo: 'triangle', vol: 0.18, fin: 620 });
+    tono(440, 0.14, { vol: 0.1, delay: 0.1 });
+    ruido(0.18, { desde: 2400, hasta: 500, vol: 0.14 });
+  },
+  rango(sube = true) {
+    const notas = sube ? [392, 523, 659, 784] : [392, 311, 262, 196];
+    notas.forEach((f, i) => tono(f, 0.1, { vol: 0.18, delay: i * 0.085, fin: sube ? f * 1.02 : f * 0.98 }));
+    tono(sube ? 1568 : 130, 0.16, { tipo: 'triangle', vol: 0.14, delay: 0.3 });
+  },
   locked() {
     tono(120, 0.08, { vol: 0.14 });
   },
@@ -2459,6 +2488,127 @@ function pararTemporizador() {
   }
 }
 
+/* ---------------------------------------------------------- rótulo
+   "snake." dibujado con la propia serpiente: las letras son su cuerpo,
+   la cara es la última casilla de la e y cada tanto va a comerse el punto. */
+
+// letras de 3x5 bloques. el nombre lo escribe la serpiente: su cuerpo son las
+// letras y la cara va al final de la e, que cada tanto se estira a comerse el punto
+const MARCA_GLIFOS = {
+  s: ['.###', '#...', '.##.', '...#', '###.'],
+  n: ['#..#', '##.#', '#.##', '#..#', '#..#'],
+  a: ['.##.', '...#', '.###', '#..#', '.###'],
+  k: ['#..#', '#.#.', '##..', '#.#.', '#..#'],
+  e: ['###.', '#...', '##..', '#...', '###.'],
+};
+const MARCA_PALABRA = 'snake';
+const ANCHO_GLIFO = 4;
+const COLS_MARCA = 26; // 4 columnas por letra, 1 de hueco y el punto
+const FILAS_MARCA = 5;
+const marca = { t: 0, ancho: 0, alto: 0, dpr: 1 };
+
+// la cara es la última casilla de la e (abajo a la derecha) y el punto va justo al lado
+const MARCA_CARA = { x: 23, y: 4 };
+const MARCA_PUNTO = { x: 25, y: 4 };
+
+// el cuerpo, de la cola a la cabeza
+const MARCA_CUERPO = (() => {
+  const cuerpo = [];
+  for (let i = 0; i < MARCA_PALABRA.length; i++) {
+    const glifo = MARCA_GLIFOS[MARCA_PALABRA[i]];
+    for (let y = 0; y < 5; y++) {
+      for (let x = 0; x < ANCHO_GLIFO; x++) {
+        if (glifo[y][x] !== '#') continue;
+        const cx = i * (ANCHO_GLIFO + 1) + x;
+        if (cx === MARCA_CARA.x && y === MARCA_CARA.y) continue;
+        cuerpo.push({ x: cx, y });
+      }
+    }
+  }
+  cuerpo.push({ ...MARCA_CARA });
+  return cuerpo;
+})();
+
+function ajustarMarca() {
+  const lienzo = document.getElementById('marca');
+  if (!lienzo) return;
+  const caja = lienzo.parentElement ? lienzo.parentElement.getBoundingClientRect() : null;
+  const ancho = Math.max(150, Math.min(caja && caja.width ? caja.width : 240, 300));
+  const alto = Math.round((ancho * FILAS_MARCA) / COLS_MARCA);
+  const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  lienzo.style.width = `${ancho}px`;
+  lienzo.style.height = `${alto}px`;
+  lienzo.width = Math.round(ancho * dpr);
+  lienzo.height = Math.round(alto * dpr);
+  Object.assign(marca, { ancho, alto, dpr });
+}
+
+function dibujarMarca(dt) {
+  const lienzo = document.getElementById('marca');
+  if (!lienzo || !marca.ancho) return;
+  const ctx = lienzo.getContext('2d');
+  marca.t = (marca.t + dt) % 3200;
+
+  const lado = Math.floor(marca.ancho / COLS_MARCA);
+  const sep = Math.max(1, Math.round(lado * 0.16));
+  const tam = lado - sep * 2;
+  const aire = Math.round((marca.ancho - lado * COLS_MARCA) / 2);
+
+  ctx.setTransform(marca.dpr, 0, 0, marca.dpr, 0, 0);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, marca.ancho, marca.alto);
+
+  const t = marca.t;
+  // la cabeza se estira hacia el punto, lo come y vuelve (todo a bloques)
+  let avance = 0;
+  if (t >= 400 && t < 700) avance = Math.round(((t - 400) / 300) * 3) / 3;
+  else if (t >= 700 && t < 1900) avance = 1;
+  else if (t >= 1900 && t < 2200) avance = Math.round((1 - (t - 1900) / 300) * 3) / 3;
+  const comido = t >= 700 && t < 2200;
+
+  const bloque = (cx, cy, color) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(
+      aire + Math.round(cx * lado) + sep,
+      Math.round(cy * lado) + sep,
+      tam,
+      tam,
+    );
+  };
+
+  // cuerpo: las letras, de la cola a la cabeza
+  for (let i = 0; i < MARCA_CUERPO.length - 1; i++) {
+    const c = MARCA_CUERPO[i];
+    bloque(c.x, c.y, i % 5 === 4 ? '#cfcfcf' : '#e8e8e8');
+  }
+
+  // el punto: la comida del rótulo
+  if (!comido) {
+    const m = Math.round(sep * 1.1);
+    ctx.fillStyle = '#ff2b2b';
+    ctx.fillRect(
+      aire + Math.round(MARCA_PUNTO.x * lado) + m,
+      Math.round(MARCA_PUNTO.y * lado) + m,
+      lado - m * 2,
+      lado - m * 2,
+    );
+  }
+
+  // la cabeza, al final de la e, con los ojos mirando al punto
+  const base = MARCA_CUERPO[MARCA_CUERPO.length - 1];
+  const cx = base.x + avance * (MARCA_PUNTO.x - base.x); // se estira hasta tapar el punto
+  const cy = base.y;
+  bloque(cx, cy, '#ffffff');
+  const ojo = Math.max(2, Math.round(tam * 0.2));
+  const mira = avance > 0.05 ? 0.24 : 0.14;
+  for (const s of [-1, 1]) {
+    const ex = aire + Math.round(cx * lado) + sep + tam / 2 + tam * mira;
+    const ey = Math.round(cy * lado) + sep + tam / 2 + s * tam * 0.2;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(Math.round(ex - ojo / 2), Math.round(ey - ojo / 2), ojo, ojo);
+  }
+}
+
 /* ---------------------------------------------------------- lienzo */
 
 function ajustarLienzo() {
@@ -2486,6 +2636,8 @@ function ajustarLienzo() {
   el.canvas.width = Math.round(ancho * dpr);
   el.canvas.height = Math.round(alto * dpr);
   Object.assign(vista, { cell: celda, ox: 0, oy: 0, width: ancho, height: alto, dpr });
+
+  ajustarMarca();
 
   const lienzoDemo = document.getElementById('demo');
   if (lienzoDemo) {
@@ -2542,6 +2694,7 @@ const PISTAS = {
   dead: 'R reintentar · esc menú',
   cleared: 'enter siguiente · esc menú',
   // BORRAR-COMPETITIVO
+  rango: 'enter jugar · esc menú',
   sorteo: 'sorteando mapa y modificador…',
   'versus-fin': 'enter revancha · esc menú',
 };
@@ -2839,7 +2992,7 @@ function mostrarInicio() {
   ponerOverlay(`<div class="panel inicio portada">
     <div class="inicio-texto">
       <header class="inicio-cabeza">
-        <h1>snake<span class="dot">.</span></h1>
+        <h1 class="marca"><canvas id="marca" role="img" aria-label="snake"></canvas></h1>
         <p class="kicker">rejilla 20×20 · ${LEVELS.length} niveles · ${MODE_ORDER.length - 1} modos</p>
       </header>
       <nav class="filas" aria-label="grupos">${filas}</nav>
@@ -2947,7 +3100,7 @@ function seleccionarModo(i) {
 function elegirModo(modo) {
   if (modo === 'campaign') mostrarNiveles();
   // BORRAR-COMPETITIVO
-  else if (modo === 'competitive') sorteoCompetitivo(); // BORRAR-COMPETITIVO
+  else if (modo === 'competitive') mostrarRangos(); // BORRAR-COMPETITIVO
   else empezarPartida(modo, 0);
 }
 
@@ -3146,6 +3299,54 @@ function nombresDeMapas() {
   return app.mapasComp;
 }
 
+/* BORRAR-COMPETITIVO · los rangos, antes de darle a jugar */
+
+function mostrarRangos() {
+  pararTemporizador();
+  audio.unlock();
+  app.juego = null;
+  app.demo = null;
+  app.comp = null;
+  app.modo = 'competitive';
+  const info = rangoInfo(guardado.comp);
+
+  const iconos = COMPETITIVE.rangos.map((nombre, i) => {
+    const clase = i === info.rango ? ' aqui' : i < info.rango ? ' hecho' : '';
+    return `<figure class="escalon${clase}">
+        ${icoRango(i)}
+        <figcaption>${nombre}</figcaption>
+      </figure>`;
+  }).join('');
+
+  ponerOverlay(`<div class="panel versus rangos-comp">
+    <div class="niveles-cabeza">
+      <div>
+        <p class="kicker">competitivo · 4 jugadores · ${COMPETITIVE.tiempo / 1000} s</p>
+        <h2>${info.nombre}</h2>
+      </div>
+      <button class="ghost" type="button" data-accion="modos">grupos <kbd>esc</kbd></button>
+    </div>
+    <div class="escalera" style="--paso:${info.rango}">${iconos}</div>
+    <div class="comp-barra"><i style="width:${(info.progreso * 100).toFixed(0)}%"></i></div>
+    <p class="nota">${info.siguiente ? `${info.dentro}/${COMPETITIVE.porRango} para ${info.siguiente}` : 'rango máximo'}</p>
+    <p class="pie"><span>1º +3 · 2º +1 · 3º −1 · 4º −2</span></p>
+    <div class="acciones">
+      <button class="principal" type="button" data-accion="comp-start">jugar <kbd>enter</kbd></button>
+      <button type="button" data-accion="home">menú <kbd>esc</kbd></button>
+    </div>
+  </div>`);
+
+  el.score.textContent = '—';
+  el.meta.textContent = `competitivo · ${info.nombre}`;
+  el.best.textContent = '';
+  el.mult.textContent = '';
+  el.chain.style.width = '0%';
+  el.pause.disabled = true;
+  el.prompt.classList.remove('visible');
+  pantalla('rango');
+  enfocarPrimero('button[data-accion="comp-start"]');
+}
+
 /* BORRAR-COMPETITIVO · sorteo de mapa y modificador, ya en el tablero */
 
 function sorteoCompetitivo() {
@@ -3186,7 +3387,13 @@ function sorteoCompetitivo() {
     paso += 1;
     if (paso < total) {
       pintar();
-      audio.play('ui');
+      // cada giro suena y da un salto de un bloque
+      if (el.sorteo) {
+        el.sorteo.classList.remove('gira');
+        void el.sorteo.offsetWidth;
+        el.sorteo.classList.add('gira');
+      }
+      audio.play('sorteo');
       return;
     }
     clearInterval(app.intervalo);
@@ -3194,8 +3401,11 @@ function sorteoCompetitivo() {
     // se queda con lo sorteado
     if (el.sorteoMapa) el.sorteoMapa.textContent = app.mapaComp.nombre;
     if (el.sorteoMod) el.sorteoMod.textContent = app.modComp.nombre;
-    if (el.sorteo) el.sorteo.classList.add('fijo');
-    audio.play('bonus');
+    if (el.sorteo) {
+      el.sorteo.classList.add('fijo');
+      el.sorteo.classList.remove('gira');
+    }
+    audio.play('fija');
     app.temporizador = setTimeout(() => {
       if (el.sorteo) {
         el.sorteo.hidden = true;
@@ -3321,8 +3531,15 @@ function dibujarMinis() {
     });
     const valor = m.juego.score;
     if (valor !== m.ultimo) {
+      const sube = valor > m.ultimo && m.ultimo >= 0;
       m.ultimo = valor;
       if (m.marca) m.marca.textContent = puntos(valor);
+      // BORRAR-COMPETITIVO · cuando un bot come, su cuadrícula da un salto
+      if (sube && m.figura) {
+        m.figura.classList.remove('suma');
+        void m.figura.offsetWidth;
+        m.figura.classList.add('suma');
+      }
     }
   }
 }
@@ -3383,13 +3600,15 @@ function pintarCuenta() {
     return;
   }
   el.cuenta.hidden = false;
-  const texto = c.cuenta > 300 ? String(Math.max(1, Math.ceil(c.cuenta / 1000))) : 'ya';
+  const paso = Math.max(1, Math.ceil(c.cuenta / 1000));
+  const texto = c.cuenta > 300 ? String(paso) : 'ya';
   if (el.cuenta.textContent !== texto) {
     el.cuenta.textContent = texto;
     el.cuenta.classList.remove('pop');
     // reinicia la animación del número
     void el.cuenta.offsetWidth;
     el.cuenta.classList.add('pop');
+    if (texto !== 'ya') audio.play('cuenta', paso);
   }
 }
 
@@ -3488,7 +3707,8 @@ function finCompetitivo() {
   if (el.cuenta) el.cuenta.hidden = true;
   el.pause.disabled = true;
   el.prompt.classList.remove('visible');
-  audio.play(yo.puesto === 1 ? 'level' : 'ui');
+  if (cambio.sube || cambio.baja) audio.play('rango', cambio.sube);
+  else audio.play(yo.puesto === 1 ? 'level' : 'ui');
 }
 
 /* ---------------------------------------------------------- partida */
@@ -3586,6 +3806,7 @@ function eventosJuego(tipo, datos) {
           if (!app.comp || !app.comp.activo || !app.juego) return;
           const pagado = app.juego.revivir(castigo);
           app.comp.muertes += 1;
+          audio.play('revive');
           avisarCastigo(`−${pagado}`);
         }, 620);
       } else {
@@ -3827,6 +4048,20 @@ function accion(nombre) {
   }
 
   // BORRAR-COMPETITIVO
+  // BORRAR-COMPETITIVO · pantalla de rangos
+  if (app.pantalla === 'rango') {
+    if (esDireccion) {
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
+      return;
+    }
+    if (nombre === 'confirm') {
+      if (!activarFoco()) sorteoCompetitivo();
+      return;
+    }
+    if (nombre === 'back') mostrarInicio();
+    return;
+  }
+
   if (app.pantalla === 'sorteo') {
     // BORRAR-COMPETITIVO · mientras se sortea, sólo se puede salir
     if (nombre === 'back' || nombre === 'pause') {
@@ -3846,7 +4081,7 @@ function accion(nombre) {
       return;
     }
     if (nombre === 'restart') {
-      sorteoCompetitivo();
+      mostrarRangos();
       return;
     }
     if (nombre === 'back') mostrarInicio();
@@ -3950,8 +4185,11 @@ function ejecutar(nombre) {
       borrarRecords();
       break;
     // BORRAR-COMPETITIVO
-    case 'comp-again':
+    case 'comp-start':
       sorteoCompetitivo();
+      break;
+    case 'comp-again':
+      mostrarRangos();
       break;
     default:
       break;
@@ -4053,9 +4291,9 @@ el.overlay.addEventListener('click', (e) => {
     audio.unlock();
     audio.play('ui');
     const grupo = GROUPS[Number(boton.dataset.grupo)];
-    // BORRAR-COMPETITIVO · competitivo va directo, sin subpágina de un solo modo
+    // BORRAR-COMPETITIVO · competitivo va directo a los rangos, sin subpágina de un solo modo
     if (grupo && grupo.modes.length === 1 && grupo.modes[0] === 'competitive') {
-      sorteoCompetitivo();
+      mostrarRangos();
       return;
     }
     mostrarModos(Number(boton.dataset.grupo));
@@ -4150,6 +4388,7 @@ function bucle(t) {
 
   if (app.pantalla === 'home' || app.pantalla === 'modes') {
     pasoDemo(dt);
+    dibujarMarca(dt);
   } else if (app.juego) {
     // BORRAR-COMPETITIVO · con partida de competitivo corren también los tres bots
     if (app.comp && app.comp.activo) {
@@ -4199,6 +4438,7 @@ try {
 if (location.hash === '#debug') {
   window.__snake = { app, guardado, accion, empezarPartida, mostrarInicio, crearDemo, mostrarFin };
   // BORRAR-COMPETITIVO
+  window.__snake.mostrarRangos = mostrarRangos;
   window.__snake.sorteoCompetitivo = sorteoCompetitivo;
   window.__snake.empezarCompetitivo = empezarCompetitivo;
   window.__snake.finCompetitivo = finCompetitivo;
