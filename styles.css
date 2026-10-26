@@ -187,8 +187,11 @@ button:disabled {
   color: var(--fg);
 }
 
-/* destello de un cuarto de segundo al subir la cadena o robar un punto */
-.mult.golpe {
+/* Destello breve para cambios importantes del HUD. */
+.mult.golpe,
+.score.golpe,
+.meta.golpe,
+.best.golpe {
   background: var(--fg);
   color: #000;
   outline: 2px solid #ffffff;

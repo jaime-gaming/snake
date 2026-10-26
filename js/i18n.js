@@ -68,7 +68,9 @@ const STRINGS = {
     blocked: 'bloqueado',
     fruits: '{count} {unit}',
     levelPreviewData: '{goal} {unit} · ritmo {speed}',
-    levelPreviewDataWithRecord: '{goal} {unit} · ritmo {speed} · récord {record}',
+    applesRemaining: '{count} {unit} por recoger',
+    campaignLevel: 'nivel {number} · {name}',
+    campaignRunSummary: 'manzanas recogidas: {collected} · manzanas restantes: {remaining}',
     levelControls: 'flechas para moverte · enter para jugar',
     helpTitle: 'cómo se juega',
     helpHeading: 'controles',
@@ -84,8 +86,8 @@ const STRINGS = {
     menus: 'menús',
     menuKeys: 'flechas + enter · ←→ cambia de grupo',
     gameRules: 'reglas de juego',
-    ruleChain: 'encadena frutas para subir hasta ×5; los cubos dan premios o poderes.',
-    ruleCampaign: 'campaña: supera cada nivel; la fruta final es amarilla.',
+    ruleChain: 'sólo en modos infinitos: cadena hasta ×5; cubos dan premios o poderes.',
+    ruleCampaign: 'campaña: manzanas, no puntos; la última fruta es dorada.',
     ruleModes: 'frenesí: los bordes dan la vuelta. cazador: come puntos y después te persigue.',
     ruleHunter: 'cazador: su cabeza te mata; su cuerpo y los puntos son seguros.',
     powerBasics: 'fantasma atraviesa obstáculos; lento baja el ritmo; recorte acorta la cola.',
@@ -93,7 +95,6 @@ const STRINGS = {
     gridMode: 'rejilla',
     levelNumberName: 'nivel {number} {name}',
     nextLevelMeta: 'siguiente · {name} · {goal} {unit}',
-    levelGoalRecord: 'nivel {goal} {unit} · récord {record}',
     recordFruitMeta: 'récord {record} · {fruits} {unit}',
     recordNew: 'récord nuevo',
     end: 'fin',
@@ -121,7 +122,6 @@ const STRINGS = {
     hintGameTurbo: 'flechas girar · espacio turbo · P pausa · R reiniciar · M sonido',
     best: 'récord {score}',
     fruitScore: '{mode} · {fruits} {unit}',
-    levelScore: '{number} {name} · {fruits}/{goal}',
     ghost: 'fantasma',
     slow: 'lento',
     shield: 'escudo',
@@ -211,7 +211,9 @@ const STRINGS = {
     blocked: 'locked',
     fruits: '{count} {unit}',
     levelPreviewData: '{goal} {unit} · speed {speed}',
-    levelPreviewDataWithRecord: '{goal} {unit} · speed {speed} · best {record}',
+    applesRemaining: '{count} {unit} left',
+    campaignLevel: 'level {number} · {name}',
+    campaignRunSummary: 'apples collected: {collected} · apples remaining: {remaining}',
     levelControls: 'arrow keys to move · enter to play',
     helpTitle: 'how to play',
     helpHeading: 'controls',
@@ -227,8 +229,8 @@ const STRINGS = {
     menus: 'menus',
     menuKeys: 'arrows + enter · ←→ switches groups',
     gameRules: 'game rules',
-    ruleChain: 'chain fruit to reach ×5; blocks drop bonuses and power-ups.',
-    ruleCampaign: 'campaign: clear each level; the final fruit is golden.',
+    ruleChain: 'endless modes only: chain up to ×5; blocks drop bonuses or power-ups.',
+    ruleCampaign: 'campaign: apples, not points; the final fruit is golden.',
     ruleModes: 'frenzy: wrap around the edges. hunter: eat pellets, then stay ahead.',
     ruleHunter: 'hunter: its head is deadly; its body and pellets are safe.',
     powerBasics: 'ghost passes hazards; slow eases the pace; shrink trims your tail.',
@@ -236,7 +238,6 @@ const STRINGS = {
     gridMode: 'grid',
     levelNumberName: 'level {number} {name}',
     nextLevelMeta: 'next · {name} · {goal} {unit}',
-    levelGoalRecord: 'level goal: {goal} {unit} · best {record}',
     recordFruitMeta: 'best {record} · {fruits} {unit}',
     recordNew: 'new record',
     end: 'game over',
@@ -264,7 +265,6 @@ const STRINGS = {
     hintGameTurbo: 'arrows turn · space boost · P pause · R restart · M sound',
     best: 'best {score}',
     fruitScore: '{mode} · {fruits} {unit}',
-    levelScore: '{number} {name} · {fruits}/{goal}',
     ghost: 'ghost',
     slow: 'slow',
     shield: 'shield',
@@ -359,6 +359,12 @@ export function fruitUnit(count) {
   const singular = Number(count) === 1;
   if (language === 'en') return singular ? 'fruit' : 'fruits';
   return singular ? 'fruta' : 'frutas';
+}
+
+export function appleUnit(count) {
+  const singular = Number(count) === 1;
+  if (language === 'en') return singular ? 'apple' : 'apples';
+  return singular ? 'manzana' : 'manzanas';
 }
 
 export function routeSlug(name) {

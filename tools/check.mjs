@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 import { Game, POWER_INFO } from '../js/engine.js';
 import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS, POWER_POOLS } from '../js/levels.js';
-import { setLanguage, t, routeSlug, routeWords, levelName, fruitUnit } from '../js/i18n.js';
+import { setLanguage, t, routeSlug, routeWords, levelName, fruitUnit, appleUnit } from '../js/i18n.js';
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -55,6 +55,7 @@ function configNivel(nivel) {
     accelPerFood: nivel.accelPerFood,
     wrap: false,
     goal: nivel.goal,
+    scoring: false,
     bonusEvery: nivel.bonusEvery,
     powerEvery: nivel.powerEvery,
     powerPool: nivel.powerPool,
@@ -96,6 +97,7 @@ process.stdout.write('estructura\n');
     comprobar(nivel.speed <= ultimo, `${etiqueta}: rompe el orden de velocidad`);
     ultimo = nivel.speed;
     comprobar(nivel.goal >= 4 && nivel.goal <= 16, `${etiqueta}: meta fuera de rango`);
+    comprobar(configNivel(nivel).scoring === false, `${etiqueta}: la campaña activa la puntuación`);
   });
   for (const [id, modo] of Object.entries(MODES)) {
     comprobar(modo.startSpeed >= modo.minSpeed, `${id}: arranca más lento que su mínimo`);
@@ -183,6 +185,27 @@ LEVELS.forEach((nivel, i) => {
     }
   }
 });
+
+// campaña: progreso por manzanas, nunca por puntos
+process.stdout.write('campaña sin puntuación\n');
+{
+  const juego = new Game({ ...configNivel(LEVELS[0]), goal: null }, () => {});
+  juego.state = 'running';
+  juego.body = [{ x: 5, y: 5 }, { x: 4, y: 5 }, { x: 3, y: 5 }, { x: 2, y: 5 }];
+  juego.prevBody = juego.body.map((p) => ({ ...p }));
+  juego.dir = { x: 1, y: 0 };
+  juego.queue = [];
+  juego.food = { x: 6, y: 5 };
+  juego.step();
+  comprobar(juego.fruits === 1 && juego.score === 0, 'campaña: sumar una manzana concede puntos');
+  comprobar(juego.multiplier === 1 && juego.scoreFactor === 0, 'campaña: hay multiplicador de puntuación');
+  juego.bonus = { x: 3, y: 3, ttl: 9000 };
+  juego.eatBonus();
+  comprobar(juego.score === 0, 'campaña: un bonus concede puntos');
+  juego.power = { x: 3, y: 3, kind: 'shrink', ttl: 9000 };
+  juego.takePower();
+  comprobar(juego.score === 0, 'campaña: un potenciador concede puntos');
+}
 
 // modos infinitos: varias partidas reproducibles para medir estabilidad y ritmo
 process.stdout.write('modos\n');
@@ -337,6 +360,13 @@ process.stdout.write('potenciadores\n');
   escudo.fx.ghost = 0;
   escudo.die('wall');
   comprobar(escudo.state === 'dead', 'escudo: salva más de un choque');
+
+  const protegido = new Game({ ...MODES.hunter }, () => {});
+  protegido.fx.shield = POWER_INFO.shield.ms;
+  const lienzo = lienzoFalso();
+  protegido.draw(lienzo, { cell: 10, ox: 0, oy: 0, width: 200, height: 200, dpr: 1 });
+  comprobar(lienzo.llamadas.some((llamada) => llamada.color.startsWith('rgba(185,244,255')),
+    'escudo: falta el contorno visible de protección');
   process.stdout.write('  5 poderes · selección por modo, doble puntuación y escudo de un uso verificados\n');
 }
 
@@ -1040,13 +1070,22 @@ process.stdout.write('v1.0, idioma y publicación\n');
   comprobar(t('campaign') === 'campaign' && t('modeHunter') === 'hunter'
     && levelName('LLANO') === 'open field' && routeSlug('campaign') === 'campaign'
     && routeSlug('settings') === 'settings' && routeWords().settings.includes('ajustes')
-    && fruitUnit(1) === 'fruit' && fruitUnit(2) === 'fruits',
+    && fruitUnit(1) === 'fruit' && fruitUnit(2) === 'fruits'
+    && appleUnit(1) === 'apple' && appleUnit(2) === 'apples'
+    && t('applesRemaining', { count: 1, unit: appleUnit(1) }) === '1 apple left',
   'idioma: faltan cadenas inglesas o nombres/rutas localizados');
   setLanguage('es');
   comprobar(t('campaign') === 'campaña' && routeSlug('campaign') === 'campaña'
     && routeSlug('settings') === 'ajustes' && routeWords().settings.includes('settings')
-    && fruitUnit(1) === 'fruta' && fruitUnit(2) === 'frutas',
+    && fruitUnit(1) === 'fruta' && fruitUnit(2) === 'frutas'
+    && appleUnit(1) === 'manzana' && appleUnit(2) === 'manzanas'
+    && t('applesRemaining', { count: 1, unit: appleUnit(1) }) === '1 manzana por recoger',
     'idioma: el español no restaura sus textos y rutas');
+  comprobar(main.includes('scoring: false') && main.includes('resumenManzanas(juego)')
+    && main.includes("el.mult.textContent = appleUnit(recogidas)")
+    && motor.includes('if (this.cfg.scoring === false) return 0;')
+    && !/campaign\.best|levelGoalRecord|levelScore/.test(main + idiomas),
+  'campaña: se muestra o se guarda puntuación en lugar de manzanas recogidas/restantes');
   comprobar(main.includes('data-accion="settings"') && main.includes("case 'toggleSound':")
     && main.includes("routeSlug('settings')"), 'ajustes: falta el acceso compacto o su navegación');
   comprobar(!/fruta a fruta|fruit to fruit|gridSummary|20×20 grid|rejilla 20×20/.test(main + idiomas + pagina),

@@ -112,7 +112,7 @@ export class Game {
   }
 
   get multiplier() {
-    return Math.min(5, 1 + Math.floor(this.chain / 2));
+    return this.cfg.scoring === false ? 1 : Math.min(5, 1 + Math.floor(this.chain / 2));
   }
 
   get ghosting() {
@@ -120,6 +120,7 @@ export class Game {
   }
 
   get scoreFactor() {
+    if (this.cfg.scoring === false) return 0;
     return this.fx.double > 0 ? 2 : 1;
   }
 
@@ -364,6 +365,7 @@ export class Game {
     this.chainTimer = this.chainWindow;
     this.score += 50 * this.multiplier * this.scoreFactor;
     this.shake = 5;
+    this.flash = Math.max(this.flash, 0.24);
     this.burst(b.x + 0.5, b.y + 0.5, 18, '#ffffff', 9);
     if (this.cfg.hunter) this.placeHunter();
     this.emit('bonus', { score: this.score });
@@ -373,6 +375,7 @@ export class Game {
     const p = this.power;
     this.power = null;
     this.shake = 4;
+    this.flash = Math.max(this.flash, 0.18);
     this.burst(p.x + 0.5, p.y + 0.5, 14, '#ffffff', 8);
     if (p.kind === 'ghost') {
       this.fx.ghost = POWER_INFO.ghost.ms;
@@ -1372,6 +1375,18 @@ export class Game {
       } else {
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(x0, y0, tamanoCabeza, tamanoCabeza);
+      }
+      if (this.fx.shield > 0) {
+        const pulso = 0.38 + 0.38 * (0.5 + 0.5 * Math.sin(this.time / 110));
+        const margen = Math.max(1, Math.round(cell * 0.1));
+        ctx.strokeStyle = `rgba(185,244,255,${pulso.toFixed(2)})`;
+        ctx.lineWidth = Math.max(1, Math.round(cell * 0.055));
+        ctx.strokeRect(
+          x0 - margen + 0.5,
+          y0 - margen + 0.5,
+          tamanoCabeza + margen * 2 - 1,
+          tamanoCabeza + margen * 2 - 1,
+        );
       }
       const ojo = Math.max(2, Math.round(tamanoCabeza * 0.2));
       const dx = this.dir.x;

@@ -415,7 +415,7 @@ const LEVELS = [
 // ---- audio ----
 (function (modulo) {
 'use strict';
-// sonido sintetizado. sin ficheros: osciladores y ruido
+// Sonido sintetizado en tiempo real: sin ficheros externos ni música de fondo.
 
 let ctx = null;
 let master = null;
@@ -431,18 +431,30 @@ function build() {
       roto = true;
       return null;
     }
+
     ctx = new AC();
     master = ctx.createGain();
     master.gain.value = audio.enabled ? 0.15 : 0;
-    master.connect(ctx.destination);
 
-    const len = Math.floor(ctx.sampleRate * 0.3);
+    if (typeof ctx.createDynamicsCompressor === 'function') {
+      const compresor = ctx.createDynamicsCompressor();
+      compresor.threshold.value = -20;
+      compresor.knee.value = 16;
+      compresor.ratio.value = 4;
+      compresor.attack.value = 0.004;
+      compresor.release.value = 0.16;
+      master.connect(compresor).connect(ctx.destination);
+    } else {
+      master.connect(ctx.destination);
+    }
+
+    const len = Math.floor(ctx.sampleRate * 0.24);
     noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
     const data = noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
     return ctx;
   } catch (err) {
-    // sin audio se juega igual
+    // Sin audio se puede jugar con normalidad.
     roto = true;
     ctx = null;
     master = null;
@@ -452,17 +464,24 @@ function build() {
 
 function tono(freq, dur, opts = {}) {
   const c = build();
-  if (!c) return;
+  if (!c || !(freq > 0) || !(dur > 0)) return;
+
   const t0 = c.currentTime + (opts.delay || 0);
+  const ataque = Math.min(0.012, dur * 0.24);
+  const salida = Math.min(opts.release || 0.04, dur * 0.44);
+  const volumen = Math.max(0.0001, opts.vol ?? 0.2);
   const osc = c.createOscillator();
   const gan = c.createGain();
+
   osc.type = opts.tipo || 'square';
   osc.frequency.setValueAtTime(freq, t0);
-  if (opts.fin) osc.frequency.exponentialRampToValueAtTime(Math.max(20, opts.fin), t0 + dur);
-  const vol = opts.vol ?? 0.28;
+  if (opts.fin > 0) osc.frequency.exponentialRampToValueAtTime(opts.fin, t0 + dur);
+
   gan.gain.setValueAtTime(0.0001, t0);
-  gan.gain.exponentialRampToValueAtTime(vol, t0 + 0.006);
+  gan.gain.exponentialRampToValueAtTime(volumen, t0 + ataque);
+  gan.gain.setValueAtTime(volumen, t0 + dur - salida);
   gan.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+
   osc.connect(gan).connect(master);
   osc.start(t0);
   osc.stop(t0 + dur + 0.02);
@@ -470,80 +489,108 @@ function tono(freq, dur, opts = {}) {
 
 function ruido(dur, opts = {}) {
   const c = build();
-  if (!c) return;
+  if (!c || !noiseBuf || !(dur > 0)) return;
+
   const t0 = c.currentTime + (opts.delay || 0);
   const src = c.createBufferSource();
-  src.buffer = noiseBuf;
   const filtro = c.createBiquadFilter();
+  const gan = c.createGain();
+  const volumen = Math.max(0.0001, opts.vol ?? 0.28);
+
+  src.buffer = noiseBuf;
   filtro.type = 'lowpass';
   filtro.frequency.setValueAtTime(opts.desde || 2400, t0);
   filtro.frequency.exponentialRampToValueAtTime(opts.hasta || 120, t0 + dur);
-  const gan = c.createGain();
-  gan.gain.setValueAtTime(opts.vol ?? 0.35, t0);
+  gan.gain.setValueAtTime(0.0001, t0);
+  gan.gain.exponentialRampToValueAtTime(volumen, t0 + Math.min(0.008, dur * 0.2));
   gan.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+
   src.connect(filtro).connect(gan).connect(master);
   src.start(t0);
   src.stop(t0 + dur + 0.02);
 }
 
+function secuencia(frecuencias, opts = {}) {
+  const { tipo = 'triangle', dur = 0.075, vol = 0.12, salto = 0.045 } = opts;
+  frecuencias.forEach((freq, i) => tono(freq, dur, {
+    tipo,
+    vol,
+    delay: i * salto,
+  }));
+}
+
 const SONIDOS = {
   start() {
-    tono(180, 0.1, { vol: 0.18 });
-    tono(90, 0.14, { tipo: 'triangle', vol: 0.22, delay: 0.02 });
+    tono(260, 0.085, { tipo: 'triangle', vol: 0.16, fin: 420 });
+    tono(620, 0.08, { tipo: 'sine', vol: 0.08, delay: 0.045, fin: 740 });
   },
   bite({ multiplier = 1 } = {}) {
-    const paso = Math.min(multiplier, 5);
-    tono(300 + paso * 70, 0.07, { vol: 0.24 });
-    tono(600 + paso * 90, 0.05, { vol: 0.12, delay: 0.03 });
+    const nivel = Math.min(5, Math.max(1, multiplier));
+    const tonoBase = 300 + nivel * 62;
+    tono(tonoBase, 0.065, { tipo: 'triangle', vol: 0.15, fin: tonoBase * 1.12 });
+    if (nivel > 1) tono(tonoBase * 1.5, 0.045, { tipo: 'sine', vol: 0.07, delay: 0.035 });
   },
   bonus() {
-    tono(620, 0.07, { vol: 0.2 });
-    tono(820, 0.07, { vol: 0.2, delay: 0.06 });
-    tono(1040, 0.09, { vol: 0.18, delay: 0.12 });
+    secuencia([590, 760, 980], { dur: 0.085, vol: 0.13, salto: 0.055 });
   },
-  power() {
-    tono(480, 0.08, { tipo: 'triangle', vol: 0.2 });
-    tono(720, 0.1, { tipo: 'triangle', vol: 0.16, delay: 0.07 });
+  power({ kind = 'ghost' } = {}) {
+    const motivos = {
+      ghost: [430, 650, 880],
+      slow: [520, 410, 320],
+      shrink: [760, 580],
+      shield: [350, 560, 820],
+      double: [620, 820, 1080],
+    };
+    secuencia(motivos[kind] || motivos.ghost, { dur: 0.07, vol: 0.11, salto: 0.045 });
   },
   shield() {
-    tono(240, 0.12, { tipo: 'triangle', vol: 0.18, fin: 520 });
-    tono(820, 0.08, { vol: 0.12, delay: 0.04 });
+    tono(190, 0.14, { tipo: 'triangle', vol: 0.18, fin: 360 });
+    tono(680, 0.16, { tipo: 'sine', vol: 0.12, delay: 0.045, fin: 430 });
   },
   turbo() {
-    tono(140, 0.08, { tipo: 'sawtooth', vol: 0.1 });
-  },
-  hunter() {
-    tono(72, 0.09, { tipo: 'sawtooth', vol: 0.09 });
+    tono(150, 0.055, { tipo: 'triangle', vol: 0.09, fin: 220 });
+    tono(245, 0.045, { tipo: 'square', vol: 0.035, delay: 0.025 });
   },
   death() {
-    ruido(0.34, { desde: 3200, hasta: 60, vol: 0.4 });
-    tono(220, 0.4, { tipo: 'sawtooth', vol: 0.24, fin: 40 });
-    tono(140, 0.3, { vol: 0.14, fin: 30, delay: 0.04 });
+    ruido(0.28, { desde: 2400, hasta: 90, vol: 0.28 });
+    tono(210, 0.32, { tipo: 'sawtooth', vol: 0.16, fin: 52 });
+    tono(135, 0.24, { tipo: 'triangle', vol: 0.09, fin: 42, delay: 0.035 });
   },
   level() {
-    [523, 659, 784, 1046].forEach((f, i) => tono(f, 0.12, { vol: 0.2, delay: i * 0.075 }));
+    secuencia([494, 622, 740, 988], { dur: 0.11, vol: 0.13, salto: 0.07 });
+  },
+  campaignComplete() {
+    secuencia([392, 494, 587, 784, 988], { dur: 0.16, vol: 0.14, salto: 0.09 });
   },
   wall() {
-    tono(150, 0.09, { tipo: 'square', vol: 0.12, fin: 90 });
-    ruido(0.12, { desde: 900, hasta: 200, vol: 0.18 });
+    tono(135, 0.085, { tipo: 'square', vol: 0.09, fin: 78 });
+    ruido(0.09, { desde: 800, hasta: 170, vol: 0.12, delay: 0.012 });
   },
   pellet() {
-    tono(760, 0.05, { tipo: 'triangle', vol: 0.18 });
-    tono(1010, 0.06, { tipo: 'triangle', vol: 0.14, delay: 0.05 });
+    secuencia([740, 990], { tipo: 'sine', dur: 0.06, vol: 0.1, salto: 0.045 });
   },
   alerta() {
-    tono(210, 0.05, { vol: 0.09 });
-    tono(180, 0.05, { vol: 0.07, delay: 0.09 });
+    tono(210, 0.055, { vol: 0.075 });
+    tono(180, 0.055, { vol: 0.06, delay: 0.095 });
   },
   hunterEat() {
-    tono(300, 0.06, { tipo: 'triangle', vol: 0.14, fin: 220 });
+    tono(295, 0.07, { tipo: 'triangle', vol: 0.11, fin: 205 });
+  },
+  hunterDies() {
+    ruido(0.18, { desde: 1500, hasta: 260, vol: 0.15 });
+    secuencia([240, 180], { tipo: 'triangle', dur: 0.1, vol: 0.1, salto: 0.055 });
+  },
+  combo({ multiplier = 2 } = {}) {
+    const nota = 640 + Math.min(5, multiplier) * 55;
+    tono(nota, 0.055, { tipo: 'sine', vol: 0.075 });
+    tono(nota * 1.25, 0.05, { tipo: 'sine', vol: 0.05, delay: 0.04 });
   },
   ui() {
-    tono(440, 0.03, { vol: 0.1 });
+    tono(460, 0.028, { tipo: 'square', vol: 0.045 });
   },
   // BORRAR-COMPETITIVO · sonidos de rangos y sorteo retirados para v1.0.
   locked() {
-    tono(120, 0.08, { vol: 0.14 });
+    tono(120, 0.075, { tipo: 'triangle', vol: 0.09, fin: 95 });
   },
 };
 
@@ -557,13 +604,20 @@ const audio = {
       const c = build();
       if (c && c.state === 'suspended') c.resume().catch(() => {});
     } catch (err) {
-      /* seguimos sin sonido */
+      /* El juego continúa en silencio. */
     }
   },
 
   set(on) {
     this.enabled = !!on;
-    if (master) master.gain.value = this.enabled ? 0.15 : 0;
+    if (!master || !ctx) return;
+    const valor = this.enabled ? 0.15 : 0;
+    try {
+      master.gain.cancelScheduledValues(ctx.currentTime);
+      master.gain.setTargetAtTime(valor, ctx.currentTime, 0.025);
+    } catch (err) {
+      master.gain.value = valor;
+    }
   },
 
   toggle() {
@@ -578,7 +632,7 @@ const audio = {
       const fn = SONIDOS[nombre];
       if (fn) fn(datos || {});
     } catch (err) {
-      /* un sonido que falla no puede parar el juego */
+      /* Un sonido que falla no puede detener la partida. */
     }
   },
 };
@@ -838,7 +892,7 @@ class Game {
   }
 
   get multiplier() {
-    return Math.min(5, 1 + Math.floor(this.chain / 2));
+    return this.cfg.scoring === false ? 1 : Math.min(5, 1 + Math.floor(this.chain / 2));
   }
 
   get ghosting() {
@@ -846,6 +900,7 @@ class Game {
   }
 
   get scoreFactor() {
+    if (this.cfg.scoring === false) return 0;
     return this.fx.double > 0 ? 2 : 1;
   }
 
@@ -1090,6 +1145,7 @@ class Game {
     this.chainTimer = this.chainWindow;
     this.score += 50 * this.multiplier * this.scoreFactor;
     this.shake = 5;
+    this.flash = Math.max(this.flash, 0.24);
     this.burst(b.x + 0.5, b.y + 0.5, 18, '#ffffff', 9);
     if (this.cfg.hunter) this.placeHunter();
     this.emit('bonus', { score: this.score });
@@ -1099,6 +1155,7 @@ class Game {
     const p = this.power;
     this.power = null;
     this.shake = 4;
+    this.flash = Math.max(this.flash, 0.18);
     this.burst(p.x + 0.5, p.y + 0.5, 14, '#ffffff', 8);
     if (p.kind === 'ghost') {
       this.fx.ghost = POWER_INFO.ghost.ms;
@@ -2099,6 +2156,18 @@ class Game {
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(x0, y0, tamanoCabeza, tamanoCabeza);
       }
+      if (this.fx.shield > 0) {
+        const pulso = 0.38 + 0.38 * (0.5 + 0.5 * Math.sin(this.time / 110));
+        const margen = Math.max(1, Math.round(cell * 0.1));
+        ctx.strokeStyle = `rgba(185,244,255,${pulso.toFixed(2)})`;
+        ctx.lineWidth = Math.max(1, Math.round(cell * 0.055));
+        ctx.strokeRect(
+          x0 - margen + 0.5,
+          y0 - margen + 0.5,
+          tamanoCabeza + margen * 2 - 1,
+          tamanoCabeza + margen * 2 - 1,
+        );
+      }
       const ojo = Math.max(2, Math.round(tamanoCabeza * 0.2));
       const dx = this.dir.x;
       const dy = this.dir.y;
@@ -2241,7 +2310,9 @@ const STRINGS = {
     blocked: 'bloqueado',
     fruits: '{count} {unit}',
     levelPreviewData: '{goal} {unit} · ritmo {speed}',
-    levelPreviewDataWithRecord: '{goal} {unit} · ritmo {speed} · récord {record}',
+    applesRemaining: '{count} {unit} por recoger',
+    campaignLevel: 'nivel {number} · {name}',
+    campaignRunSummary: 'manzanas recogidas: {collected} · manzanas restantes: {remaining}',
     levelControls: 'flechas para moverte · enter para jugar',
     helpTitle: 'cómo se juega',
     helpHeading: 'controles',
@@ -2257,8 +2328,8 @@ const STRINGS = {
     menus: 'menús',
     menuKeys: 'flechas + enter · ←→ cambia de grupo',
     gameRules: 'reglas de juego',
-    ruleChain: 'encadena frutas para subir hasta ×5; los cubos dan premios o poderes.',
-    ruleCampaign: 'campaña: supera cada nivel; la fruta final es amarilla.',
+    ruleChain: 'sólo en modos infinitos: cadena hasta ×5; cubos dan premios o poderes.',
+    ruleCampaign: 'campaña: manzanas, no puntos; la última fruta es dorada.',
     ruleModes: 'frenesí: los bordes dan la vuelta. cazador: come puntos y después te persigue.',
     ruleHunter: 'cazador: su cabeza te mata; su cuerpo y los puntos son seguros.',
     powerBasics: 'fantasma atraviesa obstáculos; lento baja el ritmo; recorte acorta la cola.',
@@ -2266,7 +2337,6 @@ const STRINGS = {
     gridMode: 'rejilla',
     levelNumberName: 'nivel {number} {name}',
     nextLevelMeta: 'siguiente · {name} · {goal} {unit}',
-    levelGoalRecord: 'nivel {goal} {unit} · récord {record}',
     recordFruitMeta: 'récord {record} · {fruits} {unit}',
     recordNew: 'récord nuevo',
     end: 'fin',
@@ -2294,7 +2364,6 @@ const STRINGS = {
     hintGameTurbo: 'flechas girar · espacio turbo · P pausa · R reiniciar · M sonido',
     best: 'récord {score}',
     fruitScore: '{mode} · {fruits} {unit}',
-    levelScore: '{number} {name} · {fruits}/{goal}',
     ghost: 'fantasma',
     slow: 'lento',
     shield: 'escudo',
@@ -2384,7 +2453,9 @@ const STRINGS = {
     blocked: 'locked',
     fruits: '{count} {unit}',
     levelPreviewData: '{goal} {unit} · speed {speed}',
-    levelPreviewDataWithRecord: '{goal} {unit} · speed {speed} · best {record}',
+    applesRemaining: '{count} {unit} left',
+    campaignLevel: 'level {number} · {name}',
+    campaignRunSummary: 'apples collected: {collected} · apples remaining: {remaining}',
     levelControls: 'arrow keys to move · enter to play',
     helpTitle: 'how to play',
     helpHeading: 'controls',
@@ -2400,8 +2471,8 @@ const STRINGS = {
     menus: 'menus',
     menuKeys: 'arrows + enter · ←→ switches groups',
     gameRules: 'game rules',
-    ruleChain: 'chain fruit to reach ×5; blocks drop bonuses and power-ups.',
-    ruleCampaign: 'campaign: clear each level; the final fruit is golden.',
+    ruleChain: 'endless modes only: chain up to ×5; blocks drop bonuses or power-ups.',
+    ruleCampaign: 'campaign: apples, not points; the final fruit is golden.',
     ruleModes: 'frenzy: wrap around the edges. hunter: eat pellets, then stay ahead.',
     ruleHunter: 'hunter: its head is deadly; its body and pellets are safe.',
     powerBasics: 'ghost passes hazards; slow eases the pace; shrink trims your tail.',
@@ -2409,7 +2480,6 @@ const STRINGS = {
     gridMode: 'grid',
     levelNumberName: 'level {number} {name}',
     nextLevelMeta: 'next · {name} · {goal} {unit}',
-    levelGoalRecord: 'level goal: {goal} {unit} · best {record}',
     recordFruitMeta: 'best {record} · {fruits} {unit}',
     recordNew: 'new record',
     end: 'game over',
@@ -2437,7 +2507,6 @@ const STRINGS = {
     hintGameTurbo: 'arrows turn · space boost · P pause · R restart · M sound',
     best: 'best {score}',
     fruitScore: '{mode} · {fruits} {unit}',
-    levelScore: '{number} {name} · {fruits}/{goal}',
     ghost: 'ghost',
     slow: 'slow',
     shield: 'shield',
@@ -2534,6 +2603,12 @@ function fruitUnit(count) {
   return singular ? 'fruta' : 'frutas';
 }
 
+function appleUnit(count) {
+  const singular = Number(count) === 1;
+  if (language === 'en') return singular ? 'apple' : 'apples';
+  return singular ? 'manzana' : 'manzanas';
+}
+
 function routeSlug(name) {
   const key = `route${name[0].toUpperCase()}${name.slice(1)}`;
   return t(key);
@@ -2553,7 +2628,7 @@ function routeWords() {
   };
 }
 
-  Object.assign(modulo, { getLanguage, setLanguage, t, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, routeSlug, routeWords });
+  Object.assign(modulo, { getLanguage, setLanguage, t, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, appleUnit, routeSlug, routeWords });
 })(modulos['i18n']);
 
 // ---- main ----
@@ -2563,7 +2638,7 @@ const { Game, POWER_INFO } = modulos['engine'];
 const { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS } = modulos['levels'];
 const { audio } = modulos['audio'];
 const { attachInput } = modulos['input'];
-const { t, getLanguage, setLanguage, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, routeSlug, routeWords } = modulos['i18n'];
+const { t, getLanguage, setLanguage, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, appleUnit, routeSlug, routeWords } = modulos['i18n'];
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -2599,6 +2674,7 @@ const el = {
   best: $('#hud-best'),
   mult: $('#hud-mult'),
   chain: $('#chain-bar'),
+  combo: $('#combo'),
   effects: $('#effects'),
   mute: $('#btn-mute'),
   pause: $('#btn-pause'),
@@ -2615,7 +2691,7 @@ const pincel = el.canvas.getContext('2d', { alpha: false });
 function nuevoRegistro() {
   return {
     best: { classic: 0, frenzy: 0, hunter: 0 },
-    campaign: { unlocked: 1, best: {} },
+    campaign: { unlocked: 1 },
     sound: true,
     crt: true,
   };
@@ -2649,11 +2725,6 @@ function leerGuardado() {
     LEVELS.length,
     Math.max(1, parseInt(camp.unlocked, 10) || 1),
   );
-  if (camp.best && typeof camp.best === 'object') {
-    for (const [nivel, valor] of Object.entries(camp.best)) {
-      datos.campaign.best[nivel] = Number(valor) || 0;
-    }
-  }
   if (typeof bruto.sound === 'boolean') datos.sound = bruto.sound;
   if (typeof bruto.crt === 'boolean') datos.crt = bruto.crt;
   return datos;
@@ -2701,7 +2772,7 @@ const dosDigitos = (n) => String(n).padStart(2, '0');
 const puntos = (n) => String(Math.max(0, Math.round(n || 0)));
 
 function mejorActual() {
-  if (app.modo === 'campaign') return guardado.campaign.best[app.nivel] || 0;
+  if (app.modo === 'campaign') return 0;
   return guardado.best[app.modo] || 0;
 }
 
@@ -2802,7 +2873,6 @@ const CICLO_RECORD = 3000;
 function mejorGlobal() {
   let mejor = 0;
   for (const valor of Object.values(guardado.best || {})) mejor = Math.max(mejor, Number(valor) || 0);
-  for (const valor of Object.values(guardado.campaign.best || {})) mejor = Math.max(mejor, Number(valor) || 0);
   return Math.round(mejor);
 }
 
@@ -3195,36 +3265,44 @@ window.addEventListener('popstate', () => {
 function actualizarMarcador() {
   const juego = app.juego;
   if (!juego) {
-      actualizarEfectos(null);
+    actualizarEfectos(null);
     return;
   }
 
-  const valor = puntos(juego.score);
-  if (el.score.textContent !== valor) el.score.textContent = valor;
+  const esCampana = app.modo === 'campaign';
+  if (el.combo) el.combo.hidden = esCampana;
 
   let meta;
-  if (app.modo === 'campaign') {
+  let valor;
+  let marca;
+  if (esCampana) {
     const nivel = LEVELS[app.nivel];
-    meta = t('levelScore', {
+    const recogidas = Math.min(juego.fruits, nivel.goal);
+    const restantes = Math.max(0, nivel.goal - recogidas);
+    valor = puntos(recogidas);
+    meta = t('campaignLevel', {
       number: dosDigitos(app.nivel + 1),
       name: levelName(nivel.name),
-      fruits: Math.min(juego.fruits, nivel.goal),
-      goal: nivel.goal,
     });
+    marca = t('applesRemaining', { count: restantes, unit: appleUnit(restantes) });
+    el.mult.textContent = appleUnit(recogidas);
+    el.mult.classList.remove('activo');
+    el.chain.style.width = '0%';
   } else {
+    valor = puntos(juego.score);
     meta = t('fruitScore', { mode: modeName(app.modo), fruits: juego.fruits, unit: fruitUnit(juego.fruits) });
+    marca = t('best', { score: mejorActual() });
+    const mult = juego.multiplier;
+    el.mult.textContent = mult > 1 ? `×${mult}` : '';
+    el.mult.classList.toggle('activo', mult > 1);
+    el.chain.style.width = `${((juego.chainTimer / juego.chainWindow) * 100 || 0).toFixed(1)}%`;
   }
+
+  if (el.score.textContent !== valor) el.score.textContent = valor;
   if (el.meta.textContent !== meta) el.meta.textContent = meta;
-
-  const marca = t('best', { score: mejorActual() });
   if (el.best.textContent !== marca) el.best.textContent = marca;
-
-  const mult = juego.multiplier;
-  const texto = mult > 1 ? `×${mult}` : '';
-  if (el.mult.textContent !== texto) el.mult.textContent = texto;
-  el.mult.classList.toggle('activo', mult > 1);
-
-  el.chain.style.width = `${((juego.chainTimer / juego.chainWindow) * 100 || 0).toFixed(1)}%`;
+  if (esCampana) el.mult.setAttribute('aria-label', appleUnit(juego.fruits));
+  else el.mult.removeAttribute('aria-label');
 
   el.prompt.classList.toggle('visible', juego.state === 'ready');
   el.pause.textContent = t(app.pantalla === 'paused' ? 'resume' : 'pause');
@@ -3599,12 +3677,11 @@ function pintarNiveles() {
   const celdas = LEVELS.map((nivel, i) => {
     const bloqueado = i >= guardado.campaign.unlocked;
     const hecho = i < guardado.campaign.unlocked - 1;
-    const marca = guardado.campaign.best[i] || 0;
     return `<button class="celda${bloqueado ? ' bloqueada' : ''}${hecho ? ' hecha' : ''}"
       type="button" data-nivel="${i}"${bloqueado ? ' aria-disabled="true"' : ''}>
       <span class="celda-top"><span class="celda-num">${dosDigitos(i + 1)}</span>${hecho ? '<span class="celda-tick">✓</span>' : ''}</span>
       <span class="celda-nombre">${bloqueado ? '· · ·' : levelName(nivel.name)}</span>
-      <span class="celda-meta">${bloqueado ? t('blocked') : marca ? t('best', { score: marca }) : t('fruits', { count: nivel.goal, unit: fruitUnit(nivel.goal) })}</span>
+      <span class="celda-meta">${bloqueado ? t('blocked') : t('fruits', { count: nivel.goal, unit: appleUnit(nivel.goal) })}</span>
     </button>`;
   }).join('');
 
@@ -3675,10 +3752,11 @@ function pintarVistazo(indice) {
   const datos = document.getElementById('vistazo-datos');
   if (nombre) nombre.textContent = t('levelNumberName', { number: dosDigitos(indice + 1), name: levelName(nivel.name) });
   if (datos) {
-    const marca = guardado.campaign.best[indice] || 0;
-    datos.textContent = marca
-      ? t('levelPreviewDataWithRecord', { goal: nivel.goal, speed: nivel.speed, record: marca, unit: fruitUnit(nivel.goal) })
-      : t('levelPreviewData', { goal: nivel.goal, speed: nivel.speed, unit: fruitUnit(nivel.goal) });
+    datos.textContent = t('levelPreviewData', {
+      goal: nivel.goal,
+      speed: nivel.speed,
+      unit: appleUnit(nivel.goal),
+    });
   }
 }
 
@@ -3801,6 +3879,7 @@ function configuracion(modo, nivel) {
     accelPerFood: datos.accelPerFood,
     wrap: false,
     goal: datos.goal,
+    scoring: false,
     bonusEvery: datos.bonusEvery,
     powerEvery: datos.powerEvery,
     powerPool: datos.powerPool,
@@ -3825,22 +3904,24 @@ function empezarPartida(modo, nivel = 0) {
 }
 
 function eventosJuego(tipo, datos) {
-  const juego = app.juego;
   switch (tipo) {
     case 'start':
       audio.play('start');
       break;
     case 'eat':
       audio.play('bite', datos);
+      parpadear(el.score);
       break;
     case 'bonus':
       audio.play('bonus');
+      parpadear(el.score);
       break;
     case 'power':
-      audio.play('power');
+      audio.play('power', datos);
+      parpadear(el.score);
       break;
     case 'shield':
-      audio.play('shield');
+      audio.play('shield', datos);
       break;
     case 'turbo':
       audio.play('turbo');
@@ -3856,21 +3937,24 @@ function eventosJuego(tipo, datos) {
       break;
     case 'pellet':
       audio.play('pellet');
+      parpadear(el.score);
       parpadear(el.mult);
       break;
     case 'bite':
       audio.play('hunterEat');
+      parpadear(el.score);
       parpadear(el.mult);
       break;
     case 'hunterHunt':
       audio.play('alerta');
-      parpadear(el.mult);
+      parpadear(el.meta);
       break;
     case 'hunterDies':
-      audio.play('bonus');
+      audio.play('hunterDies');
       parpadear(el.score);
       break;
     case 'combo':
+      audio.play('combo', datos);
       parpadear(el.mult);
       break;
     case 'die':
@@ -3879,7 +3963,7 @@ function eventosJuego(tipo, datos) {
       app.temporizador = setTimeout(mostrarFin, 900);
       break;
     case 'clear':
-      audio.play('level');
+      audio.play(app.nivel >= LEVELS.length - 1 ? 'campaignComplete' : 'level');
       guardarMarca();
       guardado.campaign.unlocked = Math.max(
         guardado.campaign.unlocked,
@@ -3895,37 +3979,39 @@ function eventosJuego(tipo, datos) {
 
 function guardarMarca() {
   const juego = app.juego;
-  if (!juego) return;
-  if (app.modo === 'campaign') {
-    const clave = String(app.nivel);
-    guardado.campaign.best[clave] = Math.max(guardado.campaign.best[clave] || 0, juego.score);
-  } else {
-    guardado.best[app.modo] = Math.max(guardado.best[app.modo] || 0, juego.score);
-  }
+  if (!juego || app.modo === 'campaign') return;
+  guardado.best[app.modo] = Math.max(guardado.best[app.modo] || 0, juego.score);
   guardar();
+}
+
+function resumenManzanas(juego) {
+  const objetivo = LEVELS[app.nivel].goal;
+  const recogidas = Math.min(juego.fruits, objetivo);
+  const restantes = Math.max(0, objetivo - recogidas);
+  return t('campaignRunSummary', {
+    collected: recogidas,
+    remaining: restantes,
+  });
 }
 
 function mostrarFin() {
   const juego = app.juego;
   if (!juego || juego.state !== 'dead') return;
-  app.record = juego.score > app.marca;
   const esCampana = app.modo === 'campaign';
+  app.record = !esCampana && juego.score > app.marca;
   const meta = esCampana
-    ? t('levelGoalRecord', {
-      goal: LEVELS[app.nivel].goal,
-      record: Math.max(app.marca, juego.score),
-      unit: fruitUnit(LEVELS[app.nivel].goal),
-    })
+    ? resumenManzanas(juego)
     : t('recordFruitMeta', {
       record: Math.max(app.marca, juego.score),
       fruits: juego.fruits,
       unit: fruitUnit(juego.fruits),
     });
+  const cifra = esCampana ? puntos(juego.fruits) : puntos(juego.score);
 
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
-      <p class="kicker">${t(app.record ? 'recordNew' : 'end')}</p>
-      <p class="cifra" data-cifra>${puntos(juego.score)}</p>
+      <p class="kicker">${t(!esCampana && app.record ? 'recordNew' : 'end')}</p>
+      <p class="cifra" data-cifra>${cifra}</p>
       <p class="nota">${meta}</p>
     </div>
     <div class="acciones">
@@ -3934,7 +4020,7 @@ function mostrarFin() {
     </div>
   </div>`);
   pantalla('dead');
-  animarCifra(el.overlay.querySelector('[data-cifra]'), juego.score);
+  if (!esCampana) animarCifra(el.overlay.querySelector('[data-cifra]'), juego.score);
   enfocarPrimero('button[data-accion="retry"]');
   el.pause.disabled = true;
   el.prompt.classList.remove('visible');
@@ -3946,12 +4032,19 @@ function mostrarNivelSuperado() {
   if (!juego || juego.state !== 'cleared') return;
   const ultimo = app.nivel >= LEVELS.length - 1;
   const siguiente = LEVELS[Math.min(app.nivel + 1, LEVELS.length - 1)];
+  const detalle = ultimo
+    ? t('campaignComplete')
+    : t('nextLevelMeta', {
+      name: levelName(siguiente.name),
+      goal: siguiente.goal,
+      unit: appleUnit(siguiente.goal),
+    });
 
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
       <p class="kicker">${t('levelCleared', { number: dosDigitos(app.nivel + 1) })}</p>
-      <p class="cifra" data-cifra>${puntos(juego.score)}</p>
-      <p class="nota">${ultimo ? t('campaignComplete') : t('nextLevelMeta', { name: levelName(siguiente.name), goal: siguiente.goal, unit: fruitUnit(siguiente.goal) })}</p>
+      <p class="cifra" data-cifra>${puntos(juego.fruits)}</p>
+      <p class="nota">${resumenManzanas(juego)} · ${detalle}</p>
     </div>
     <div class="acciones">
       ${ultimo ? '' : `<button class="principal" type="button" data-accion="next">${t('next')} <kbd>↵</kbd></button>`}
@@ -3960,7 +4053,6 @@ function mostrarNivelSuperado() {
     </div>
   </div>`);
   pantalla('cleared');
-  animarCifra(el.overlay.querySelector('[data-cifra]'), juego.score);
   enfocarPrimero('button.principal');
   el.pause.disabled = true;
   el.prompt.classList.remove('visible');
@@ -4001,12 +4093,15 @@ function animarCifra(nodo, total) {
 function mostrarPausa() {
   const juego = app.juego;
   if (!juego) return;
-  const cifra = puntos(juego.score);
-  const nota = t('fruitsRecord', {
-    fruits: juego.fruits,
-    record: Math.max(app.marca, juego.score),
-    unit: fruitUnit(juego.fruits),
-  });
+  const esCampana = app.modo === 'campaign';
+  const cifra = puntos(esCampana ? juego.fruits : juego.score);
+  const nota = esCampana
+    ? resumenManzanas(juego)
+    : t('fruitsRecord', {
+      fruits: juego.fruits,
+      record: Math.max(app.marca, juego.score),
+      unit: fruitUnit(juego.fruits),
+    });
 
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
@@ -4245,7 +4340,7 @@ function ejecutar(nombre) {
 function borrarRecords() {
   if (!window.confirm(t('eraseConfirm'))) return;
   guardado.best = { classic: 0, frenzy: 0, hunter: 0 };
-  guardado.campaign = { unlocked: 1, best: {} };
+  guardado.campaign = { unlocked: 1 };
   guardar();
   audio.play('ui');
   if (app.pantalla === 'settings') mostrarAjustes(app.settingsReturn, 'button[data-accion="wipe"]');

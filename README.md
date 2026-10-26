@@ -19,7 +19,7 @@ La navegación de grupos, modos, niveles, ayuda y ajustes funciona con teclado y
 
 La portada tiene dos grupos: **progreso** e **infinitos**. Dentro de la pantalla de modos se puede cambiar de grupo con `←→`.
 
-- **Campaña** — 20 niveles con muros diseñados a mano. Se desbloquean al superarlos y cada nivel guarda su mejor puntuación.
+- **Campaña** — 20 niveles con muros diseñados a mano. Se desbloquean al superarlos; no tiene puntuación, sólo cuenta las manzanas recogidas y las que faltan.
 - **Clásico** — partida sin fin. Cada fruta acelera la serpiente y, al llegar a 30 frutas, empiezan a aparecer muros.
 - **Frenesí** — los bordes conectan entre sí y la velocidad aumenta gradualmente con el tiempo.
 - **Cazador** — una serpiente roja come puntos azules y después te persigue. Su cabeza es peligrosa; su cuerpo y los puntos son seguros. Si choca contra tu cuerpo, desaparece y vuelve más pequeña. Los puntos azules también los puedes comer tú.

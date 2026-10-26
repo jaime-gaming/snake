@@ -1,4 +1,4 @@
-// sonido sintetizado. sin ficheros: osciladores y ruido
+// Sonido sintetizado en tiempo real: sin ficheros externos ni música de fondo.
 
 let ctx = null;
 let master = null;
@@ -14,18 +14,30 @@ function build() {
       roto = true;
       return null;
     }
+
     ctx = new AC();
     master = ctx.createGain();
     master.gain.value = audio.enabled ? 0.15 : 0;
-    master.connect(ctx.destination);
 
-    const len = Math.floor(ctx.sampleRate * 0.3);
+    if (typeof ctx.createDynamicsCompressor === 'function') {
+      const compresor = ctx.createDynamicsCompressor();
+      compresor.threshold.value = -20;
+      compresor.knee.value = 16;
+      compresor.ratio.value = 4;
+      compresor.attack.value = 0.004;
+      compresor.release.value = 0.16;
+      master.connect(compresor).connect(ctx.destination);
+    } else {
+      master.connect(ctx.destination);
+    }
+
+    const len = Math.floor(ctx.sampleRate * 0.24);
     noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
     const data = noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
     return ctx;
   } catch (err) {
-    // sin audio se juega igual
+    // Sin audio se puede jugar con normalidad.
     roto = true;
     ctx = null;
     master = null;
@@ -35,17 +47,24 @@ function build() {
 
 function tono(freq, dur, opts = {}) {
   const c = build();
-  if (!c) return;
+  if (!c || !(freq > 0) || !(dur > 0)) return;
+
   const t0 = c.currentTime + (opts.delay || 0);
+  const ataque = Math.min(0.012, dur * 0.24);
+  const salida = Math.min(opts.release || 0.04, dur * 0.44);
+  const volumen = Math.max(0.0001, opts.vol ?? 0.2);
   const osc = c.createOscillator();
   const gan = c.createGain();
+
   osc.type = opts.tipo || 'square';
   osc.frequency.setValueAtTime(freq, t0);
-  if (opts.fin) osc.frequency.exponentialRampToValueAtTime(Math.max(20, opts.fin), t0 + dur);
-  const vol = opts.vol ?? 0.28;
+  if (opts.fin > 0) osc.frequency.exponentialRampToValueAtTime(opts.fin, t0 + dur);
+
   gan.gain.setValueAtTime(0.0001, t0);
-  gan.gain.exponentialRampToValueAtTime(vol, t0 + 0.006);
+  gan.gain.exponentialRampToValueAtTime(volumen, t0 + ataque);
+  gan.gain.setValueAtTime(volumen, t0 + dur - salida);
   gan.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+
   osc.connect(gan).connect(master);
   osc.start(t0);
   osc.stop(t0 + dur + 0.02);
@@ -53,80 +72,108 @@ function tono(freq, dur, opts = {}) {
 
 function ruido(dur, opts = {}) {
   const c = build();
-  if (!c) return;
+  if (!c || !noiseBuf || !(dur > 0)) return;
+
   const t0 = c.currentTime + (opts.delay || 0);
   const src = c.createBufferSource();
-  src.buffer = noiseBuf;
   const filtro = c.createBiquadFilter();
+  const gan = c.createGain();
+  const volumen = Math.max(0.0001, opts.vol ?? 0.28);
+
+  src.buffer = noiseBuf;
   filtro.type = 'lowpass';
   filtro.frequency.setValueAtTime(opts.desde || 2400, t0);
   filtro.frequency.exponentialRampToValueAtTime(opts.hasta || 120, t0 + dur);
-  const gan = c.createGain();
-  gan.gain.setValueAtTime(opts.vol ?? 0.35, t0);
+  gan.gain.setValueAtTime(0.0001, t0);
+  gan.gain.exponentialRampToValueAtTime(volumen, t0 + Math.min(0.008, dur * 0.2));
   gan.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+
   src.connect(filtro).connect(gan).connect(master);
   src.start(t0);
   src.stop(t0 + dur + 0.02);
 }
 
+function secuencia(frecuencias, opts = {}) {
+  const { tipo = 'triangle', dur = 0.075, vol = 0.12, salto = 0.045 } = opts;
+  frecuencias.forEach((freq, i) => tono(freq, dur, {
+    tipo,
+    vol,
+    delay: i * salto,
+  }));
+}
+
 const SONIDOS = {
   start() {
-    tono(180, 0.1, { vol: 0.18 });
-    tono(90, 0.14, { tipo: 'triangle', vol: 0.22, delay: 0.02 });
+    tono(260, 0.085, { tipo: 'triangle', vol: 0.16, fin: 420 });
+    tono(620, 0.08, { tipo: 'sine', vol: 0.08, delay: 0.045, fin: 740 });
   },
   bite({ multiplier = 1 } = {}) {
-    const paso = Math.min(multiplier, 5);
-    tono(300 + paso * 70, 0.07, { vol: 0.24 });
-    tono(600 + paso * 90, 0.05, { vol: 0.12, delay: 0.03 });
+    const nivel = Math.min(5, Math.max(1, multiplier));
+    const tonoBase = 300 + nivel * 62;
+    tono(tonoBase, 0.065, { tipo: 'triangle', vol: 0.15, fin: tonoBase * 1.12 });
+    if (nivel > 1) tono(tonoBase * 1.5, 0.045, { tipo: 'sine', vol: 0.07, delay: 0.035 });
   },
   bonus() {
-    tono(620, 0.07, { vol: 0.2 });
-    tono(820, 0.07, { vol: 0.2, delay: 0.06 });
-    tono(1040, 0.09, { vol: 0.18, delay: 0.12 });
+    secuencia([590, 760, 980], { dur: 0.085, vol: 0.13, salto: 0.055 });
   },
-  power() {
-    tono(480, 0.08, { tipo: 'triangle', vol: 0.2 });
-    tono(720, 0.1, { tipo: 'triangle', vol: 0.16, delay: 0.07 });
+  power({ kind = 'ghost' } = {}) {
+    const motivos = {
+      ghost: [430, 650, 880],
+      slow: [520, 410, 320],
+      shrink: [760, 580],
+      shield: [350, 560, 820],
+      double: [620, 820, 1080],
+    };
+    secuencia(motivos[kind] || motivos.ghost, { dur: 0.07, vol: 0.11, salto: 0.045 });
   },
   shield() {
-    tono(240, 0.12, { tipo: 'triangle', vol: 0.18, fin: 520 });
-    tono(820, 0.08, { vol: 0.12, delay: 0.04 });
+    tono(190, 0.14, { tipo: 'triangle', vol: 0.18, fin: 360 });
+    tono(680, 0.16, { tipo: 'sine', vol: 0.12, delay: 0.045, fin: 430 });
   },
   turbo() {
-    tono(140, 0.08, { tipo: 'sawtooth', vol: 0.1 });
-  },
-  hunter() {
-    tono(72, 0.09, { tipo: 'sawtooth', vol: 0.09 });
+    tono(150, 0.055, { tipo: 'triangle', vol: 0.09, fin: 220 });
+    tono(245, 0.045, { tipo: 'square', vol: 0.035, delay: 0.025 });
   },
   death() {
-    ruido(0.34, { desde: 3200, hasta: 60, vol: 0.4 });
-    tono(220, 0.4, { tipo: 'sawtooth', vol: 0.24, fin: 40 });
-    tono(140, 0.3, { vol: 0.14, fin: 30, delay: 0.04 });
+    ruido(0.28, { desde: 2400, hasta: 90, vol: 0.28 });
+    tono(210, 0.32, { tipo: 'sawtooth', vol: 0.16, fin: 52 });
+    tono(135, 0.24, { tipo: 'triangle', vol: 0.09, fin: 42, delay: 0.035 });
   },
   level() {
-    [523, 659, 784, 1046].forEach((f, i) => tono(f, 0.12, { vol: 0.2, delay: i * 0.075 }));
+    secuencia([494, 622, 740, 988], { dur: 0.11, vol: 0.13, salto: 0.07 });
+  },
+  campaignComplete() {
+    secuencia([392, 494, 587, 784, 988], { dur: 0.16, vol: 0.14, salto: 0.09 });
   },
   wall() {
-    tono(150, 0.09, { tipo: 'square', vol: 0.12, fin: 90 });
-    ruido(0.12, { desde: 900, hasta: 200, vol: 0.18 });
+    tono(135, 0.085, { tipo: 'square', vol: 0.09, fin: 78 });
+    ruido(0.09, { desde: 800, hasta: 170, vol: 0.12, delay: 0.012 });
   },
   pellet() {
-    tono(760, 0.05, { tipo: 'triangle', vol: 0.18 });
-    tono(1010, 0.06, { tipo: 'triangle', vol: 0.14, delay: 0.05 });
+    secuencia([740, 990], { tipo: 'sine', dur: 0.06, vol: 0.1, salto: 0.045 });
   },
   alerta() {
-    tono(210, 0.05, { vol: 0.09 });
-    tono(180, 0.05, { vol: 0.07, delay: 0.09 });
+    tono(210, 0.055, { vol: 0.075 });
+    tono(180, 0.055, { vol: 0.06, delay: 0.095 });
   },
   hunterEat() {
-    tono(300, 0.06, { tipo: 'triangle', vol: 0.14, fin: 220 });
+    tono(295, 0.07, { tipo: 'triangle', vol: 0.11, fin: 205 });
+  },
+  hunterDies() {
+    ruido(0.18, { desde: 1500, hasta: 260, vol: 0.15 });
+    secuencia([240, 180], { tipo: 'triangle', dur: 0.1, vol: 0.1, salto: 0.055 });
+  },
+  combo({ multiplier = 2 } = {}) {
+    const nota = 640 + Math.min(5, multiplier) * 55;
+    tono(nota, 0.055, { tipo: 'sine', vol: 0.075 });
+    tono(nota * 1.25, 0.05, { tipo: 'sine', vol: 0.05, delay: 0.04 });
   },
   ui() {
-    tono(440, 0.03, { vol: 0.1 });
+    tono(460, 0.028, { tipo: 'square', vol: 0.045 });
   },
   // BORRAR-COMPETITIVO · sonidos de rangos y sorteo retirados para v1.0.
   locked() {
-    tono(120, 0.08, { vol: 0.14 });
+    tono(120, 0.075, { tipo: 'triangle', vol: 0.09, fin: 95 });
   },
 };
 
@@ -140,13 +187,20 @@ export const audio = {
       const c = build();
       if (c && c.state === 'suspended') c.resume().catch(() => {});
     } catch (err) {
-      /* seguimos sin sonido */
+      /* El juego continúa en silencio. */
     }
   },
 
   set(on) {
     this.enabled = !!on;
-    if (master) master.gain.value = this.enabled ? 0.15 : 0;
+    if (!master || !ctx) return;
+    const valor = this.enabled ? 0.15 : 0;
+    try {
+      master.gain.cancelScheduledValues(ctx.currentTime);
+      master.gain.setTargetAtTime(valor, ctx.currentTime, 0.025);
+    } catch (err) {
+      master.gain.value = valor;
+    }
   },
 
   toggle() {
@@ -161,7 +215,7 @@ export const audio = {
       const fn = SONIDOS[nombre];
       if (fn) fn(datos || {});
     } catch (err) {
-      /* un sonido que falla no puede parar el juego */
+      /* Un sonido que falla no puede detener la partida. */
     }
   },
 };

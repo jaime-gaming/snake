@@ -2,7 +2,7 @@ import { Game, POWER_INFO } from './engine.js?v=3';
 import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS } from './levels.js?v=3';
 import { audio } from './audio.js?v=3';
 import { attachInput } from './input.js?v=3';
-import { t, getLanguage, setLanguage, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, routeSlug, routeWords } from './i18n.js?v=16';
+import { t, getLanguage, setLanguage, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, appleUnit, routeSlug, routeWords } from './i18n.js?v=16';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -38,6 +38,7 @@ const el = {
   best: $('#hud-best'),
   mult: $('#hud-mult'),
   chain: $('#chain-bar'),
+  combo: $('#combo'),
   effects: $('#effects'),
   mute: $('#btn-mute'),
   pause: $('#btn-pause'),
@@ -54,7 +55,7 @@ const pincel = el.canvas.getContext('2d', { alpha: false });
 function nuevoRegistro() {
   return {
     best: { classic: 0, frenzy: 0, hunter: 0 },
-    campaign: { unlocked: 1, best: {} },
+    campaign: { unlocked: 1 },
     sound: true,
     crt: true,
   };
@@ -88,11 +89,6 @@ function leerGuardado() {
     LEVELS.length,
     Math.max(1, parseInt(camp.unlocked, 10) || 1),
   );
-  if (camp.best && typeof camp.best === 'object') {
-    for (const [nivel, valor] of Object.entries(camp.best)) {
-      datos.campaign.best[nivel] = Number(valor) || 0;
-    }
-  }
   if (typeof bruto.sound === 'boolean') datos.sound = bruto.sound;
   if (typeof bruto.crt === 'boolean') datos.crt = bruto.crt;
   return datos;
@@ -140,7 +136,7 @@ const dosDigitos = (n) => String(n).padStart(2, '0');
 const puntos = (n) => String(Math.max(0, Math.round(n || 0)));
 
 function mejorActual() {
-  if (app.modo === 'campaign') return guardado.campaign.best[app.nivel] || 0;
+  if (app.modo === 'campaign') return 0;
   return guardado.best[app.modo] || 0;
 }
 
@@ -241,7 +237,6 @@ const CICLO_RECORD = 3000;
 function mejorGlobal() {
   let mejor = 0;
   for (const valor of Object.values(guardado.best || {})) mejor = Math.max(mejor, Number(valor) || 0);
-  for (const valor of Object.values(guardado.campaign.best || {})) mejor = Math.max(mejor, Number(valor) || 0);
   return Math.round(mejor);
 }
 
@@ -634,36 +629,44 @@ window.addEventListener('popstate', () => {
 function actualizarMarcador() {
   const juego = app.juego;
   if (!juego) {
-      actualizarEfectos(null);
+    actualizarEfectos(null);
     return;
   }
 
-  const valor = puntos(juego.score);
-  if (el.score.textContent !== valor) el.score.textContent = valor;
+  const esCampana = app.modo === 'campaign';
+  if (el.combo) el.combo.hidden = esCampana;
 
   let meta;
-  if (app.modo === 'campaign') {
+  let valor;
+  let marca;
+  if (esCampana) {
     const nivel = LEVELS[app.nivel];
-    meta = t('levelScore', {
+    const recogidas = Math.min(juego.fruits, nivel.goal);
+    const restantes = Math.max(0, nivel.goal - recogidas);
+    valor = puntos(recogidas);
+    meta = t('campaignLevel', {
       number: dosDigitos(app.nivel + 1),
       name: levelName(nivel.name),
-      fruits: Math.min(juego.fruits, nivel.goal),
-      goal: nivel.goal,
     });
+    marca = t('applesRemaining', { count: restantes, unit: appleUnit(restantes) });
+    el.mult.textContent = appleUnit(recogidas);
+    el.mult.classList.remove('activo');
+    el.chain.style.width = '0%';
   } else {
+    valor = puntos(juego.score);
     meta = t('fruitScore', { mode: modeName(app.modo), fruits: juego.fruits, unit: fruitUnit(juego.fruits) });
+    marca = t('best', { score: mejorActual() });
+    const mult = juego.multiplier;
+    el.mult.textContent = mult > 1 ? `×${mult}` : '';
+    el.mult.classList.toggle('activo', mult > 1);
+    el.chain.style.width = `${((juego.chainTimer / juego.chainWindow) * 100 || 0).toFixed(1)}%`;
   }
+
+  if (el.score.textContent !== valor) el.score.textContent = valor;
   if (el.meta.textContent !== meta) el.meta.textContent = meta;
-
-  const marca = t('best', { score: mejorActual() });
   if (el.best.textContent !== marca) el.best.textContent = marca;
-
-  const mult = juego.multiplier;
-  const texto = mult > 1 ? `×${mult}` : '';
-  if (el.mult.textContent !== texto) el.mult.textContent = texto;
-  el.mult.classList.toggle('activo', mult > 1);
-
-  el.chain.style.width = `${((juego.chainTimer / juego.chainWindow) * 100 || 0).toFixed(1)}%`;
+  if (esCampana) el.mult.setAttribute('aria-label', appleUnit(juego.fruits));
+  else el.mult.removeAttribute('aria-label');
 
   el.prompt.classList.toggle('visible', juego.state === 'ready');
   el.pause.textContent = t(app.pantalla === 'paused' ? 'resume' : 'pause');
@@ -1038,12 +1041,11 @@ function pintarNiveles() {
   const celdas = LEVELS.map((nivel, i) => {
     const bloqueado = i >= guardado.campaign.unlocked;
     const hecho = i < guardado.campaign.unlocked - 1;
-    const marca = guardado.campaign.best[i] || 0;
     return `<button class="celda${bloqueado ? ' bloqueada' : ''}${hecho ? ' hecha' : ''}"
       type="button" data-nivel="${i}"${bloqueado ? ' aria-disabled="true"' : ''}>
       <span class="celda-top"><span class="celda-num">${dosDigitos(i + 1)}</span>${hecho ? '<span class="celda-tick">✓</span>' : ''}</span>
       <span class="celda-nombre">${bloqueado ? '· · ·' : levelName(nivel.name)}</span>
-      <span class="celda-meta">${bloqueado ? t('blocked') : marca ? t('best', { score: marca }) : t('fruits', { count: nivel.goal, unit: fruitUnit(nivel.goal) })}</span>
+      <span class="celda-meta">${bloqueado ? t('blocked') : t('fruits', { count: nivel.goal, unit: appleUnit(nivel.goal) })}</span>
     </button>`;
   }).join('');
 
@@ -1114,10 +1116,11 @@ function pintarVistazo(indice) {
   const datos = document.getElementById('vistazo-datos');
   if (nombre) nombre.textContent = t('levelNumberName', { number: dosDigitos(indice + 1), name: levelName(nivel.name) });
   if (datos) {
-    const marca = guardado.campaign.best[indice] || 0;
-    datos.textContent = marca
-      ? t('levelPreviewDataWithRecord', { goal: nivel.goal, speed: nivel.speed, record: marca, unit: fruitUnit(nivel.goal) })
-      : t('levelPreviewData', { goal: nivel.goal, speed: nivel.speed, unit: fruitUnit(nivel.goal) });
+    datos.textContent = t('levelPreviewData', {
+      goal: nivel.goal,
+      speed: nivel.speed,
+      unit: appleUnit(nivel.goal),
+    });
   }
 }
 
@@ -1240,6 +1243,7 @@ function configuracion(modo, nivel) {
     accelPerFood: datos.accelPerFood,
     wrap: false,
     goal: datos.goal,
+    scoring: false,
     bonusEvery: datos.bonusEvery,
     powerEvery: datos.powerEvery,
     powerPool: datos.powerPool,
@@ -1264,22 +1268,24 @@ function empezarPartida(modo, nivel = 0) {
 }
 
 function eventosJuego(tipo, datos) {
-  const juego = app.juego;
   switch (tipo) {
     case 'start':
       audio.play('start');
       break;
     case 'eat':
       audio.play('bite', datos);
+      parpadear(el.score);
       break;
     case 'bonus':
       audio.play('bonus');
+      parpadear(el.score);
       break;
     case 'power':
-      audio.play('power');
+      audio.play('power', datos);
+      parpadear(el.score);
       break;
     case 'shield':
-      audio.play('shield');
+      audio.play('shield', datos);
       break;
     case 'turbo':
       audio.play('turbo');
@@ -1295,21 +1301,24 @@ function eventosJuego(tipo, datos) {
       break;
     case 'pellet':
       audio.play('pellet');
+      parpadear(el.score);
       parpadear(el.mult);
       break;
     case 'bite':
       audio.play('hunterEat');
+      parpadear(el.score);
       parpadear(el.mult);
       break;
     case 'hunterHunt':
       audio.play('alerta');
-      parpadear(el.mult);
+      parpadear(el.meta);
       break;
     case 'hunterDies':
-      audio.play('bonus');
+      audio.play('hunterDies');
       parpadear(el.score);
       break;
     case 'combo':
+      audio.play('combo', datos);
       parpadear(el.mult);
       break;
     case 'die':
@@ -1318,7 +1327,7 @@ function eventosJuego(tipo, datos) {
       app.temporizador = setTimeout(mostrarFin, 900);
       break;
     case 'clear':
-      audio.play('level');
+      audio.play(app.nivel >= LEVELS.length - 1 ? 'campaignComplete' : 'level');
       guardarMarca();
       guardado.campaign.unlocked = Math.max(
         guardado.campaign.unlocked,
@@ -1334,37 +1343,39 @@ function eventosJuego(tipo, datos) {
 
 function guardarMarca() {
   const juego = app.juego;
-  if (!juego) return;
-  if (app.modo === 'campaign') {
-    const clave = String(app.nivel);
-    guardado.campaign.best[clave] = Math.max(guardado.campaign.best[clave] || 0, juego.score);
-  } else {
-    guardado.best[app.modo] = Math.max(guardado.best[app.modo] || 0, juego.score);
-  }
+  if (!juego || app.modo === 'campaign') return;
+  guardado.best[app.modo] = Math.max(guardado.best[app.modo] || 0, juego.score);
   guardar();
+}
+
+function resumenManzanas(juego) {
+  const objetivo = LEVELS[app.nivel].goal;
+  const recogidas = Math.min(juego.fruits, objetivo);
+  const restantes = Math.max(0, objetivo - recogidas);
+  return t('campaignRunSummary', {
+    collected: recogidas,
+    remaining: restantes,
+  });
 }
 
 function mostrarFin() {
   const juego = app.juego;
   if (!juego || juego.state !== 'dead') return;
-  app.record = juego.score > app.marca;
   const esCampana = app.modo === 'campaign';
+  app.record = !esCampana && juego.score > app.marca;
   const meta = esCampana
-    ? t('levelGoalRecord', {
-      goal: LEVELS[app.nivel].goal,
-      record: Math.max(app.marca, juego.score),
-      unit: fruitUnit(LEVELS[app.nivel].goal),
-    })
+    ? resumenManzanas(juego)
     : t('recordFruitMeta', {
       record: Math.max(app.marca, juego.score),
       fruits: juego.fruits,
       unit: fruitUnit(juego.fruits),
     });
+  const cifra = esCampana ? puntos(juego.fruits) : puntos(juego.score);
 
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
-      <p class="kicker">${t(app.record ? 'recordNew' : 'end')}</p>
-      <p class="cifra" data-cifra>${puntos(juego.score)}</p>
+      <p class="kicker">${t(!esCampana && app.record ? 'recordNew' : 'end')}</p>
+      <p class="cifra" data-cifra>${cifra}</p>
       <p class="nota">${meta}</p>
     </div>
     <div class="acciones">
@@ -1373,7 +1384,7 @@ function mostrarFin() {
     </div>
   </div>`);
   pantalla('dead');
-  animarCifra(el.overlay.querySelector('[data-cifra]'), juego.score);
+  if (!esCampana) animarCifra(el.overlay.querySelector('[data-cifra]'), juego.score);
   enfocarPrimero('button[data-accion="retry"]');
   el.pause.disabled = true;
   el.prompt.classList.remove('visible');
@@ -1385,12 +1396,19 @@ function mostrarNivelSuperado() {
   if (!juego || juego.state !== 'cleared') return;
   const ultimo = app.nivel >= LEVELS.length - 1;
   const siguiente = LEVELS[Math.min(app.nivel + 1, LEVELS.length - 1)];
+  const detalle = ultimo
+    ? t('campaignComplete')
+    : t('nextLevelMeta', {
+      name: levelName(siguiente.name),
+      goal: siguiente.goal,
+      unit: appleUnit(siguiente.goal),
+    });
 
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
       <p class="kicker">${t('levelCleared', { number: dosDigitos(app.nivel + 1) })}</p>
-      <p class="cifra" data-cifra>${puntos(juego.score)}</p>
-      <p class="nota">${ultimo ? t('campaignComplete') : t('nextLevelMeta', { name: levelName(siguiente.name), goal: siguiente.goal, unit: fruitUnit(siguiente.goal) })}</p>
+      <p class="cifra" data-cifra>${puntos(juego.fruits)}</p>
+      <p class="nota">${resumenManzanas(juego)} · ${detalle}</p>
     </div>
     <div class="acciones">
       ${ultimo ? '' : `<button class="principal" type="button" data-accion="next">${t('next')} <kbd>↵</kbd></button>`}
@@ -1399,7 +1417,6 @@ function mostrarNivelSuperado() {
     </div>
   </div>`);
   pantalla('cleared');
-  animarCifra(el.overlay.querySelector('[data-cifra]'), juego.score);
   enfocarPrimero('button.principal');
   el.pause.disabled = true;
   el.prompt.classList.remove('visible');
@@ -1440,12 +1457,15 @@ function animarCifra(nodo, total) {
 function mostrarPausa() {
   const juego = app.juego;
   if (!juego) return;
-  const cifra = puntos(juego.score);
-  const nota = t('fruitsRecord', {
-    fruits: juego.fruits,
-    record: Math.max(app.marca, juego.score),
-    unit: fruitUnit(juego.fruits),
-  });
+  const esCampana = app.modo === 'campaign';
+  const cifra = puntos(esCampana ? juego.fruits : juego.score);
+  const nota = esCampana
+    ? resumenManzanas(juego)
+    : t('fruitsRecord', {
+      fruits: juego.fruits,
+      record: Math.max(app.marca, juego.score),
+      unit: fruitUnit(juego.fruits),
+    });
 
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
@@ -1684,7 +1704,7 @@ function ejecutar(nombre) {
 function borrarRecords() {
   if (!window.confirm(t('eraseConfirm'))) return;
   guardado.best = { classic: 0, frenzy: 0, hunter: 0 };
-  guardado.campaign = { unlocked: 1, best: {} };
+  guardado.campaign = { unlocked: 1 };
   guardar();
   audio.play('ui');
   if (app.pantalla === 'settings') mostrarAjustes(app.settingsReturn, 'button[data-accion="wipe"]');
