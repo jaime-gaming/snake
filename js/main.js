@@ -769,7 +769,7 @@ function anilloFoco() {
   if (app.pantalla === 'home') {
     return todos.filter((b) => b.dataset.grupo !== undefined || b.classList.contains('link'));
   }
-  if (app.pantalla === 'modes') return todos.filter((b) => b.dataset.modo !== undefined);
+  if (app.pantalla === 'modes') return todos.filter((b) => b.dataset.modo !== undefined || b.dataset.accion === 'settings');
   if (app.pantalla === 'levels') return todos.filter((b) => b.dataset.nivel !== undefined);
   return todos;
 }
@@ -959,11 +959,9 @@ function mostrarModos(indice = app.grupo) {
     </div>
     <nav class="tabs" aria-label="${t('switchGroup')}">${tabs}</nav>
     <div class="modos-cuerpo">
-      <div class="modos-listado">
+      <div>
         <nav class="filas" aria-label="${t('modes')}">${filas}</nav>
-        <button class="settings-quick" type="button" data-accion="settings">
-          <span aria-hidden="true">⚙</span>${t('settings')}
-        </button>
+        <p class="pie"><button class="link" type="button" data-accion="settings">${t('settings')}</button></p>
       </div>
       <aside class="inicio-demo">
         <p class="kicker" id="demo-titulo">${t('preview')}</p>
@@ -1188,31 +1186,29 @@ function mostrarAjustes(desde = app.pantalla, focoInicial = 'button[data-accion=
 
   const sonido = guardado.sound;
   const trama = guardado.crt;
-  const botonEstado = (activo) =>
-    `<span class="setting-state${activo ? ' on' : ''}">${t(activo ? 'enabled' : 'disabled')}</span>`;
+  const botonEstado = (activo) => t(activo ? 'enabled' : 'disabled');
 
-  ponerOverlay(`<div class="panel ajustes">
+  ponerOverlay(`<div class="panel niveles">
     <div class="niveles-cabeza">
-      <div>
-        <p class="kicker">${t('settings')}</p>
-        <h2>${t('settingsHint')}</h2>
-      </div>
+      <h2>${t('settings')}</h2>
       <button class="ghost" type="button" data-accion="settingsBack">${t('back')} <kbd>esc</kbd></button>
     </div>
-    <div class="settings-list">
-      <button class="setting-row" type="button" data-accion="toggleSound" aria-pressed="${sonido}">
-        <span class="setting-copy"><b>${t('sound')}</b><small>${t('soundSettingHint')}</small></span>
-        ${botonEstado(sonido)}
+    <nav class="filas" aria-label="${t('settings')}">
+      <button class="row" type="button" data-accion="toggleSound" aria-pressed="${sonido}">
+        <span class="row-idx">01</span>
+        <span class="row-name">${t('sound')}</span>
+        <span class="row-right">${botonEstado(sonido)}</span>
       </button>
-      <button class="setting-row" type="button" data-accion="crt" aria-pressed="${trama}">
-        <span class="setting-copy"><b>${t('scanlines')}</b><small>${t('scanlinesHint')}</small></span>
-        ${botonEstado(trama)}
+      <button class="row" type="button" data-accion="crt" aria-pressed="${trama}">
+        <span class="row-idx">02</span>
+        <span class="row-name">${t('scanlines')}</span>
+        <span class="row-right">${botonEstado(trama)}</span>
       </button>
-      <button class="setting-row peligro" type="button" data-accion="wipe">
-        <span class="setting-copy"><b>${t('clearRecords')}</b><small>${t('clearRecordsHint')}</small></span>
-        <span class="setting-arrow" aria-hidden="true">↗</span>
+      <button class="row" type="button" data-accion="wipe">
+        <span class="row-idx">03</span>
+        <span class="row-name">${t('clearRecords')}</span>
       </button>
-    </div>
+    </nav>
   </div>`);
 
   el.score.textContent = '—';
@@ -1246,6 +1242,7 @@ function configuracion(modo, nivel) {
     goal: datos.goal,
     bonusEvery: datos.bonusEvery,
     powerEvery: datos.powerEvery,
+    powerPool: datos.powerPool,
     chainWindow: datos.chainWindow,
   };
 }

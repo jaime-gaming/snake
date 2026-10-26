@@ -43,6 +43,13 @@ export const GROUPS = [
 
 export const MODE_ORDER = GROUPS.flatMap((g) => g.modes);
 
+export const POWER_POOLS = {
+  campaign: ['ghost', 'slow', 'shrink'],
+  classic: ['ghost', 'slow', 'shrink', 'double'],
+  frenzy: ['slow', 'shield', 'double'],
+  hunter: ['ghost', 'shrink', 'shield'],
+};
+
 const base = {
   cols: COLS,
   rows: ROWS,
@@ -64,6 +71,7 @@ export const MODES = {
     wallFrom: 30,
     wallEvery: 6,
     wallMax: 18,
+    powerPool: POWER_POOLS.classic,
   },
   frenzy: {
     ...base,
@@ -77,6 +85,7 @@ export const MODES = {
     wrap: true,
     bonusEvery: 4,
     powerEvery: 6,
+    powerPool: POWER_POOLS.frenzy,
   },
   hunter: {
     ...base,
@@ -92,6 +101,7 @@ export const MODES = {
     hunterSight: 4,
     bonusEvery: 6,
     powerEvery: 6,
+    powerPool: POWER_POOLS.hunter,
   },
 
 };
@@ -116,6 +126,7 @@ const level = (name, goal, speed, walls, extra = {}) => {
     accelPerFood: 1.2,
     bonusEvery: 4,
     powerEvery: 6,
+    powerPool: POWER_POOLS.campaign,
     chainWindow: 3400,
     ...resto,
   };

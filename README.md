@@ -24,7 +24,14 @@ La portada tiene dos grupos: **progreso** e **infinitos**. Dentro de la pantalla
 - **Frenesí** — los bordes conectan entre sí y la velocidad aumenta gradualmente con el tiempo.
 - **Cazador** — una serpiente roja come puntos azules y después te persigue. Su cabeza es peligrosa; su cuerpo y los puntos son seguros. Si choca contra tu cuerpo, desaparece y vuelve más pequeña. Los puntos azules también los puedes comer tú.
 
-Los poderes disponibles son **fantasma** (atraviesa obstáculos), **lento** (reduce el ritmo), **recorte** (acorta la cola), **escudo** (salva un choque) y **doble** (duplica los puntos durante unos segundos).
+Los poderes dependen del modo:
+
+- **Campaña:** fantasma, lento y recorte.
+- **Clásico:** fantasma, lento, recorte y doble puntuación.
+- **Frenesí:** lento, escudo y doble puntuación.
+- **Cazador:** fantasma, recorte y escudo.
+
+Fantasma atraviesa obstáculos; lento reduce el ritmo; recorte acorta la cola; escudo salva un choque y doble multiplica la puntuación.
 
 El modo competitivo se retiró para preparar la versión 1.0: no aparece en el menú, no puede iniciarse y ya no conserva salas, bots, clasificación, reloj, reapariciones ni audio propio.
 

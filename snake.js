@@ -118,6 +118,13 @@ const GROUPS = [
 
 const MODE_ORDER = GROUPS.flatMap((g) => g.modes);
 
+const POWER_POOLS = {
+  campaign: ['ghost', 'slow', 'shrink'],
+  classic: ['ghost', 'slow', 'shrink', 'double'],
+  frenzy: ['slow', 'shield', 'double'],
+  hunter: ['ghost', 'shrink', 'shield'],
+};
+
 const base = {
   cols: COLS,
   rows: ROWS,
@@ -139,6 +146,7 @@ const MODES = {
     wallFrom: 30,
     wallEvery: 6,
     wallMax: 18,
+    powerPool: POWER_POOLS.classic,
   },
   frenzy: {
     ...base,
@@ -152,6 +160,7 @@ const MODES = {
     wrap: true,
     bonusEvery: 4,
     powerEvery: 6,
+    powerPool: POWER_POOLS.frenzy,
   },
   hunter: {
     ...base,
@@ -167,6 +176,7 @@ const MODES = {
     hunterSight: 4,
     bonusEvery: 6,
     powerEvery: 6,
+    powerPool: POWER_POOLS.hunter,
   },
 
 };
@@ -191,6 +201,7 @@ const level = (name, goal, speed, walls, extra = {}) => {
     accelPerFood: 1.2,
     bonusEvery: 4,
     powerEvery: 6,
+    powerPool: POWER_POOLS.campaign,
     chainWindow: 3400,
     ...resto,
   };
@@ -398,7 +409,7 @@ const LEVELS = [
 
 // BORRAR-COMPETITIVO · los rangos, arenas y modificadores se retiraron para v1.0.
 
-  Object.assign(modulo, { COLS, ROWS, GROUPS, MODE_ORDER, MODES, LEVELS });
+  Object.assign(modulo, { COLS, ROWS, GROUPS, MODE_ORDER, POWER_POOLS, MODES, LEVELS });
 })(modulos['levels']);
 
 // ---- audio ----
@@ -717,8 +728,6 @@ const { K, DIRS, bfsStep } = modulos['grid'];
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const rand = (n) => Math.floor(Math.random() * n);
-
-const POWER = ['ghost', 'slow', 'shrink', 'shield', 'double'];
 
 const POWER_INFO = {
   ghost: { label: 'fantasma', ms: 5200 },
@@ -1317,11 +1326,12 @@ class Game {
   }
 
   spawnPower() {
-    if (this.power) return;
+    const pool = this.cfg.powerPool || [];
+    if (this.power || pool.length === 0) return;
+    const kind = pool[rand(pool.length)];
+    if (!POWER_INFO[kind]) return;
     const cell = this.freeCell(0);
-    if (!cell) return;
-    const kind = POWER[rand(POWER.length)];
-    this.power = { ...cell, kind, ttl: 9000 };
+    if (cell) this.power = { ...cell, kind, ttl: 9000 };
   }
 
   // el muro avisa antes de cerrarse: enseña dónde va a salir y da tiempo a apartarse
@@ -2252,7 +2262,7 @@ const STRINGS = {
     ruleModes: 'frenesí: los bordes dan la vuelta. cazador: come puntos y después te persigue.',
     ruleHunter: 'cazador: su cabeza te mata; su cuerpo y los puntos son seguros.',
     powerBasics: 'fantasma atraviesa obstáculos; lento baja el ritmo; recorte acorta la cola.',
-    powerAdvanced: 'escudo salva un choque; el doble de puntos dura 7 s.',
+    powerAdvanced: 'los poderes dependen del modo; el escudo salva un choque y doble dura 7 s.',
     gridMode: 'rejilla',
     levelNumberName: 'nivel {number} {name}',
     nextLevelMeta: 'siguiente · {name} · {goal} {unit}',
@@ -2395,7 +2405,7 @@ const STRINGS = {
     ruleModes: 'frenzy: wrap around the edges. hunter: eat pellets, then stay ahead.',
     ruleHunter: 'hunter: its head is deadly; its body and pellets are safe.',
     powerBasics: 'ghost passes hazards; slow eases the pace; shrink trims your tail.',
-    powerAdvanced: 'shield saves one crash; the double-points boost lasts 7 s.',
+    powerAdvanced: 'available powers depend on the mode; shield saves one crash and double lasts 7 s.',
     gridMode: 'grid',
     levelNumberName: 'level {number} {name}',
     nextLevelMeta: 'next · {name} · {goal} {unit}',
@@ -3320,7 +3330,7 @@ function anilloFoco() {
   if (app.pantalla === 'home') {
     return todos.filter((b) => b.dataset.grupo !== undefined || b.classList.contains('link'));
   }
-  if (app.pantalla === 'modes') return todos.filter((b) => b.dataset.modo !== undefined);
+  if (app.pantalla === 'modes') return todos.filter((b) => b.dataset.modo !== undefined || b.dataset.accion === 'settings');
   if (app.pantalla === 'levels') return todos.filter((b) => b.dataset.nivel !== undefined);
   return todos;
 }
@@ -3510,11 +3520,9 @@ function mostrarModos(indice = app.grupo) {
     </div>
     <nav class="tabs" aria-label="${t('switchGroup')}">${tabs}</nav>
     <div class="modos-cuerpo">
-      <div class="modos-listado">
+      <div>
         <nav class="filas" aria-label="${t('modes')}">${filas}</nav>
-        <button class="settings-quick" type="button" data-accion="settings">
-          <span aria-hidden="true">⚙</span>${t('settings')}
-        </button>
+        <p class="pie"><button class="link" type="button" data-accion="settings">${t('settings')}</button></p>
       </div>
       <aside class="inicio-demo">
         <p class="kicker" id="demo-titulo">${t('preview')}</p>
@@ -3739,31 +3747,29 @@ function mostrarAjustes(desde = app.pantalla, focoInicial = 'button[data-accion=
 
   const sonido = guardado.sound;
   const trama = guardado.crt;
-  const botonEstado = (activo) =>
-    `<span class="setting-state${activo ? ' on' : ''}">${t(activo ? 'enabled' : 'disabled')}</span>`;
+  const botonEstado = (activo) => t(activo ? 'enabled' : 'disabled');
 
-  ponerOverlay(`<div class="panel ajustes">
+  ponerOverlay(`<div class="panel niveles">
     <div class="niveles-cabeza">
-      <div>
-        <p class="kicker">${t('settings')}</p>
-        <h2>${t('settingsHint')}</h2>
-      </div>
+      <h2>${t('settings')}</h2>
       <button class="ghost" type="button" data-accion="settingsBack">${t('back')} <kbd>esc</kbd></button>
     </div>
-    <div class="settings-list">
-      <button class="setting-row" type="button" data-accion="toggleSound" aria-pressed="${sonido}">
-        <span class="setting-copy"><b>${t('sound')}</b><small>${t('soundSettingHint')}</small></span>
-        ${botonEstado(sonido)}
+    <nav class="filas" aria-label="${t('settings')}">
+      <button class="row" type="button" data-accion="toggleSound" aria-pressed="${sonido}">
+        <span class="row-idx">01</span>
+        <span class="row-name">${t('sound')}</span>
+        <span class="row-right">${botonEstado(sonido)}</span>
       </button>
-      <button class="setting-row" type="button" data-accion="crt" aria-pressed="${trama}">
-        <span class="setting-copy"><b>${t('scanlines')}</b><small>${t('scanlinesHint')}</small></span>
-        ${botonEstado(trama)}
+      <button class="row" type="button" data-accion="crt" aria-pressed="${trama}">
+        <span class="row-idx">02</span>
+        <span class="row-name">${t('scanlines')}</span>
+        <span class="row-right">${botonEstado(trama)}</span>
       </button>
-      <button class="setting-row peligro" type="button" data-accion="wipe">
-        <span class="setting-copy"><b>${t('clearRecords')}</b><small>${t('clearRecordsHint')}</small></span>
-        <span class="setting-arrow" aria-hidden="true">↗</span>
+      <button class="row" type="button" data-accion="wipe">
+        <span class="row-idx">03</span>
+        <span class="row-name">${t('clearRecords')}</span>
       </button>
-    </div>
+    </nav>
   </div>`);
 
   el.score.textContent = '—';
@@ -3797,6 +3803,7 @@ function configuracion(modo, nivel) {
     goal: datos.goal,
     bonusEvery: datos.bonusEvery,
     powerEvery: datos.powerEvery,
+    powerPool: datos.powerPool,
     chainWindow: datos.chainWindow,
   };
 }

@@ -8,7 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Game, POWER_INFO } from '../js/engine.js';
-import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS } from '../js/levels.js';
+import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS, POWER_POOLS } from '../js/levels.js';
 import { setLanguage, t, routeSlug, routeWords, levelName, fruitUnit } from '../js/i18n.js';
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -57,6 +57,7 @@ function configNivel(nivel) {
     goal: nivel.goal,
     bonusEvery: nivel.bonusEvery,
     powerEvery: nivel.powerEvery,
+    powerPool: nivel.powerPool,
     chainWindow: nivel.chainWindow,
   };
 }
@@ -71,6 +72,14 @@ process.stdout.write('estructura\n');
   comprobar(new Set(planos).size === planos.length, 'grupos: hay un modo repetido');
   comprobar(Object.keys(MODES).length === 3, 'modos: la versión 1.0 conserva tres modos');
   comprobar(!MODES.blind, 'modos: el modo ciego sigue ahí');
+  const asignados = new Set(Object.values(POWER_POOLS).flat());
+  comprobar(Object.keys(POWER_INFO).every((kind) => asignados.has(kind)),
+    'potenciadores: hay alguno sin asignar a un modo');
+  comprobar(Object.values(POWER_POOLS).some((pool) => pool.length < Object.keys(POWER_INFO).length),
+    'potenciadores: todos siguen activos en todos los modos');
+  comprobar(!POWER_POOLS.classic.includes('shield') && !POWER_POOLS.frenzy.includes('ghost')
+    && !POWER_POOLS.hunter.includes('slow') && !POWER_POOLS.campaign.includes('double'),
+  'potenciadores: no se respetan las exclusiones por modo');
   comprobar(
     Object.keys(MODES).every((id) => planos.includes(id)),
     'grupos: algún modo se queda fuera de los grupos',
@@ -263,9 +272,23 @@ process.stdout.write('reglas\n');
   comprobar(juego.multiplier === 5, 'cadena: el multiplicador no tope a ×5');
 }
 
-// potenciadores: catálogo, efectos, puntuación y protección contra un choque
+// potenciadores: catálogo, selección por modo, efectos, puntuación y protección
 process.stdout.write('potenciadores\n');
 {
+  for (const [id, modo] of Object.entries(MODES)) {
+    const juego = new Game({ ...modo }, () => {});
+    for (let i = 0; i < 16; i++) {
+      juego.power = null;
+      juego.spawnPower();
+      comprobar(!juego.power || modo.powerPool.includes(juego.power.kind),
+        `${id}: salió un potenciador excluido`);
+    }
+  }
+  const campaña = new Game(configNivel(LEVELS[0]), () => {});
+  campaña.spawnPower();
+  comprobar(!campaña.power || POWER_POOLS.campaign.includes(campaña.power.kind),
+    'campaña: salió un potenciador excluido');
+
   const poderes = ['ghost', 'slow', 'shrink', 'shield', 'double'];
   comprobar(poderes.every((kind) => POWER_INFO[kind]), 'potenciadores: falta información de un poder');
   for (const kind of poderes) {
@@ -314,7 +337,7 @@ process.stdout.write('potenciadores\n');
   escudo.fx.ghost = 0;
   escudo.die('wall');
   comprobar(escudo.state === 'dead', 'escudo: salva más de un choque');
-  process.stdout.write('  5 poderes · doble puntuación y escudo de un uso verificados\n');
+  process.stdout.write('  5 poderes · selección por modo, doble puntuación y escudo de un uso verificados\n');
 }
 
 // cazador: serpiente roja que come puntos azules y crece
@@ -876,7 +899,7 @@ process.stdout.write('fantasma y tu cuerpo\n');
 // la fruta que cierra el nivel va en amarillo
 process.stdout.write('última fruta\n');
 {
-  const juego = new Game({ ...MODES.campaign, goal: 5 }, () => {});
+  const juego = new Game({ ...configNivel(LEVELS[0]), goal: 5 }, () => {});
   comprobar(juego.ultimaFruta === false, 'última fruta: se marca antes de tiempo');
   juego.fruits = 3;
   comprobar(juego.ultimaFruta === false, 'última fruta: se marca con dos frutas por delante');
@@ -1024,7 +1047,7 @@ process.stdout.write('v1.0, idioma y publicación\n');
     && routeSlug('settings') === 'ajustes' && routeWords().settings.includes('settings')
     && fruitUnit(1) === 'fruta' && fruitUnit(2) === 'frutas',
     'idioma: el español no restaura sus textos y rutas');
-  comprobar(main.includes('class="settings-quick"') && main.includes("case 'toggleSound':")
+  comprobar(main.includes('data-accion="settings"') && main.includes("case 'toggleSound':")
     && main.includes("routeSlug('settings')"), 'ajustes: falta el acceso compacto o su navegación');
   comprobar(!/fruta a fruta|fruit to fruit|gridSummary|20×20 grid|rejilla 20×20/.test(main + idiomas + pagina),
     'interfaz: vuelve a mostrar alguno de los lemas retirados');

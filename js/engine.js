@@ -3,8 +3,6 @@ import { K, DIRS, bfsStep } from './grid.js?v=3';
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const rand = (n) => Math.floor(Math.random() * n);
 
-const POWER = ['ghost', 'slow', 'shrink', 'shield', 'double'];
-
 export const POWER_INFO = {
   ghost: { label: 'fantasma', ms: 5200 },
   slow: { label: 'lento', ms: 6000 },
@@ -602,11 +600,12 @@ export class Game {
   }
 
   spawnPower() {
-    if (this.power) return;
+    const pool = this.cfg.powerPool || [];
+    if (this.power || pool.length === 0) return;
+    const kind = pool[rand(pool.length)];
+    if (!POWER_INFO[kind]) return;
     const cell = this.freeCell(0);
-    if (!cell) return;
-    const kind = POWER[rand(POWER.length)];
-    this.power = { ...cell, kind, ttl: 9000 };
+    if (cell) this.power = { ...cell, kind, ttl: 9000 };
   }
 
   // el muro avisa antes de cerrarse: enseña dónde va a salir y da tiempo a apartarse
