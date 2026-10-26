@@ -1,110 +1,90 @@
-# snake
+# snake — v1.0
 
-Snake de rejilla, en blanco y negro y sin adornos. HTML, CSS y JavaScript a pelo: no hay dependencias, ni build, ni peticiones de red.
+Snake de rejilla, en blanco y negro y sin dependencias ni peticiones de red. Se puede jugar en español o en inglés; el idioma elegido se guarda en el navegador. Compatible con GitHub Pages, teclado, controles táctiles y mando.
 
-## cómo se juega
+## Cómo se juega
 
-| | teclado | táctil |
+| Acción | Teclado | Táctil / mando |
 | --- | --- | --- |
-| girar | flechas o WASD | desliza |
-| turbo | espacio o mayús | toca el tablero (no cazador ni competitivo) |
-| pausa | P o esc | botón pausa |
-| reiniciar | R | botón |
-| sonido | M | botón sonido |
-| menús | flechas + enter | toca |
+| Girar | Flechas o WASD | Desliza / cruceta o stick |
+| Turbo | Espacio o mayús | Toca el tablero / botón A; no disponible en cazador |
+| Pausa | P o Esc | Botón de pausa / Start |
+| Reiniciar | R | Botón |
+| Sonido | M | Botón de sonido |
+| Menús | Flechas y Enter | Toca una opción |
 
-Todo lo que sale en pantalla (grupos, modos, niveles, pausa, fin, ayuda) se maneja con las **flechas** y **enter**: el botón enfocado lleva un marco de 2 px. En la rejilla de niveles `↑↓` saltan de fila.
+La navegación de grupos, modos, niveles y ayuda funciona con teclado y mantiene un foco visible. En la rejilla de niveles, `↑↓` se mueve por las filas.
 
-Mando: d-pad y sticks para girar, A para turbo (salvo cazador y competitivo), start para pausar.
+## Modos
 
-## modos
+La portada tiene dos grupos: **progreso** e **infinitos**. Dentro de la pantalla de modos se puede cambiar de grupo con `←→`.
 
-El menú son tres grupos y cada uno abre su propia subpágina con sus modos: `↑↓` para elegir y `←→` para cambiar de grupo.
+- **Campaña** — 20 niveles con muros diseñados a mano. Se desbloquean al superarlos y cada nivel guarda su mejor puntuación.
+- **Clásico** — partida sin fin. Cada fruta acelera la serpiente y, al pasar los 30 puntos, empiezan a aparecer muros.
+- **Frenesí** — los bordes conectan entre sí y la velocidad aumenta con el tiempo.
+- **Cazador** — una serpiente roja come puntos azules y después te persigue. Su cabeza es peligrosa; su cuerpo y los puntos son seguros. Si choca contra tu cuerpo, desaparece y vuelve más pequeña. Los puntos azules también los puedes comer tú.
 
-**progreso**
+El modo competitivo se retiró para preparar la versión 1.0: no aparece en el menú, no puede iniciarse y ya no conserva salas, bots, clasificación, reloj, reapariciones ni audio propio.
 
-- **campaña** — 20 niveles con muros dibujados a mano. se desbloquean al superarlos y el récord de cada uno se guarda.
+### `BORRAR-COMPETITIVO` · rastro de retirada
 
-**infinitos**
-
-- **clásico** — sin fin. cada fruta acelera y, pasadas 30, empiezan a salir muros sueltos.
-- **frenesí** — los bordes dan la vuelta y la velocidad sube sola con el reloj.
-- **cazador** — la serpiente roja empieza comiendo puntos azules y **no te toca**: se mueve despacio y tu cabeza tampoco es casilla para ella. cuando llega a dos tercios de su tope (12 anillos) se pone a cazar: marco blanco en la cabeza, aviso y ritmo doble. su cuerpo no te mata; si le muerdes un anillo se lo recortas. te come sólo si su cabeza cae sobre la tuya, y antes marca con un cubo rojo fino por dónde va a cortar. **si se estrella contra tu cuerpo revienta**: estalla, está un segundo fuera y vuelve a nacer lejos por la mitad de largo, así que tu cuerpo es también un arma. se mueve interpolado entre casillas, sin saltos. los puntos azules también son para ti: si te los comes, no crece. cada cubo hueco te da una vida nueva: vuelve a nacer lejos.
-
-**competitivo**
-
-- **competitivo** — 1 vs 1 vs 1 vs 1 contra tres bots (`pulso`, `ruido` y `onda`), **60 segundos** y cuenta atrás 3-2-1. Entras por la pantalla de rangos y luego hay un sorteo animado de mapa y modificador. Tu tablero y las tres cuadrículas rivales se ven en directo. Los bots se aceleran cerca de la comida y, de vez en cuando, dudan, giran mal o chocan. No hay turbo para el jugador. Al agotarse el reloj, todos quedan quietos durante un segundo y después aparece la clasificación. Si mueres, revives con 1,4 s de gracia y pierdes un 20 % de los puntos (mínimo 40).
-
-los modos que sobraban (portales, reloj, muro y ciego) se han ido: sus reglas no aportaban nada que la campaña y el clásico no dieran ya, y cada uno era una forma más de romper el juego.
-
-### BORRAR-COMPETITIVO · cómo quitar el competitivo
-
-el competitivo es un modo temporal y está marcado para poder borrarlo entero de una pasada. todo lo suyo lleva la etiqueta `BORRAR-COMPETITIVO`:
+Se mantienen comentarios inocuos con la marca `BORRAR-COMPETITIVO` para identificar el trabajo retirado; no representan código jugable. Se pueden localizar con:
 
 ```sh
 grep -rn BORRAR-COMPETITIVO .
 ```
 
-eso señala los trozos de `js/levels.js` (modo, grupo, rangos, mapas y modificadores), `js/main.js` (sorteo, cuenta atrás, partida, minis, reloj, iconos y clasificación), `js/engine.js` (revivir y la gracia), `index.html` (reloj, minis y marcador), `styles.css` (sus estilos), `tools/check.mjs` (sus pruebas, que además comprueban que la marca sigue puesta) y este readme. si se quita el modo, hay que volver a dejar `MODES` en tres modos y el menú en tres grupos.
+## Portada
 
-## piezas
+El título `snake.` se dibuja como cinco serpientes independientes, una por letra. Solo la `e` va tras la manzana: avanza muy lentamente, con movimiento continuo, hasta alcanzarla. El diseño conserva los bloques nítidos y la paleta de alto contraste.
 
-- **cadena** — dos frutas seguidas suben el multiplicador hasta ×5. la barra de abajo es el tiempo que te queda para encadenar, y comer con la barra por encima del 62% paga un extra de 5 × multiplicador. cada subida de multiplicador da un destello y marca el marcador.
-- **premio** — un cubo rojo hueco aparece cada pocas frutas, caduca y da dos anillos de largo.
-- **poderes** — todo son cubos: contorno discontinuo, fantasma (atraviesas muros, bordes, cazador **y tu propio cuerpo** durante cinco segundos, así que con el fantasma puesto no te puedes matar tú); raya en medio, lento; cuadro relleno, recorte (pierdes anillos y ganas puntos). el fantasma no se corta de golpe: en el último segundo y medio se apaga en cuatro escalones y los cubos se van rellenando hasta volver a ser sólidos.
-- **turbo** — 0,68 del intervalo mientras lo mantengas; no está disponible para el jugador en cazador ni en competitivo. Los bots del competitivo aceleran cerca de la comida; el cazador también da una arrancada cuando la tiene a mano o te persigue de cerca.
-- **choque** — al morir la casilla del golpe queda marcada y tres marcos cuadrados se abren desde ella mientras la serpiente se deshace de la cabeza a la cola. la cifra final sube de 0 al total en medio segundo.
-- **borde** — se dibuja con contraste suave, sin parpadeo: el borde mortal siempre se ve y la salida se destaca al acercarte. con fantasma o en frenesí, sólo se marca cerca.
-- **última fruta** — en la campaña, la fruta que cierra el nivel sale amarilla con el centro negro: es el último punto de la barra de progreso.
-- **arranque** — al empezar cada partida, la luz enciende el tablero por bloques, un escalón por casilla, hasta dejar el mapa entero a la vista. el borde se enciende con él, porque se dibuja dentro del tablero.
-- **rótulo** — cinco serpientes separadas escriben `snake.`, una por letra; sólo la `e` tiene manzana: se desprende un bloque de su cuerpo y se estira en cubos para alcanzarla.
-- **ambiente** — el pulso de fondo del competitivo se acelera hacia los últimos diez segundos y el brillo del tablero aumenta; el audio ambiente está activo mientras el sonido general esté encendido, sin interruptor aparte.
-- **transiciones** — cambiar de pantalla barre la vieja con cubos en escalera; al subir de rango caen cubos y el nuevo icono se dibuja bloque a bloque.
-- **velocidad** — la campaña va de 155 a 106 ms por casilla y los infinitos arrancan entre 124 y 146, con suelo de 42 a 86 ms. cuesta más acelerar que antes, así que las partidas duran más.
+## Idioma y rutas
 
-## archivos
+El selector **ES / EN** cambia los textos y las rutas, y recuerda la preferencia en el navegador. El sitio usa rutas bajo el directorio del proyecto de GitHub Pages, sin dominios especiales; por ejemplo:
 
-```
-index.html          marcado, hud, capa de menús y aviso de fallo de carga
-styles.css          todo el estilo
-snake.js            TODO el juego en un fichero (generado, es lo que carga la página)
-js/                 fuentes por módulos, más cómodas de editar
-  engine.js         motor: rejilla, colisiones, poderes, cazador, dibujo
-  grid.js           bfs y utilidades de rejilla (cazador y piloto automático)
-  levels.js         grupos, 4 modos, 20 niveles y el competitivo
-  audio.js          sonido con osciladores, sin ficheros
+- `https://<usuario>.github.io/snake/`
+- `https://<usuario>.github.io/snake/campaña`
+- `https://<usuario>.github.io/snake/clásico`
+- En inglés: `/snake/campaign`, `/snake/classic`
+
+Las rutas admiten acceso directo y recarga. `serve.mjs` hace fallback a `index.html` en local; `404.html` reconstruye las rutas profundas en GitHub Pages.
+
+## Archivos
+
+```text
+index.html          documento y elementos accesibles de la interfaz
+404.html            recuperación de subrutas en GitHub Pages
+styles.css          diseño de bloques, responsive y accesible
+snake.js            bundle clásico generado que carga la página
+js/
+  engine.js         motor de juego, colisiones, poderes y dibujo
+  grid.js           BFS y utilidades de rejilla
+  levels.js         grupos, tres modos y 20 niveles
+  audio.js          sonido sintetizado, sin archivos de audio
   input.js          teclado, gestos y mando
-  main.js           pantallas, progreso y bucle
-tools/build.mjs     junta js/ en snake.js (sin dependencias)
-tools/check.mjs     pruebas del motor y de los niveles, sin navegador
-serve.mjs           servidor local sin caché
+  i18n.js           cadenas ES/EN y nombres localizados
+  main.js           pantallas, rutas, progreso, título y bucle
+serve.mjs           servidor local sin caché y fallback de rutas
+tools/build.mjs     empaqueta js/ en snake.js, sin dependencias
+tools/check.mjs     pruebas de niveles, motor, idioma y publicación
 ```
 
-La página carga `snake.js` como script clásico, no como módulo. Así funciona también con doble clic en `index.html` (protocolo `file://`), donde los módulos ES están bloqueados en varios navegadores.
-
-## editar
-
-Se toca `js/`, nunca `snake.js`, y después:
+La página carga `snake.js` como script clásico, no como módulo: así también puede abrirse con doble clic en `index.html` (`file://`). Para editar, modifica `js/` y regenera el bundle:
 
 ```sh
 node tools/build.mjs          # regenera snake.js
-node tools/check.mjs          # valida niveles, motor y reglas
+node tools/check.mjs          # comprueba niveles, motor, idioma y rutas
+node tools/build.mjs --check  # comprueba que snake.js está actualizado
 ```
 
-`node tools/build.mjs --check` comprueba que `snake.js` está al día; el workflow lo hace antes de publicar, así que si te olvidas no se despliega una versión vieja.
-
-## local
+## Ejecutar en local
 
 ```sh
-node serve.mjs 8123           # http://localhost:8123, sin caché
+node serve.mjs 8123
 ```
 
-`python3 -m http.server 8123` también sirve, pero manda cabeceras que el navegador puede cachear y te deja con la versión anterior. Si algo no cuadra tras un cambio, prueba `Ctrl+F5` o añade `?v=loquesea` a la dirección.
+Abre `http://localhost:8123/snake/`. También se sirven `http://localhost:8123/` y las rutas profundas, por ejemplo `http://localhost:8123/snake/campaña`. El servidor no usa dependencias ni caché.
 
-## si algo no arranca
+## Publicar
 
-La página avisa en pantalla en lugar de quedarse en negro: error de javascript con fichero y línea, fichero que no carga, o "no ha arrancado en 4 s" (casi siempre caché). El botón **recargar limpio** añade un parámetro nuevo a la dirección para saltarse la caché.
-
-## publicar
-
-`.github/workflows/pages.yml` comprueba el bundle, pasa los tests y publica `index.html`, `styles.css` y `snake.js`. En el repositorio: Settings → Pages → Source: GitHub Actions, y push a `main`. Queda en `https://<usuario>.github.io/snake/`.
+El workflow `.github/workflows/pages.yml` comprueba el bundle, ejecuta las pruebas y publica `index.html`, `404.html`, `styles.css` y `snake.js`. Activa **Settings → Pages → Source: GitHub Actions** para alojar el juego en `https://<usuario>.github.io/snake/`.

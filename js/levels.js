@@ -35,11 +35,10 @@ const slit = (x, y, alto) => vline(x, y, alto);
 
 
 // grupos del menú: cada uno es una subpágina con sus modos
+// BORRAR-COMPETITIVO · modo retirado en la preparación de v1.0.
 export const GROUPS = [
   { name: 'progreso', tag: 'campaña de 20 niveles', modes: ['campaign'] },
   { name: 'infinitos', tag: 'puntuación sin final', modes: ['classic', 'frenzy', 'hunter'] },
-  // BORRAR-COMPETITIVO · el grupo entero se va con el modo
-  { name: 'competitivo', tag: '1 vs 1 vs 1 vs 1 contra bots', modes: ['competitive'] },
 ];
 
 export const MODE_ORDER = GROUPS.flatMap((g) => g.modes);
@@ -94,18 +93,7 @@ export const MODES = {
     bonusEvery: 6,
     powerEvery: 5,
   },
-  // ── BORRAR-COMPETITIVO ──────────────────────────────────────────────
-  competitive: {
-    ...base,
-    id: 'competitive',
-    name: 'COMPETITIVO',
-    tag: '1 vs 1 vs 1 vs 1 contra bots · 60 s · mapa y modificador',
-    startSpeed: 132,
-    minSpeed: 78,
-    accelPerFood: 1.1,
-    competitive: true,
-  },
-  // ── fin BORRAR-COMPETITIVO ──────────────────────────────────────────
+
 };
 
 // campaña: 20 niveles. empieza lento y acaba a 104 ms por casilla
@@ -333,179 +321,4 @@ export const LEVELS = [
 ];
 
 
-/* ═════════════════════════════════════════════════════════════════════════════
-   BORRAR-COMPETITIVO · TODO ESTE BLOQUE ES TEMPORAL
-
-   el competitivo es un modo que se puede quitar entero cuando ya no haga falta.
-   para saber exactamente qué borrar (datos, pantallas, estilos, pruebas y readme):
-
-       grep -rn BORRAR-COMPETITIVO .
-
-   cada trozo está marcado con esa etiqueta. si borras esto, borra también el
-   modo `competitive` de arriba y el grupo del menú que lo abre.
-   ═════════════════════════════════════════════════════════════════════════════ */
-
-// BORRAR-COMPETITIVO: siete rangos, de hierro a obsidiana
-export const COMPETITIVE = {
-  tiempo: 60000,
-  jugadores: 4,
-  porRango: 12,
-  // BORRAR-COMPETITIVO: siete peldaños, de hierro a obsidiana
-  rangos: ['hierro', 'cobre', 'bronce', 'plata', 'oro', 'platino', 'obsidiana'],
-  // lo que cuesta morirse: un 20 % de lo que llevas, con un mínimo
-  castigo: { fraccion: 0.2, minimo: 40 },
-  // puntos que da cada puesto al terminar: 1º, 2º, 3º y 4º
-  premios: [3, 1, -1, -2],
-  bots: ['pulso', 'ruido', 'onda'],
-  // BORRAR-COMPETITIVO: mapas propios del modo (además de los 20 de la campaña)
-  arenas: [
-    { nombre: 'abierta', walls: [] },
-    {
-      nombre: 'cruz',
-      walls: [...vline(10, 0, 7), ...vline(10, 13, 7), ...hline(0, 10, 7), ...hline(13, 10, 7)],
-    },
-    {
-      nombre: 'anillos',
-      walls: holes(ring(6, 6, 8, 8), [[6, 10], [13, 10], [10, 6], [10, 13]]),
-    },
-    {
-      nombre: 'esquinas',
-      walls: [...rect(2, 2, 2, 2), ...rect(16, 2, 2, 2), ...rect(2, 16, 2, 2), ...rect(16, 16, 2, 2)],
-    },
-    {
-      nombre: 'pasillos',
-      walls: [
-        ...holes(vline(5, 1, 18), [[5, 9], [5, 10]]),
-        ...holes(vline(14, 1, 18), [[14, 9], [14, 10]]),
-      ],
-    },
-  ],
-  // BORRAR-COMPETITIVO: un modificador por partida, encima del mapa
-  modificadores: [
-    {
-      id: 'limpio',
-      nombre: 'sin muros',
-      tag: 'el mapa va vacío',
-      aplicar: (cfg) => { cfg.walls = []; },
-    },
-    {
-      id: 'muros',
-      nombre: 'muros',
-      tag: 'salen muros desde la sexta fruta',
-      aplicar: (cfg) => { cfg.wallFrom = 6; cfg.wallEvery = 7; cfg.wallMax = 24; },
-    },
-    {
-      id: 'rapido',
-      nombre: 'rápido',
-      tag: 'todo va un 15 % más rápido',
-      aplicar: (cfg) => {
-        cfg.startSpeed = Math.round(cfg.startSpeed * 0.85);
-        cfg.minSpeed = Math.round(cfg.minSpeed * 0.85);
-      },
-    },
-    {
-      id: 'lento',
-      nombre: 'lento',
-      tag: 'todo va más tranquilo',
-      aplicar: (cfg) => {
-        cfg.startSpeed = Math.round(cfg.startSpeed * 1.25);
-        cfg.minSpeed = Math.round(cfg.minSpeed * 1.15);
-      },
-    },
-    {
-      id: 'hambre',
-      nombre: 'hambre',
-      tag: 'un poder cada tres frutas',
-      aplicar: (cfg) => { cfg.powerEvery = 3; },
-    },
-    {
-      id: 'sobrio',
-      nombre: 'sin premios',
-      tag: 'no sale el cubo rojo hueco',
-      aplicar: (cfg) => { cfg.bonusEvery = 0; },
-    },
-  ],
-};
-
-// BORRAR-COMPETITIVO: un mapa al azar entre las arenas y los 20 niveles
-export function mapaDePartida(azar = Math.random) {
-  const lista = [
-    ...COMPETITIVE.arenas.map((a) => ({ nombre: a.nombre, walls: a.walls })),
-    ...LEVELS.map((n, i) => ({ nombre: `nivel ${String(i + 1).padStart(2, '0')}`, walls: n.walls })),
-  ];
-  return lista[Math.min(lista.length - 1, Math.floor(azar() * lista.length))];
-}
-
-// BORRAR-COMPETITIVO
-export function modificadorDePartida(azar = Math.random) {
-  const lista = COMPETITIVE.modificadores;
-  return lista[Math.min(lista.length - 1, Math.floor(azar() * lista.length))];
-}
-
-// BORRAR-COMPETITIVO: la rejilla de cada jugador sale de aquí (mismo mapa y modificador)
-export function configCompetitivo(mapa, modificador, extra = {}) {
-  const cfg = {
-    ...MODES.competitive,
-    walls: (mapa && mapa.walls ? mapa.walls : []).map((c) => [c[0], c[1]]),
-    tiempoTotal: COMPETITIVE.tiempo,
-    fondoBrillo: true,
-    ...extra,
-  };
-  cfg.goal = null;
-  if (modificador && modificador.aplicar) modificador.aplicar(cfg);
-  return cfg;
-}
-
-// BORRAR-COMPETITIVO: ascensos y descensos. delta son los puntos del puesto
-export function ajustarRango(estado, delta) {
-  const total = COMPETITIVE.rangos.length;
-  let rango = Math.min(total - 1, Math.max(0, Math.round(estado.rango || 0)));
-  let dentro = (Number(estado.dentro) || 0) + delta;
-  let sube = false;
-  let baja = false;
-  while (dentro >= COMPETITIVE.porRango && rango < total - 1) {
-    dentro -= COMPETITIVE.porRango;
-    rango++;
-    sube = true;
-  }
-  while (dentro < 0 && rango > 0) {
-    dentro += COMPETITIVE.porRango;
-    rango--;
-    baja = true;
-  }
-  // en el último rango no se sube más y en el primero no se baja
-  if (rango === total - 1) dentro = Math.min(dentro, COMPETITIVE.porRango - 1);
-  if (rango === 0) dentro = Math.max(0, dentro);
-  return { rango, dentro, sube, baja };
-}
-
-// BORRAR-COMPETITIVO: lo que se enseña del rango (nombre, siguiente y barra)
-export function rangoInfo(estado) {
-  const total = COMPETITIVE.rangos.length;
-  const rango = Math.min(total - 1, Math.max(0, Math.round((estado && estado.rango) || 0)));
-  const dentro = Math.min(COMPETITIVE.porRango, Math.max(0, Number(estado && estado.dentro) || 0));
-  return {
-    rango,
-    nivel: rango + 1,
-    total,
-    nombre: COMPETITIVE.rangos[rango],
-    siguiente: rango < total - 1 ? COMPETITIVE.rangos[rango + 1] : null,
-    dentro,
-    falta: COMPETITIVE.porRango - dentro,
-    progreso: dentro / COMPETITIVE.porRango,
-  };
-}
-
-// BORRAR-COMPETITIVO: lo que te cuesta morirte en la partida
-export function castigoMuerte(puntos) {
-  const { fraccion, minimo } = COMPETITIVE.castigo;
-  if (!(puntos > 0)) return minimo;
-  return Math.max(minimo, Math.round(puntos * fraccion));
-}
-
-// BORRAR-COMPETITIVO: cuánto aprietan los bots según tu rango (1,30 lento → 0,93 rápido)
-export function escalaBots(rango) {
-  const total = COMPETITIVE.rangos.length;
-  const r = Math.min(total - 1, Math.max(0, rango || 0));
-  return 1.3 - (r / (total - 1)) * 0.37;
-}
+// BORRAR-COMPETITIVO · los rangos, arenas y modificadores se retiraron para v1.0.

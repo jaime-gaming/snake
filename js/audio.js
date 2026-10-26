@@ -120,62 +120,13 @@ const SONIDOS = {
   ui() {
     tono(440, 0.03, { vol: 0.1 });
   },
-  // BORRAR-COMPETITIVO · cuenta atrás, sorteo y rangos
-  cuenta(paso) {
-    // 3 y 2 secos; el 1 ya avisa de que arranca
-    const base = paso >= 2 ? 420 : 620;
-    tono(base, 0.07, { vol: 0.16 });
-    if (paso <= 1) {
-      tono(880, 0.12, { vol: 0.18, delay: 0.02 });
-      ruido(0.1, { desde: 1800, hasta: 300, vol: 0.12 });
-    }
-  },
-  sorteo() {
-    tono(980, 0.022, { tipo: 'square', vol: 0.05 });
-  },
-  fija() {
-    tono(520, 0.06, { vol: 0.16 });
-    tono(780, 0.08, { vol: 0.16, delay: 0.06 });
-    tono(1040, 0.1, { vol: 0.14, delay: 0.13 });
-    ruido(0.08, { desde: 1200, hasta: 400, vol: 0.1 });
-  },
-  revive() {
-    tono(180, 0.22, { tipo: 'triangle', vol: 0.18, fin: 620 });
-    tono(440, 0.14, { vol: 0.1, delay: 0.1 });
-    ruido(0.18, { desde: 2400, hasta: 500, vol: 0.14 });
-  },
-  rango(sube = true) {
-    const notas = sube ? [392, 523, 659, 784] : [392, 311, 262, 196];
-    notas.forEach((f, i) => tono(f, 0.1, { vol: 0.18, delay: i * 0.085, fin: sube ? f * 1.02 : f * 0.98 }));
-    tono(sube ? 1568 : 130, 0.16, { tipo: 'triangle', vol: 0.14, delay: 0.3 });
-  },
+  // BORRAR-COMPETITIVO · sonidos de rangos y sorteo retirados para v1.0.
   locked() {
     tono(120, 0.08, { vol: 0.14 });
   },
 };
 
-// BORRAR-COMPETITIVO · pulso de fondo del competitivo: un golpe grave cada
-// medio segundo, que se acorta y sube en los últimos diez segundos.
-const ambiente = { sonando: false, timer: 0, apurado: false };
-
-function pulsoAmbiente() {
-  ambiente.timer = 0;
-  if (!ambiente.sonando) return;
-  if (!audio.enabled || !build()) {
-    ambiente.sonando = false;
-    return;
-  }
-  const golpe = ambiente.apurado ? 96 : 72;
-  try {
-    tono(golpe, 0.16, { tipo: 'triangle', vol: ambiente.apurado ? 0.13 : 0.09 });
-    tono(golpe * 1.5, 0.05, { tipo: 'square', vol: 0.03, delay: 0.02 });
-  } catch (err) {
-    /* si el audio falla, el ambiente se calla y la partida sigue */
-    ambiente.sonando = false;
-    return;
-  }
-  ambiente.timer = setTimeout(pulsoAmbiente, ambiente.apurado ? 300 : 560);
-}
+// BORRAR-COMPETITIVO · el pulso de sala se retiró para v1.0.
 
 export const audio = {
   enabled: true,
@@ -192,37 +143,6 @@ export const audio = {
   set(on) {
     this.enabled = !!on;
     if (master) master.gain.value = this.enabled ? 0.15 : 0;
-    if (!this.enabled) this.ambienteParar();
-  },
-
-  // BORRAR-COMPETITIVO · ambiente de la partida
-  ambienteEmpezar() {
-    if (!this.enabled) return;
-    if (ambiente.sonando) return;
-    if (!build()) return;
-    ambiente.sonando = true;
-    pulsoAmbiente();
-  },
-
-  ambienteParar() {
-    ambiente.sonando = false;
-    if (ambiente.timer) {
-      clearTimeout(ambiente.timer);
-      ambiente.timer = 0;
-    }
-  },
-
-  // en los últimos diez segundos el pulso se acelera (una sola vez por cambio)
-  ambienteApurado(si) {
-    const valor = !!si;
-    if (ambiente.apurado === valor) return;
-    ambiente.apurado = valor;
-    if (!ambiente.sonando) return;
-    if (ambiente.timer) {
-      clearTimeout(ambiente.timer);
-      ambiente.timer = 0;
-    }
-    pulsoAmbiente();
   },
 
   toggle() {

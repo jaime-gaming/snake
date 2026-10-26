@@ -106,6 +106,52 @@ button:disabled {
   color: var(--accent);
 }
 
+.version {
+  margin-left: 8px;
+  padding-left: 7px;
+  border-left: 1px solid var(--line2);
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  vertical-align: middle;
+}
+
+.language-control {
+  display: inline-flex;
+  flex: none;
+}
+
+#lang-switch {
+  min-width: 39px;
+  min-height: 26px;
+  padding: 3px 5px;
+  border: 1px solid var(--line2);
+  border-radius: 0;
+  background: #000;
+  color: var(--fg);
+  font: inherit;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+#lang-switch:hover {
+  border-color: var(--fg);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .stats {
   display: flex;
   align-items: baseline;
@@ -353,6 +399,15 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.tagline {
+  margin: -2px 0 0;
+  color: var(--fg);
+  font-size: clamp(13px, 2.5vw, 17px);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.2;
 }
 
 .filas {
@@ -980,6 +1035,18 @@ button.foco {
     letter-spacing: 0.2em;
   }
 
+  .version {
+    margin-left: 5px;
+    padding-left: 5px;
+    font-size: 7px;
+  }
+
+  #lang-switch {
+    min-width: 35px;
+    padding-inline: 4px;
+    font-size: 8px;
+  }
+
   .tool {
     padding: 4px 6px;
     font-size: 8px;
@@ -1026,400 +1093,7 @@ button.foco {
   }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   BORRAR-COMPETITIVO · vista del competitivo: tablero a la izquierda, rivales
-   en columna a la derecha, reloj encima y cuenta atrás en el centro.
-   grep -rn BORRAR-COMPETITIVO .
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-#reloj {
-  position: absolute;
-  top: 2px;
-  left: 50%;
-  z-index: 3;
-  transform: translateX(-50%);
-  padding: 1px 6px;
-  background: #000;
-  font-size: clamp(15px, 3.4vw, 22px);
-  font-weight: 600;
-  line-height: 1.1;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.06em;
-  color: var(--fg);
-  pointer-events: none;
-}
-
-#reloj.apurado {
-  color: var(--accent);
-}
-
-#pila {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 10px;
-  min-width: 0;
-  min-height: 0;
-}
-
-#pila.apilado {
-  flex-direction: column;
-  align-items: center;
-}
-
-#minis {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-self: stretch;
-}
-
-#pila.apilado #minis {
-  flex-direction: row;
-  align-self: center;
-}
-
-.mini {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin: 0;
-  width: 86px;
-}
-
-.mini figcaption {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 6px;
-  font-size: 8px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--dim);
-}
-
-.mini figcaption b {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  font-variant-numeric: tabular-nums;
-  color: var(--fg);
-}
-
-.mini canvas {
-  display: block;
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  background: #000;
-  outline: 1px solid var(--line2);
-}
-
-/* sorteo: dos valores girando, luego se quedan */
-#sorteo {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  background: #000;
-  text-align: center;
-  pointer-events: none;
-}
-
-#sorteo .k {
-  margin: 12px 0 0;
-  font-size: 9px;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  color: var(--dim);
-}
-
-#sorteo .v {
-  margin: 0;
-  font-size: clamp(22px, 6vw, 38px);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: #8f8f8f;
-  font-variant-numeric: tabular-nums;
-}
-
-#sorteo.fijo .k {
-  color: var(--fg);
-}
-
-#sorteo.fijo .v {
-  color: var(--fg);
-  outline: 1px solid var(--line2);
-  padding: 2px 14px;
-}
-
-/* cuenta atrás: un número por segundo, a bloques */
-#cuenta {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  z-index: 5;
-  transform: translate(-50%, -50%);
-  font-size: clamp(64px, 18vw, 132px);
-  font-weight: 600;
-  line-height: 0.9;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-  color: var(--fg);
-  pointer-events: none;
-}
-
-#cuenta.pop {
-  animation: latido 0.5s steps(2, end);
-}
-
-@keyframes latido {
-  0% { opacity: 1; transform: translate(-50%, -50%) scale(1.18); }
-  100% { opacity: 0.85; transform: translate(-50%, -50%) scale(1); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  #cuenta.pop,
-  .escalon,
-  #sorteo.gira .v,
-  #sorteo.fijo .v,
-  .mini.suma canvas { animation: none; }
-  .comp-barra i { transition: none; }
-}
-
-#aviso {
-  position: absolute;
-  top: 42%;
-  left: 50%;
-  z-index: 4;
-  transform: translate(-50%, -50%);
-  font-size: clamp(20px, 5vw, 34px);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-  color: var(--accent);
-  opacity: 0;
-  pointer-events: none;
-}
-
-#aviso.ver {
-  opacity: 1;
-}
-
-/* escalera de rangos grande, en la pantalla previa */
-.escalera {
-  display: flex;
-  gap: 4px;
-  margin: 2px 0;
-}
-
-.escalon {
-  display: flex;
-  flex: 1 1 0;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  margin: 0;
-  padding: 8px 0 5px;
-  background: #0b0b0b;
-  border: 1px solid var(--line);
-  color: #4a4a4a;
-  animation: escalon 0.24s steps(2, end) both;
-}
-
-.escalon:nth-child(1) { animation-delay: 0.02s; }
-.escalon:nth-child(2) { animation-delay: 0.06s; }
-.escalon:nth-child(3) { animation-delay: 0.1s; }
-.escalon:nth-child(4) { animation-delay: 0.14s; }
-.escalon:nth-child(5) { animation-delay: 0.18s; }
-.escalon:nth-child(6) { animation-delay: 0.22s; }
-.escalon:nth-child(7) { animation-delay: 0.26s; }
-
-.escalon svg {
-  width: 26px;
-  height: 26px;
-  fill: currentColor;
-}
-
-.escalon figcaption {
-  font-size: 7px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #6a6a6a;
-}
-
-.escalon.hecho {
-  background: #171717;
-  color: #bdbdbd;
-}
-
-.escalon.aqui {
-  background: var(--fg);
-  border-color: var(--fg);
-  color: #000;
-}
-
-.escalon.aqui figcaption {
-  color: #000;
-}
-
-@keyframes escalon {
-  0% { opacity: 0; transform: translateY(6px); }
-  100% { opacity: 1; transform: none; }
-}
-
-.comp-barra {
-  height: 6px;
-  background: #1a1a1a;
-  border: 1px solid var(--line2);
-}
-
-.comp-barra i {
-  display: block;
-  height: 100%;
-  background: var(--fg);
-  /* la barra se llena a bloques, no de forma continua */
-  transition: width 0.32s steps(12, end);
-}
-
-/* el sorteo: cada giro entra de un bloque */
-#sorteo .v {
-  transition: none;
-}
-
-#sorteo.gira .v {
-  animation: girar 0.085s steps(1, end);
-}
-
-@keyframes girar {
-  0% { opacity: 0.45; transform: translateY(-5px); }
-  100% { opacity: 1; transform: none; }
-}
-
-#sorteo.fijo .v {
-  animation: fijar 0.3s steps(3, end);
-}
-
-@keyframes fijar {
-  0% { transform: scale(1.06); }
-  100% { transform: scale(1); }
-}
-
-/* cuando un bot come, su cuadrícula da un salto */
-.mini.suma canvas {
-  animation: suma 0.24s steps(2, end);
-}
-
-.mini.suma figcaption b {
-  color: var(--fg);
-}
-
-@keyframes suma {
-  0% { outline-color: var(--fg); outline-width: 2px; }
-  100% { outline-color: var(--line2); outline-width: 1px; }
-}
-
-/* rangos: siete cubos SVG */
-.ico-rango {
-  display: inline-block;
-  width: 1em;
-  height: 1em;
-  vertical-align: -0.12em;
-  fill: currentColor;
-}
-
-.ico-rango.grande {
-  width: 34px;
-  height: 34px;
-  color: var(--fg);
-}
-
-.rangos {
-  display: flex;
-  gap: 4px;
-}
-
-.rangos .bloque {
-  display: flex;
-  flex: 1 1 0;
-  align-items: center;
-  justify-content: center;
-  padding: 7px 0;
-  background: #0d0d0d;
-  border: 1px solid var(--line);
-  color: #4a4a4a;
-  font-size: 16px;
-}
-
-.rangos .bloque.hecho {
-  background: #1d1d1d;
-  color: #bdbdbd;
-}
-
-.rangos .bloque.aqui {
-  background: var(--fg);
-  border-color: var(--fg);
-  color: #000;
-}
-
-.rango-cabeza {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.comp-tabla {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.comp-tabla li {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 4px;
-  border: 1px solid transparent;
-  font-size: 12px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--dim);
-}
-
-.comp-tabla li .p {
-  width: 14px;
-  color: #6a6a6a;
-}
-
-.comp-tabla li .n {
-  flex: 1 1 auto;
-}
-
-.comp-tabla li .s {
-  font-variant-numeric: tabular-nums;
-  color: var(--fg);
-}
-
-.comp-tabla li.propio {
-  color: var(--fg);
-  border-color: var(--line2);
-}
-
-@media (max-width: 620px) {
-  .mini {
-    width: 62px;
-  }
-  .mini figcaption {
-    font-size: 7px;
-  }
-}
+/* BORRAR-COMPETITIVO · estilos de salas, rangos y minis retirados para v1.0. */
 
 /* ═══════════════════════════════════════════════════════════════════════════
    transición de bloques entre pantallas
@@ -1434,15 +1108,4 @@ button.foco {
   image-rendering: pixelated;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   BORRAR-COMPETITIVO · cubos al subir de rango
-   grep -rn BORRAR-COMPETITIVO .
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-#festejo {
-  position: fixed;
-  inset: 0;
-  z-index: 70;
-  pointer-events: none;
-  image-rendering: pixelated;
-}
+/* BORRAR-COMPETITIVO · efectos de ascenso retirados para v1.0. */

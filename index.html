@@ -5,49 +5,57 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta http-equiv="Cache-Control" content="no-store">
 <meta name="theme-color" content="#000000">
-<meta name="description" content="Snake de rejilla: campaña de 20 niveles, clásico, frenesí, cazador y competitivo contra bots.">
-<title>snake</title>
+<meta id="meta-description" name="description" content="Snake v1.0: una campaña de 20 niveles, modos infinitos y una serpiente cazadora.">
+<title>Snake — v1.0</title>
+<script>
+  (function () {
+    var route = new URLSearchParams(location.search).get('route');
+    if (!route) return;
+    try {
+      var target = new URL(route, location.origin);
+      history.replaceState(null, '', target.pathname + target.search + target.hash);
+    } catch (error) {
+      // Si la ruta de retorno no es válida, dejamos que arranque la portada.
+    }
+  })();
+</script>
+<script>document.write('<base href="' + (location.protocol === 'file:' ? './' : '/snake/') + '">');</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Crect x='2' y='7' width='4' height='4' fill='%23fff'/%3E%3Crect x='6' y='7' width='4' height='4' fill='%23fff'/%3E%3Crect x='10' y='7' width='2' height='4' fill='%23fff'/%3E%3Crect x='13' y='2' width='3' height='3' fill='%23ff2b2b'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css?v=16">
 </head>
 <body data-screen="home">
   <div id="app">
     <header id="topbar">
-      <span class="brand">snake<span class="dot">.</span></span>
+      <span class="brand">snake<span class="dot">.</span><span class="version">v1.0</span></span>
       <div class="stats">
-        <span id="hud-meta" class="meta">cargando…</span>
+        <span id="hud-meta" class="meta" data-i18n="loading">cargando…</span>
         <span id="hud-score" class="score">—</span>
         <span id="hud-mult" class="mult"></span>
         <span id="hud-best" class="best"></span>
       </div>
       <div class="tools">
-        <button id="btn-mute" class="tool" type="button" aria-pressed="true" title="sonido (M)">
-          <i class="led" aria-hidden="true"></i><span>sonido</span>
+        <label class="language-control">
+          <span class="sr-only" data-i18n="language">Idioma</span>
+          <select id="lang-switch" data-i18n-aria="language" aria-label="Idioma">
+            <option value="es">ES</option>
+            <option value="en">EN</option>
+          </select>
+        </label>
+        <button id="btn-mute" class="tool" type="button" aria-pressed="true" data-i18n-title="soundTitleOn" title="sonido activo (M)">
+          <i class="led" aria-hidden="true"></i><span data-i18n="sound">sonido</span>
         </button>
-        <button id="btn-pause" class="tool" type="button" disabled title="pausa (P)">pausa</button>
+        <button id="btn-pause" class="tool" type="button" disabled data-i18n-title="pauseTitle" title="pausa (P)" data-i18n="pause">pausa</button>
       </div>
     </header>
 
     <main id="stage">
-      <!-- BORRAR-COMPETITIVO · reloj, sorteo y rivales en directo a la derecha -->
-      <div id="reloj" hidden aria-label="tiempo de partida">60</div>
-      <div id="pila">
-        <canvas id="board" aria-label="tablero"></canvas>
-        <div id="minis" hidden aria-label="cuadrículas de los rivales"></div>
-      </div>
-      <div id="sorteo" hidden aria-live="polite">
-        <p class="k">mapa</p>
-        <p class="v" id="sorteo-mapa">—</p>
-        <p class="k">modificador</p>
-        <p class="v" id="sorteo-mod">—</p>
-      </div>
-      <div id="cuenta" hidden aria-live="assertive"></div>
-      <div id="aviso" aria-live="polite"></div>
-      <div id="prompt">pulsa una dirección</div>
+      <!-- BORRAR-COMPETITIVO · reloj, sorteo y rivales retirados para v1.0. -->
+      <canvas id="board" data-i18n-aria="board" aria-label="tablero"></canvas>
+      <div id="prompt" data-i18n="startPrompt">pulsa una dirección</div>
       <div id="overlay"></div>
     </main>
 
-    <p id="aviso-foco" hidden>haz clic en el tablero para que responda el teclado</p>
+    <p id="aviso-foco" data-i18n="focusHint" hidden>haz clic en el tablero para que responda el teclado</p>
 
     <footer id="footer">
       <div id="combo" aria-hidden="true"><div id="chain-bar"></div></div>
@@ -58,20 +66,19 @@
     </footer>
   </div>
 
-  <!-- barrido de bloques entre pantallas y festejo al subir de rango -->
+  <!-- BORRAR-COMPETITIVO · solo se conserva el barrido de pantalla. -->
   <canvas id="barrido" hidden aria-hidden="true"></canvas>
-  <canvas id="festejo" hidden aria-hidden="true"></canvas>
 
   <div id="fatal" hidden role="alert">
-    <p class="fatal-title">el juego no ha arrancado</p>
+    <p class="fatal-title" data-i18n="fatalTitle">el juego no ha arrancado</p>
     <p id="fatal-text" class="fatal-text"></p>
     <p class="fatal-actions">
-      <button type="button" id="fatal-reload">recargar limpio</button>
+      <button type="button" id="fatal-reload" data-i18n="fatalReload">recargar limpio</button>
     </p>
   </div>
 
   <noscript>
-    <div id="sin-js">este juego necesita javascript activado.</div>
+    <div id="sin-js" data-i18n="noScript">este juego necesita javascript activado.</div>
   </noscript>
 
   <script>

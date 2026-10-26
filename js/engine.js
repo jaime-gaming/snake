@@ -57,7 +57,6 @@ export class Game {
     this.pellets = [];
     this.reveal = 0;
     this.chomp = 0;
-    this.gracia = 0; // BORRAR-COMPETITIVO
     this.pendingWalls = [];
     this.turbo = false;
     this.time = 0;
@@ -204,7 +203,6 @@ export class Game {
   updateFx(dt) {
     const k = dt / 1000;
     if (this.reveal < 1) this.reveal = Math.min(1, this.reveal + dt / 1000);
-    if (this.gracia > 0) this.gracia = Math.max(0, this.gracia - dt); // BORRAR-COMPETITIVO
     if (this.hunter && this.hunter.recarga > 0) {
       this.hunter.recarga -= dt;
       if (this.hunter.recarga <= 0) this.renacerCazador();
@@ -255,19 +253,17 @@ export class Game {
     let hx = this.body[0].x + this.dir.x;
     let hy = this.body[0].y + this.dir.y;
 
-    // BORRAR-COMPETITIVO: al revivir hay 1,4 s de gracia en los que nada te mata
-    const gracia = this.gracia > 0;
-    if (cfg.wrap || ghost || gracia) {
+    if (cfg.wrap || ghost) {
       hx = (hx + this.cols) % this.cols;
       hy = (hy + this.rows) % this.rows;
     } else if (hx < 0 || hy < 0 || hx >= this.cols || hy >= this.rows) {
       return this.die('borde', clamp(hx, 0, this.cols - 1), clamp(hy, 0, this.rows - 1));
     }
 
-    if (!ghost && !gracia && this.wallSet.has(K(hx, hy))) return this.die('muro', hx, hy);
+    if (!ghost && this.wallSet.has(K(hx, hy))) return this.die('muro', hx, hy);
     // el cuerpo del cazador no te mata: le muerdes el anillo y sigues.
     // sólo su cabeza puede comerte (y sólo si cae sobre la tuya)
-    if (!ghost && !gracia && this.hunter) {
+    if (!ghost && this.hunter) {
       const golpe = this.hunter.body.findIndex((c) => c.x === hx && c.y === hy);
       if (golpe === 0) return this.die('cazador', hx, hy);
       if (golpe > 0) {
@@ -287,7 +283,7 @@ export class Game {
     const willGrow = this.grow > 0 || eats || takesBonus;
 
     // con el fantasma puesto atraviesas también tu propio cuerpo
-    if (!ghost && !gracia) {
+    if (!ghost) {
       for (let i = 0; i < this.body.length; i++) {
         if (!willGrow && i === this.body.length - 1) continue;
         if (this.body[i].x === hx && this.body[i].y === hy) return this.die('cola', hx, hy);
@@ -386,32 +382,7 @@ export class Game {
     this.emit('power', { kind: p.kind, label: POWER_INFO[p.kind].label });
   }
 
-  // BORRAR-COMPETITIVO · en competitivo morirse no cierra la partida:
-  // vuelves al centro, conservas tus frutas y pagas puntos
-  revivir(castigo = 0) {
-    const pagado = Math.min(this.score, Math.max(0, Math.round(castigo)));
-    this.score -= pagado;
-    this.crash = null;
-    this.particles.length = 0;
-    this.hitStop = 0;
-    this.shake = 0;
-    const start = this.findStart();
-    this.body = [];
-    for (let i = 0; i < 4; i++) {
-      this.body.push({ x: start.x - start.dir.x * i, y: start.y - start.dir.y * i });
-    }
-    this.prevBody = this.body.map((p) => ({ ...p }));
-    this.dir = { ...start.dir };
-    this.queue = [];
-    this.grow = 0;
-    this.acc = 0;
-    this.turbo = false;
-    this.gracia = 1400;
-    this.state = 'running';
-    this.savedState = 'running';
-    this.emit('revive', { castigo: pagado, score: this.score });
-    return pagado;
-  }
+  // BORRAR-COMPETITIVO · la reaparición con penalización se retiró para v1.0.
 
   die(reason, x, y) {
     if (this.state !== 'running') return;
@@ -458,10 +429,9 @@ export class Game {
     return visto.size;
   }
 
-  // piloto automático: demo del menú y bots competitivos con fallos humanos medidos
+  // piloto automático: una demo clara de cada modo en los menús
   botTurn() {
     if (this.state !== 'ready' && this.state !== 'running') return;
-    const competitivo = !!this.cfg.competitive;
     const cabeza = this.body[0];
     const wrap = !!this.cfg.wrap || this.ghosting;
     const ocupado = this.blockedSet({ omitTail: true });
@@ -476,41 +446,6 @@ export class Game {
       })
       : null;
 
-    // el boost sólo pertenece a la IA rival: acelera al tener la comida a mano
-    if (competitivo && this.food) {
-      let dx = Math.abs(cabeza.x - this.food.x);
-      let dy = Math.abs(cabeza.y - this.food.y);
-      if (wrap) {
-        dx = Math.min(dx, this.cols - dx);
-        dy = Math.min(dy, this.rows - dy);
-      }
-      this.setTurbo(dx + dy <= 5);
-    }
-
-    let error = '';
-    if (competitivo) {
-      if (!Number.isFinite(this.botPausaHasta)) this.botPausaHasta = 0;
-      if (!Number.isFinite(this.botSiguienteFallo)) {
-        this.botSiguienteFallo = this.time + 2400 + rand(2600);
-      }
-      if (this.time < this.botPausaHasta) {
-        this.setTurbo(false);
-        return;
-      }
-      if (this.time >= this.botSiguienteFallo) {
-        // una pausa o un mal giro cada varios segundos; el choque es más raro
-        this.botSiguienteFallo = this.time + 2500 + rand(4000);
-        const suerte = Math.random();
-        if (suerte < 0.06) {
-          this.botPausaHasta = this.time + 100 + rand(140);
-          this.setTurbo(false);
-          return;
-        }
-        if (suerte < 0.10) error = 'choque';
-        else if (suerte < 0.25) error = 'giro';
-      }
-    }
-
     // memoria corta: no dar vueltas sobre las mismas casillas
     if (!this.botTrail) this.botTrail = new Map();
     for (const [k, v] of this.botTrail) this.botTrail.set(k, v - 1);
@@ -519,7 +454,6 @@ export class Game {
     let mejor = null;
     let mejorPunto = -Infinity;
     const movimientos = [];
-    const peligrosos = [];
 
     for (const [dx, dy] of DIRS) {
       if (dx === -this.dir.x && dy === -this.dir.y) continue;
@@ -529,11 +463,9 @@ export class Game {
         nx = (nx + this.cols) % this.cols;
         ny = (ny + this.rows) % this.rows;
       } else if (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows) {
-        peligrosos.push({ dx, dy });
         continue;
       }
       if (ocupado.has(K(nx, ny))) {
-        peligrosos.push({ dx, dy });
         continue;
       }
       const destino = { x: nx, y: ny };
@@ -563,23 +495,6 @@ export class Game {
       }
     }
 
-    // un bot se puede precipitar contra el borde o el cuerpo, como una persona
-    if (error === 'choque' && peligrosos.length) {
-      const mal = peligrosos[rand(peligrosos.length)];
-      this.setTurbo(false);
-      this.setDirection(mal.dx, mal.dy);
-      return;
-    }
-    // también puede elegir una ruta peor, aunque siga teniendo salida
-    if (error === 'giro' && movimientos.length > 1) {
-      const peor = movimientos
-        .filter((m) => m !== mejor)
-        .sort((a, b) => a.puntos - b.puntos)[0];
-      if (peor) {
-        this.setDirection(peor.dx, peor.dy);
-        return;
-      }
-    }
     if (mejor) {
       this.setDirection(mejor.dx, mejor.dy);
       return;
@@ -1128,25 +1043,9 @@ export class Game {
       Math.max(2, ancho),
     ];
 
-    // BORRAR-COMPETITIVO · miniatura: sin rejilla, sin luz ni adornos, sólo lo que importa
-    const mini = !!view.mini;
-
     ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, view.width, view.height);
-
-    // BORRAR-COMPETITIVO · brillo en el fondo que se intensifica al final de la partida
-    if (!mini && this.cfg.fondoBrillo && this.cfg.tiempoTotal) {
-      const quedan = Math.max(0, this.cfg.tiempoTotal - this.time);
-      if (quedan <= 10000) {
-        const brillo = 1 - Math.min(1, quedan / 10000);
-        const alfa = Math.round(brillo * 160) / 1000;
-        if (alfa > 0) {
-          ctx.fillStyle = `rgba(255,255,255,${alfa.toFixed(3)})`;
-          ctx.fillRect(0, 0, view.width, view.height);
-        }
-      }
-    }
 
     ctx.save();
     if (this.shake > 0.2) {
@@ -1154,18 +1053,16 @@ export class Game {
       ctx.translate(Math.round((Math.random() - 0.5) * s), Math.round((Math.random() - 0.5) * s));
     }
 
-    // rejilla de 1 px (en la miniatura sobra: se come la serpiente)
-    if (!mini) {
-      ctx.fillStyle = '#141414';
-      for (let x = 1; x < this.cols; x++) ctx.fillRect(Math.round(ox + x * cell), oy, 1, H);
-      for (let y = 1; y < this.rows; y++) ctx.fillRect(ox, Math.round(oy + y * cell), W, 1);
-    }
+    // rejilla de 1 px
+    ctx.fillStyle = '#141414';
+    for (let x = 1; x < this.cols; x++) ctx.fillRect(Math.round(ox + x * cell), oy, 1, H);
+    for (let y = 1; y < this.rows; y++) ctx.fillRect(ox, Math.round(oy + y * cell), W, 1);
 
     // ---- borde: bloques. donde hay muro se marca; donde no, sólo al acercarte,
     // y el bloque por el que vas a salir se enciende (aviso de salida)
     const grosor = Math.max(2, Math.round(cell * 0.2));
     const tramoBorde = (x0, y0, w, h, cx, cy, sentido) => {
-      const alfa = mini ? 0.3 : this.alfaBorde(cx, cy, sentido);
+      const alfa = this.alfaBorde(cx, cy, sentido);
       if (alfa < 0.02) return;
       ctx.fillStyle = `rgba(255,255,255,${alfa.toFixed(2)})`;
       ctx.fillRect(Math.round(x0), Math.round(y0), Math.round(w), Math.round(h));
@@ -1182,13 +1079,6 @@ export class Game {
     // muros: cubo hueco
     const inset = Math.max(1, Math.round(cell * 0.08));
     for (const [x, y] of this.walls) {
-      if (mini) {
-        // un muro es un bloque gris, sin contorno de 1 px
-        const [mx, my, mw] = caja(x, y, Math.round(cell * 0.12), lado - Math.round(cell * 0.24));
-        ctx.fillStyle = 'rgba(255,255,255,0.26)';
-        ctx.fillRect(mx, my, mw, mw);
-        continue;
-      }
       const [px, py, w] = caja(x, y, inset, lado - inset * 2);
       ctx.fillStyle = 'rgba(255,255,255,0.08)';
       ctx.fillRect(px, py, w, w);
@@ -1198,7 +1088,7 @@ export class Game {
     }
 
     // muros que van a salir: un cubo hueco que parpadea y se cierra
-    for (const w of (mini ? [] : this.pendingWalls)) {
+    for (const w of this.pendingWalls) {
       const avance = clamp(w.t / w.dur, 0, 1);
       const [px, py, w2] = caja(w.x, w.y, Math.round(cell * 0.16), lado - Math.round(cell * 0.32));
       ctx.strokeStyle = `rgba(255,255,255,${(0.3 + avance * 0.55).toFixed(2)})`;
@@ -1351,7 +1241,7 @@ export class Game {
       }
     };
 
-    if (this.reveal < 1 && !mini) {
+    if (this.reveal < 1) {
       // arranque: la luz avanza en cuadros desde la cabeza
       const alcance = 1.2 + this.reveal * 17;
       sombra(cabeza.x + 0.5, cabeza.y + 0.5, alcance, 3.4, 1, 5);
@@ -1386,10 +1276,6 @@ export class Game {
 
     ctx.save();
     if (this.crash) ctx.globalAlpha = clamp(1 - (this.crash.t - 120) / 520, 0.12, 1);
-    else if (this.gracia > 0) {
-      // BORRAR-COMPETITIVO: parpadeo por bloques mientras dura la gracia
-      ctx.globalAlpha = Math.floor(this.gracia / 110) % 2 === 0 ? 0.45 : 1;
-    }
     for (let i = visibles - 1; i >= 0; i--) {
       const p = this.posAt(i, alpha);
       if (!p) continue;
@@ -1440,8 +1326,7 @@ export class Game {
       }
     }
 
-    // chispas: también cuadradas (en la miniatura, fuera)
-    if (mini) this.particles.length = 0;
+    // chispas: también cuadradas
     ctx.save();
     for (const p of this.particles) {
       ctx.globalAlpha = clamp(p.life / p.max, 0, 1);

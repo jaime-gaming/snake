@@ -1,8 +1,8 @@
-/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-10-25 · v16).
+/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-10-26 · v16).
    no lo edites a mano: cambia js/*.js y vuelve a ejecutar node tools/build.mjs */
 (function () {
 'use strict';
-const modulos = { grid: {}, levels: {}, audio: {}, input: {}, engine: {}, main: {} };
+const modulos = { grid: {}, levels: {}, audio: {}, input: {}, engine: {}, i18n: {}, main: {} };
 
 // ---- grid ----
 (function (modulo) {
@@ -110,11 +110,10 @@ const slit = (x, y, alto) => vline(x, y, alto);
 
 
 // grupos del menú: cada uno es una subpágina con sus modos
+// BORRAR-COMPETITIVO · modo retirado en la preparación de v1.0.
 const GROUPS = [
   { name: 'progreso', tag: 'campaña de 20 niveles', modes: ['campaign'] },
   { name: 'infinitos', tag: 'puntuación sin final', modes: ['classic', 'frenzy', 'hunter'] },
-  // BORRAR-COMPETITIVO · el grupo entero se va con el modo
-  { name: 'competitivo', tag: '1 vs 1 vs 1 vs 1 contra bots', modes: ['competitive'] },
 ];
 
 const MODE_ORDER = GROUPS.flatMap((g) => g.modes);
@@ -169,18 +168,7 @@ const MODES = {
     bonusEvery: 6,
     powerEvery: 5,
   },
-  // ── BORRAR-COMPETITIVO ──────────────────────────────────────────────
-  competitive: {
-    ...base,
-    id: 'competitive',
-    name: 'COMPETITIVO',
-    tag: '1 vs 1 vs 1 vs 1 contra bots · 60 s · mapa y modificador',
-    startSpeed: 132,
-    minSpeed: 78,
-    accelPerFood: 1.1,
-    competitive: true,
-  },
-  // ── fin BORRAR-COMPETITIVO ──────────────────────────────────────────
+
 };
 
 // campaña: 20 niveles. empieza lento y acaba a 104 ms por casilla
@@ -408,184 +396,9 @@ const LEVELS = [
 ];
 
 
-/* ═════════════════════════════════════════════════════════════════════════════
-   BORRAR-COMPETITIVO · TODO ESTE BLOQUE ES TEMPORAL
+// BORRAR-COMPETITIVO · los rangos, arenas y modificadores se retiraron para v1.0.
 
-   el competitivo es un modo que se puede quitar entero cuando ya no haga falta.
-   para saber exactamente qué borrar (datos, pantallas, estilos, pruebas y readme):
-
-       grep -rn BORRAR-COMPETITIVO .
-
-   cada trozo está marcado con esa etiqueta. si borras esto, borra también el
-   modo `competitive` de arriba y el grupo del menú que lo abre.
-   ═════════════════════════════════════════════════════════════════════════════ */
-
-// BORRAR-COMPETITIVO: siete rangos, de hierro a obsidiana
-const COMPETITIVE = {
-  tiempo: 60000,
-  jugadores: 4,
-  porRango: 12,
-  // BORRAR-COMPETITIVO: siete peldaños, de hierro a obsidiana
-  rangos: ['hierro', 'cobre', 'bronce', 'plata', 'oro', 'platino', 'obsidiana'],
-  // lo que cuesta morirse: un 20 % de lo que llevas, con un mínimo
-  castigo: { fraccion: 0.2, minimo: 40 },
-  // puntos que da cada puesto al terminar: 1º, 2º, 3º y 4º
-  premios: [3, 1, -1, -2],
-  bots: ['pulso', 'ruido', 'onda'],
-  // BORRAR-COMPETITIVO: mapas propios del modo (además de los 20 de la campaña)
-  arenas: [
-    { nombre: 'abierta', walls: [] },
-    {
-      nombre: 'cruz',
-      walls: [...vline(10, 0, 7), ...vline(10, 13, 7), ...hline(0, 10, 7), ...hline(13, 10, 7)],
-    },
-    {
-      nombre: 'anillos',
-      walls: holes(ring(6, 6, 8, 8), [[6, 10], [13, 10], [10, 6], [10, 13]]),
-    },
-    {
-      nombre: 'esquinas',
-      walls: [...rect(2, 2, 2, 2), ...rect(16, 2, 2, 2), ...rect(2, 16, 2, 2), ...rect(16, 16, 2, 2)],
-    },
-    {
-      nombre: 'pasillos',
-      walls: [
-        ...holes(vline(5, 1, 18), [[5, 9], [5, 10]]),
-        ...holes(vline(14, 1, 18), [[14, 9], [14, 10]]),
-      ],
-    },
-  ],
-  // BORRAR-COMPETITIVO: un modificador por partida, encima del mapa
-  modificadores: [
-    {
-      id: 'limpio',
-      nombre: 'sin muros',
-      tag: 'el mapa va vacío',
-      aplicar: (cfg) => { cfg.walls = []; },
-    },
-    {
-      id: 'muros',
-      nombre: 'muros',
-      tag: 'salen muros desde la sexta fruta',
-      aplicar: (cfg) => { cfg.wallFrom = 6; cfg.wallEvery = 7; cfg.wallMax = 24; },
-    },
-    {
-      id: 'rapido',
-      nombre: 'rápido',
-      tag: 'todo va un 15 % más rápido',
-      aplicar: (cfg) => {
-        cfg.startSpeed = Math.round(cfg.startSpeed * 0.85);
-        cfg.minSpeed = Math.round(cfg.minSpeed * 0.85);
-      },
-    },
-    {
-      id: 'lento',
-      nombre: 'lento',
-      tag: 'todo va más tranquilo',
-      aplicar: (cfg) => {
-        cfg.startSpeed = Math.round(cfg.startSpeed * 1.25);
-        cfg.minSpeed = Math.round(cfg.minSpeed * 1.15);
-      },
-    },
-    {
-      id: 'hambre',
-      nombre: 'hambre',
-      tag: 'un poder cada tres frutas',
-      aplicar: (cfg) => { cfg.powerEvery = 3; },
-    },
-    {
-      id: 'sobrio',
-      nombre: 'sin premios',
-      tag: 'no sale el cubo rojo hueco',
-      aplicar: (cfg) => { cfg.bonusEvery = 0; },
-    },
-  ],
-};
-
-// BORRAR-COMPETITIVO: un mapa al azar entre las arenas y los 20 niveles
-function mapaDePartida(azar = Math.random) {
-  const lista = [
-    ...COMPETITIVE.arenas.map((a) => ({ nombre: a.nombre, walls: a.walls })),
-    ...LEVELS.map((n, i) => ({ nombre: `nivel ${String(i + 1).padStart(2, '0')}`, walls: n.walls })),
-  ];
-  return lista[Math.min(lista.length - 1, Math.floor(azar() * lista.length))];
-}
-
-// BORRAR-COMPETITIVO
-function modificadorDePartida(azar = Math.random) {
-  const lista = COMPETITIVE.modificadores;
-  return lista[Math.min(lista.length - 1, Math.floor(azar() * lista.length))];
-}
-
-// BORRAR-COMPETITIVO: la rejilla de cada jugador sale de aquí (mismo mapa y modificador)
-function configCompetitivo(mapa, modificador, extra = {}) {
-  const cfg = {
-    ...MODES.competitive,
-    walls: (mapa && mapa.walls ? mapa.walls : []).map((c) => [c[0], c[1]]),
-    tiempoTotal: COMPETITIVE.tiempo,
-    fondoBrillo: true,
-    ...extra,
-  };
-  cfg.goal = null;
-  if (modificador && modificador.aplicar) modificador.aplicar(cfg);
-  return cfg;
-}
-
-// BORRAR-COMPETITIVO: ascensos y descensos. delta son los puntos del puesto
-function ajustarRango(estado, delta) {
-  const total = COMPETITIVE.rangos.length;
-  let rango = Math.min(total - 1, Math.max(0, Math.round(estado.rango || 0)));
-  let dentro = (Number(estado.dentro) || 0) + delta;
-  let sube = false;
-  let baja = false;
-  while (dentro >= COMPETITIVE.porRango && rango < total - 1) {
-    dentro -= COMPETITIVE.porRango;
-    rango++;
-    sube = true;
-  }
-  while (dentro < 0 && rango > 0) {
-    dentro += COMPETITIVE.porRango;
-    rango--;
-    baja = true;
-  }
-  // en el último rango no se sube más y en el primero no se baja
-  if (rango === total - 1) dentro = Math.min(dentro, COMPETITIVE.porRango - 1);
-  if (rango === 0) dentro = Math.max(0, dentro);
-  return { rango, dentro, sube, baja };
-}
-
-// BORRAR-COMPETITIVO: lo que se enseña del rango (nombre, siguiente y barra)
-function rangoInfo(estado) {
-  const total = COMPETITIVE.rangos.length;
-  const rango = Math.min(total - 1, Math.max(0, Math.round((estado && estado.rango) || 0)));
-  const dentro = Math.min(COMPETITIVE.porRango, Math.max(0, Number(estado && estado.dentro) || 0));
-  return {
-    rango,
-    nivel: rango + 1,
-    total,
-    nombre: COMPETITIVE.rangos[rango],
-    siguiente: rango < total - 1 ? COMPETITIVE.rangos[rango + 1] : null,
-    dentro,
-    falta: COMPETITIVE.porRango - dentro,
-    progreso: dentro / COMPETITIVE.porRango,
-  };
-}
-
-// BORRAR-COMPETITIVO: lo que te cuesta morirte en la partida
-function castigoMuerte(puntos) {
-  const { fraccion, minimo } = COMPETITIVE.castigo;
-  if (!(puntos > 0)) return minimo;
-  return Math.max(minimo, Math.round(puntos * fraccion));
-}
-
-// BORRAR-COMPETITIVO: cuánto aprietan los bots según tu rango (1,30 lento → 0,93 rápido)
-function escalaBots(rango) {
-  const total = COMPETITIVE.rangos.length;
-  const r = Math.min(total - 1, Math.max(0, rango || 0));
-  return 1.3 - (r / (total - 1)) * 0.37;
-}
-
-  Object.assign(modulo, { COLS, ROWS, GROUPS, MODE_ORDER, MODES, LEVELS, COMPETITIVE, mapaDePartida, modificadorDePartida, configCompetitivo, ajustarRango, rangoInfo, castigoMuerte, escalaBots });
+  Object.assign(modulo, { COLS, ROWS, GROUPS, MODE_ORDER, MODES, LEVELS });
 })(modulos['levels']);
 
 // ---- audio ----
@@ -713,62 +526,13 @@ const SONIDOS = {
   ui() {
     tono(440, 0.03, { vol: 0.1 });
   },
-  // BORRAR-COMPETITIVO · cuenta atrás, sorteo y rangos
-  cuenta(paso) {
-    // 3 y 2 secos; el 1 ya avisa de que arranca
-    const base = paso >= 2 ? 420 : 620;
-    tono(base, 0.07, { vol: 0.16 });
-    if (paso <= 1) {
-      tono(880, 0.12, { vol: 0.18, delay: 0.02 });
-      ruido(0.1, { desde: 1800, hasta: 300, vol: 0.12 });
-    }
-  },
-  sorteo() {
-    tono(980, 0.022, { tipo: 'square', vol: 0.05 });
-  },
-  fija() {
-    tono(520, 0.06, { vol: 0.16 });
-    tono(780, 0.08, { vol: 0.16, delay: 0.06 });
-    tono(1040, 0.1, { vol: 0.14, delay: 0.13 });
-    ruido(0.08, { desde: 1200, hasta: 400, vol: 0.1 });
-  },
-  revive() {
-    tono(180, 0.22, { tipo: 'triangle', vol: 0.18, fin: 620 });
-    tono(440, 0.14, { vol: 0.1, delay: 0.1 });
-    ruido(0.18, { desde: 2400, hasta: 500, vol: 0.14 });
-  },
-  rango(sube = true) {
-    const notas = sube ? [392, 523, 659, 784] : [392, 311, 262, 196];
-    notas.forEach((f, i) => tono(f, 0.1, { vol: 0.18, delay: i * 0.085, fin: sube ? f * 1.02 : f * 0.98 }));
-    tono(sube ? 1568 : 130, 0.16, { tipo: 'triangle', vol: 0.14, delay: 0.3 });
-  },
+  // BORRAR-COMPETITIVO · sonidos de rangos y sorteo retirados para v1.0.
   locked() {
     tono(120, 0.08, { vol: 0.14 });
   },
 };
 
-// BORRAR-COMPETITIVO · pulso de fondo del competitivo: un golpe grave cada
-// medio segundo, que se acorta y sube en los últimos diez segundos.
-const ambiente = { sonando: false, timer: 0, apurado: false };
-
-function pulsoAmbiente() {
-  ambiente.timer = 0;
-  if (!ambiente.sonando) return;
-  if (!audio.enabled || !build()) {
-    ambiente.sonando = false;
-    return;
-  }
-  const golpe = ambiente.apurado ? 96 : 72;
-  try {
-    tono(golpe, 0.16, { tipo: 'triangle', vol: ambiente.apurado ? 0.13 : 0.09 });
-    tono(golpe * 1.5, 0.05, { tipo: 'square', vol: 0.03, delay: 0.02 });
-  } catch (err) {
-    /* si el audio falla, el ambiente se calla y la partida sigue */
-    ambiente.sonando = false;
-    return;
-  }
-  ambiente.timer = setTimeout(pulsoAmbiente, ambiente.apurado ? 300 : 560);
-}
+// BORRAR-COMPETITIVO · el pulso de sala se retiró para v1.0.
 
 const audio = {
   enabled: true,
@@ -785,37 +549,6 @@ const audio = {
   set(on) {
     this.enabled = !!on;
     if (master) master.gain.value = this.enabled ? 0.15 : 0;
-    if (!this.enabled) this.ambienteParar();
-  },
-
-  // BORRAR-COMPETITIVO · ambiente de la partida
-  ambienteEmpezar() {
-    if (!this.enabled) return;
-    if (ambiente.sonando) return;
-    if (!build()) return;
-    ambiente.sonando = true;
-    pulsoAmbiente();
-  },
-
-  ambienteParar() {
-    ambiente.sonando = false;
-    if (ambiente.timer) {
-      clearTimeout(ambiente.timer);
-      ambiente.timer = 0;
-    }
-  },
-
-  // en los últimos diez segundos el pulso se acelera (una sola vez por cambio)
-  ambienteApurado(si) {
-    const valor = !!si;
-    if (ambiente.apurado === valor) return;
-    ambiente.apurado = valor;
-    if (!ambiente.sonando) return;
-    if (ambiente.timer) {
-      clearTimeout(ambiente.timer);
-      ambiente.timer = 0;
-    }
-    pulsoAmbiente();
   },
 
   toggle() {
@@ -870,6 +603,8 @@ function attachInput({ stage, actions, canTurbo = () => true }) {
   const turboActivo = () => typeof canTurbo === 'function' && canTurbo();
 
   window.addEventListener('keydown', (e) => {
+    if (e.target && typeof e.target.closest === 'function'
+      && e.target.closest('input, select, textarea, [contenteditable="true"]')) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const accion = TECLAS[e.code];
     if (!accion) return;
@@ -1033,7 +768,6 @@ class Game {
     this.pellets = [];
     this.reveal = 0;
     this.chomp = 0;
-    this.gracia = 0; // BORRAR-COMPETITIVO
     this.pendingWalls = [];
     this.turbo = false;
     this.time = 0;
@@ -1180,7 +914,6 @@ class Game {
   updateFx(dt) {
     const k = dt / 1000;
     if (this.reveal < 1) this.reveal = Math.min(1, this.reveal + dt / 1000);
-    if (this.gracia > 0) this.gracia = Math.max(0, this.gracia - dt); // BORRAR-COMPETITIVO
     if (this.hunter && this.hunter.recarga > 0) {
       this.hunter.recarga -= dt;
       if (this.hunter.recarga <= 0) this.renacerCazador();
@@ -1231,19 +964,17 @@ class Game {
     let hx = this.body[0].x + this.dir.x;
     let hy = this.body[0].y + this.dir.y;
 
-    // BORRAR-COMPETITIVO: al revivir hay 1,4 s de gracia en los que nada te mata
-    const gracia = this.gracia > 0;
-    if (cfg.wrap || ghost || gracia) {
+    if (cfg.wrap || ghost) {
       hx = (hx + this.cols) % this.cols;
       hy = (hy + this.rows) % this.rows;
     } else if (hx < 0 || hy < 0 || hx >= this.cols || hy >= this.rows) {
       return this.die('borde', clamp(hx, 0, this.cols - 1), clamp(hy, 0, this.rows - 1));
     }
 
-    if (!ghost && !gracia && this.wallSet.has(K(hx, hy))) return this.die('muro', hx, hy);
+    if (!ghost && this.wallSet.has(K(hx, hy))) return this.die('muro', hx, hy);
     // el cuerpo del cazador no te mata: le muerdes el anillo y sigues.
     // sólo su cabeza puede comerte (y sólo si cae sobre la tuya)
-    if (!ghost && !gracia && this.hunter) {
+    if (!ghost && this.hunter) {
       const golpe = this.hunter.body.findIndex((c) => c.x === hx && c.y === hy);
       if (golpe === 0) return this.die('cazador', hx, hy);
       if (golpe > 0) {
@@ -1263,7 +994,7 @@ class Game {
     const willGrow = this.grow > 0 || eats || takesBonus;
 
     // con el fantasma puesto atraviesas también tu propio cuerpo
-    if (!ghost && !gracia) {
+    if (!ghost) {
       for (let i = 0; i < this.body.length; i++) {
         if (!willGrow && i === this.body.length - 1) continue;
         if (this.body[i].x === hx && this.body[i].y === hy) return this.die('cola', hx, hy);
@@ -1362,32 +1093,7 @@ class Game {
     this.emit('power', { kind: p.kind, label: POWER_INFO[p.kind].label });
   }
 
-  // BORRAR-COMPETITIVO · en competitivo morirse no cierra la partida:
-  // vuelves al centro, conservas tus frutas y pagas puntos
-  revivir(castigo = 0) {
-    const pagado = Math.min(this.score, Math.max(0, Math.round(castigo)));
-    this.score -= pagado;
-    this.crash = null;
-    this.particles.length = 0;
-    this.hitStop = 0;
-    this.shake = 0;
-    const start = this.findStart();
-    this.body = [];
-    for (let i = 0; i < 4; i++) {
-      this.body.push({ x: start.x - start.dir.x * i, y: start.y - start.dir.y * i });
-    }
-    this.prevBody = this.body.map((p) => ({ ...p }));
-    this.dir = { ...start.dir };
-    this.queue = [];
-    this.grow = 0;
-    this.acc = 0;
-    this.turbo = false;
-    this.gracia = 1400;
-    this.state = 'running';
-    this.savedState = 'running';
-    this.emit('revive', { castigo: pagado, score: this.score });
-    return pagado;
-  }
+  // BORRAR-COMPETITIVO · la reaparición con penalización se retiró para v1.0.
 
   die(reason, x, y) {
     if (this.state !== 'running') return;
@@ -1434,10 +1140,9 @@ class Game {
     return visto.size;
   }
 
-  // piloto automático: demo del menú y bots competitivos con fallos humanos medidos
+  // piloto automático: una demo clara de cada modo en los menús
   botTurn() {
     if (this.state !== 'ready' && this.state !== 'running') return;
-    const competitivo = !!this.cfg.competitive;
     const cabeza = this.body[0];
     const wrap = !!this.cfg.wrap || this.ghosting;
     const ocupado = this.blockedSet({ omitTail: true });
@@ -1452,41 +1157,6 @@ class Game {
       })
       : null;
 
-    // el boost sólo pertenece a la IA rival: acelera al tener la comida a mano
-    if (competitivo && this.food) {
-      let dx = Math.abs(cabeza.x - this.food.x);
-      let dy = Math.abs(cabeza.y - this.food.y);
-      if (wrap) {
-        dx = Math.min(dx, this.cols - dx);
-        dy = Math.min(dy, this.rows - dy);
-      }
-      this.setTurbo(dx + dy <= 5);
-    }
-
-    let error = '';
-    if (competitivo) {
-      if (!Number.isFinite(this.botPausaHasta)) this.botPausaHasta = 0;
-      if (!Number.isFinite(this.botSiguienteFallo)) {
-        this.botSiguienteFallo = this.time + 2400 + rand(2600);
-      }
-      if (this.time < this.botPausaHasta) {
-        this.setTurbo(false);
-        return;
-      }
-      if (this.time >= this.botSiguienteFallo) {
-        // una pausa o un mal giro cada varios segundos; el choque es más raro
-        this.botSiguienteFallo = this.time + 2500 + rand(4000);
-        const suerte = Math.random();
-        if (suerte < 0.06) {
-          this.botPausaHasta = this.time + 100 + rand(140);
-          this.setTurbo(false);
-          return;
-        }
-        if (suerte < 0.10) error = 'choque';
-        else if (suerte < 0.25) error = 'giro';
-      }
-    }
-
     // memoria corta: no dar vueltas sobre las mismas casillas
     if (!this.botTrail) this.botTrail = new Map();
     for (const [k, v] of this.botTrail) this.botTrail.set(k, v - 1);
@@ -1495,7 +1165,6 @@ class Game {
     let mejor = null;
     let mejorPunto = -Infinity;
     const movimientos = [];
-    const peligrosos = [];
 
     for (const [dx, dy] of DIRS) {
       if (dx === -this.dir.x && dy === -this.dir.y) continue;
@@ -1505,11 +1174,9 @@ class Game {
         nx = (nx + this.cols) % this.cols;
         ny = (ny + this.rows) % this.rows;
       } else if (nx < 0 || ny < 0 || nx >= this.cols || ny >= this.rows) {
-        peligrosos.push({ dx, dy });
         continue;
       }
       if (ocupado.has(K(nx, ny))) {
-        peligrosos.push({ dx, dy });
         continue;
       }
       const destino = { x: nx, y: ny };
@@ -1539,23 +1206,6 @@ class Game {
       }
     }
 
-    // un bot se puede precipitar contra el borde o el cuerpo, como una persona
-    if (error === 'choque' && peligrosos.length) {
-      const mal = peligrosos[rand(peligrosos.length)];
-      this.setTurbo(false);
-      this.setDirection(mal.dx, mal.dy);
-      return;
-    }
-    // también puede elegir una ruta peor, aunque siga teniendo salida
-    if (error === 'giro' && movimientos.length > 1) {
-      const peor = movimientos
-        .filter((m) => m !== mejor)
-        .sort((a, b) => a.puntos - b.puntos)[0];
-      if (peor) {
-        this.setDirection(peor.dx, peor.dy);
-        return;
-      }
-    }
     if (mejor) {
       this.setDirection(mejor.dx, mejor.dy);
       return;
@@ -2104,25 +1754,9 @@ class Game {
       Math.max(2, ancho),
     ];
 
-    // BORRAR-COMPETITIVO · miniatura: sin rejilla, sin luz ni adornos, sólo lo que importa
-    const mini = !!view.mini;
-
     ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, view.width, view.height);
-
-    // BORRAR-COMPETITIVO · brillo en el fondo que se intensifica al final de la partida
-    if (!mini && this.cfg.fondoBrillo && this.cfg.tiempoTotal) {
-      const quedan = Math.max(0, this.cfg.tiempoTotal - this.time);
-      if (quedan <= 10000) {
-        const brillo = 1 - Math.min(1, quedan / 10000);
-        const alfa = Math.round(brillo * 160) / 1000;
-        if (alfa > 0) {
-          ctx.fillStyle = `rgba(255,255,255,${alfa.toFixed(3)})`;
-          ctx.fillRect(0, 0, view.width, view.height);
-        }
-      }
-    }
 
     ctx.save();
     if (this.shake > 0.2) {
@@ -2130,18 +1764,16 @@ class Game {
       ctx.translate(Math.round((Math.random() - 0.5) * s), Math.round((Math.random() - 0.5) * s));
     }
 
-    // rejilla de 1 px (en la miniatura sobra: se come la serpiente)
-    if (!mini) {
-      ctx.fillStyle = '#141414';
-      for (let x = 1; x < this.cols; x++) ctx.fillRect(Math.round(ox + x * cell), oy, 1, H);
-      for (let y = 1; y < this.rows; y++) ctx.fillRect(ox, Math.round(oy + y * cell), W, 1);
-    }
+    // rejilla de 1 px
+    ctx.fillStyle = '#141414';
+    for (let x = 1; x < this.cols; x++) ctx.fillRect(Math.round(ox + x * cell), oy, 1, H);
+    for (let y = 1; y < this.rows; y++) ctx.fillRect(ox, Math.round(oy + y * cell), W, 1);
 
     // ---- borde: bloques. donde hay muro se marca; donde no, sólo al acercarte,
     // y el bloque por el que vas a salir se enciende (aviso de salida)
     const grosor = Math.max(2, Math.round(cell * 0.2));
     const tramoBorde = (x0, y0, w, h, cx, cy, sentido) => {
-      const alfa = mini ? 0.3 : this.alfaBorde(cx, cy, sentido);
+      const alfa = this.alfaBorde(cx, cy, sentido);
       if (alfa < 0.02) return;
       ctx.fillStyle = `rgba(255,255,255,${alfa.toFixed(2)})`;
       ctx.fillRect(Math.round(x0), Math.round(y0), Math.round(w), Math.round(h));
@@ -2158,13 +1790,6 @@ class Game {
     // muros: cubo hueco
     const inset = Math.max(1, Math.round(cell * 0.08));
     for (const [x, y] of this.walls) {
-      if (mini) {
-        // un muro es un bloque gris, sin contorno de 1 px
-        const [mx, my, mw] = caja(x, y, Math.round(cell * 0.12), lado - Math.round(cell * 0.24));
-        ctx.fillStyle = 'rgba(255,255,255,0.26)';
-        ctx.fillRect(mx, my, mw, mw);
-        continue;
-      }
       const [px, py, w] = caja(x, y, inset, lado - inset * 2);
       ctx.fillStyle = 'rgba(255,255,255,0.08)';
       ctx.fillRect(px, py, w, w);
@@ -2174,7 +1799,7 @@ class Game {
     }
 
     // muros que van a salir: un cubo hueco que parpadea y se cierra
-    for (const w of (mini ? [] : this.pendingWalls)) {
+    for (const w of this.pendingWalls) {
       const avance = clamp(w.t / w.dur, 0, 1);
       const [px, py, w2] = caja(w.x, w.y, Math.round(cell * 0.16), lado - Math.round(cell * 0.32));
       ctx.strokeStyle = `rgba(255,255,255,${(0.3 + avance * 0.55).toFixed(2)})`;
@@ -2327,7 +1952,7 @@ class Game {
       }
     };
 
-    if (this.reveal < 1 && !mini) {
+    if (this.reveal < 1) {
       // arranque: la luz avanza en cuadros desde la cabeza
       const alcance = 1.2 + this.reveal * 17;
       sombra(cabeza.x + 0.5, cabeza.y + 0.5, alcance, 3.4, 1, 5);
@@ -2362,10 +1987,6 @@ class Game {
 
     ctx.save();
     if (this.crash) ctx.globalAlpha = clamp(1 - (this.crash.t - 120) / 520, 0.12, 1);
-    else if (this.gracia > 0) {
-      // BORRAR-COMPETITIVO: parpadeo por bloques mientras dura la gracia
-      ctx.globalAlpha = Math.floor(this.gracia / 110) % 2 === 0 ? 0.45 : 1;
-    }
     for (let i = visibles - 1; i >= 0; i--) {
       const p = this.posAt(i, alpha);
       if (!p) continue;
@@ -2416,8 +2037,7 @@ class Game {
       }
     }
 
-    // chispas: también cuadradas (en la miniatura, fuera)
-    if (mini) this.particles.length = 0;
+    // chispas: también cuadradas
     ctx.save();
     for (const p of this.particles) {
       ctx.globalAlpha = clamp(p.life / p.max, 0, 1);
@@ -2473,14 +2093,375 @@ class Game {
   Object.assign(modulo, { POWER_INFO, Game });
 })(modulos['engine']);
 
+// ---- i18n ----
+(function (modulo) {
+'use strict';
+// Textos del juego y nombres localizados. Sin dependencias ni llamadas externas.
+
+const KEY = 'snake.language';
+const STRINGS = {
+  es: {
+    documentTitle: 'Snake — v1.0',
+    description: 'Snake v1.0: una campaña de 20 niveles, modos infinitos y una serpiente cazadora.',
+    language: 'Idioma',
+    sound: 'sonido',
+    soundTitleOn: 'sonido activo (M)',
+    soundTitleOff: 'sonido apagado (M)',
+    pause: 'pausa',
+    pauseTitle: 'pausa (P)',
+    resume: 'seguir',
+    resumeTitle: 'seguir (P)',
+    board: 'tablero',
+    startPrompt: 'pulsa una dirección',
+    focusHint: 'haz clic en el tablero para que responda el teclado',
+    fatalTitle: 'el juego no ha arrancado',
+    fatalReload: 'recargar limpio',
+    noScript: 'este juego necesita javascript activado.',
+    loading: 'cargando…',
+    missingPieces: 'faltan piezas ({pieces}). casi seguro hay ficheros viejos en caché: pulsa recargar limpio.',
+    campaign: 'campaña',
+    groupCampaign: 'progreso',
+    groupCampaignTag: 'campaña de 20 niveles',
+    groupEndless: 'infinitos',
+    groupEndlessTag: 'puntuación sin final',
+    modeClassic: 'clásico',
+    modeClassicTag: 'cada fruta acelera · pasados 30 puntos empiezan a salir muros',
+    modeFrenzy: 'frenesí',
+    modeFrenzyTag: 'bordes abiertos y la velocidad sube sola',
+    modeHunter: 'cazador',
+    modeHunterTag: 'una serpiente roja come puntos azules y crece',
+    levelNames: {
+      LLANO: 'llano', CRUZ: 'cruz', PILARES: 'pilares', ANILLO: 'anillo', ZIGZAG: 'zigzag',
+      COLUMNAS: 'columnas', 'DOBLE ANILLO': 'doble anillo', REJILLA: 'rejilla', JAULA: 'jaula',
+      ASPAS: 'aspas', 'CUATRO ESQUINAS': 'cuatro esquinas', 'CRUZ HUECA': 'cruz hueca',
+      'REJILLA DOBLE': 'rejilla doble', PASILLO: 'pasillo', PUAS: 'púas', ESCALERA: 'escalera',
+      DIENTES: 'dientes', LABERINTO: 'laberinto', 'DOS JAULAS': 'dos jaulas', FINAL: 'final',
+    },
+    tagline: 'fruta a fruta, nivel a nivel',
+    gridSummary: 'rejilla 20×20 · {levels} niveles · {modes} modos',
+    controls: 'controles',
+    hideGrid: 'quitar trama',
+    showGrid: 'poner trama',
+    clearRecords: 'borrar récords',
+    chooseGroup: 'elige un grupo',
+    preview: 'vista previa',
+    previewMode: 'vista previa del modo',
+    previewGroupHint: 'elige un grupo para ver sus modos',
+    groupAria: 'grupos',
+    menuNumber: 'menú · {number}',
+    groups: 'grupos',
+    switchGroup: 'cambiar de grupo',
+    modes: 'modos',
+    chooseMode: '↑↓ elegir · ←→ cambiar de grupo · enter jugar',
+    campaignProgress: '{cleared}/{total} superados',
+    campaignDescription: '20 niveles con muros · {cleared} superados',
+    chooseLevel: 'elige nivel',
+    blocked: 'bloqueado',
+    fruits: '{count} {unit}',
+    levelPreviewData: '{goal} {unit} · ritmo {speed}',
+    levelPreviewDataWithRecord: '{goal} {unit} · ritmo {speed} · récord {record}',
+    levelControls: 'flechas para moverte · enter para jugar',
+    helpTitle: 'cómo se juega',
+    helpHeading: 'controles',
+    back: 'volver',
+    turn: 'girar',
+    turnKeys: 'flechas o WASD · desliza',
+    turbo: 'turbo',
+    turboKeys: 'espacio / mayús / A · salvo cazador',
+    pauseHelp: 'pausa',
+    pauseKeys: 'P o esc · mando: start',
+    restart: 'reiniciar',
+    restartKeys: 'R · sonido M',
+    menus: 'menús',
+    menuKeys: 'flechas + enter · ←→ cambia de grupo',
+    comingSoon: 'en breve',
+    ruleChain: 'encadena frutas para subir hasta ×5; los cubos dan premios o poderes.',
+    ruleCampaign: 'campaña: 20 niveles; la fruta final es amarilla.',
+    ruleModes: 'frenesí: los bordes dan la vuelta. cazador: come puntos y después te persigue.',
+    ruleHunter: 'cazador: su cabeza te mata; su cuerpo y los puntos son seguros.',
+    gridMode: 'rejilla',
+    levelNumberName: 'nivel {number} {name}',
+    nextLevelMeta: 'siguiente · {name} · {goal} {unit}',
+    levelGoalRecord: 'nivel {goal} {unit} · récord {record}',
+    recordFruitMeta: 'récord {record} · {fruits} {unit}',
+    recordNew: 'récord nuevo',
+    end: 'fin',
+    retry: 'reintentar',
+    menu: 'menú',
+    levelCleared: 'nivel {number} superado',
+    campaignComplete: 'campaña completa · ya no hay margen',
+    next: 'siguiente',
+    repeat: 'repetir',
+    fruitsRecord: '{fruits} {unit} · récord {record}',
+    paused: 'en pausa',
+    eraseConfirm: '¿borrar récords y progreso?',
+    gamepadConnected: 'mando conectado',
+    activeEffects: 'efectos activos',
+    hintHome: '↑↓ grupo · enter abrir',
+    hintModes: '↑↓ modo · ←→ grupo · enter jugar · esc volver',
+    hintLevels: 'flechas nav · enter jugar · esc grupos',
+    hintHelp: 'esc volver',
+    hintPaused: 'P seguir · R reiniciar · esc menú',
+    hintDead: 'R reintentar · esc menú',
+    hintCleared: 'enter siguiente · esc menú',
+    hintSwipe: 'desliza para girar',
+    hintGame: 'flechas girar · P pausa · R reiniciar · M sonido',
+    hintGameTurbo: 'flechas girar · espacio turbo · P pausa · R reiniciar · M sonido',
+    best: 'récord {score}',
+    fruitScore: '{mode} · {fruits} {unit}',
+    levelScore: '{number} {name} · {fruits}/{goal}',
+    ghost: 'fantasma',
+    slow: 'lento',
+    turboEffect: 'turbo',
+    hunted: 'te caza',
+    locked: 'bloqueado',
+    routeHome: '',
+    routeModes: 'modos',
+    routeHelp: 'ayuda',
+    routeCampaign: 'campaña',
+    routeClassic: 'clásico',
+    routeFrenzy: 'frenesí',
+    routeHunter: 'cazador',
+    routeEndless: 'infinitos',
+    previewCampaign: 'vista previa · nivel {number} {name}',
+    campaignAt: 'la campaña sigue por aquí · {cleared} de {total} superados',
+    nextCampaignLevel: 'así es el siguiente nivel de la campaña',
+    previewModeTitle: 'vista previa · {mode}',
+    enterForModes: '{tag} · entra para ver los demás',
+    footerGroups: 'grupos',
+  },
+  en: {
+    documentTitle: 'Snake — v1.0',
+    description: 'Snake v1.0: a 20-level campaign, endless modes, and a hunter snake.',
+    language: 'Language',
+    sound: 'sound',
+    soundTitleOn: 'sound on (M)',
+    soundTitleOff: 'sound off (M)',
+    pause: 'pause',
+    pauseTitle: 'pause (P)',
+    resume: 'resume',
+    resumeTitle: 'resume (P)',
+    board: 'game board',
+    startPrompt: 'press a direction',
+    focusHint: 'click the board to enable keyboard controls',
+    fatalTitle: 'the game did not start',
+    fatalReload: 'reload cleanly',
+    noScript: 'this game needs javascript enabled.',
+    loading: 'loading…',
+    missingPieces: 'missing pieces ({pieces}). The browser may have cached old files; try a clean reload.',
+    campaign: 'campaign',
+    groupCampaign: 'campaign',
+    groupCampaignTag: '20-level journey',
+    groupEndless: 'endless',
+    groupEndlessTag: 'chase a high score',
+    modeClassic: 'classic',
+    modeClassicTag: 'each fruit speeds you up · walls appear after 30 points',
+    modeFrenzy: 'frenzy',
+    modeFrenzyTag: 'open edges · your speed keeps rising',
+    modeHunter: 'hunter',
+    modeHunterTag: 'a red snake eats blue pellets and grows',
+    levelNames: {
+      LLANO: 'open field', CRUZ: 'cross', PILARES: 'pillars', ANILLO: 'ring', ZIGZAG: 'zigzag',
+      COLUMNAS: 'columns', 'DOBLE ANILLO': 'double ring', REJILLA: 'grid', JAULA: 'cage',
+      ASPAS: 'pinwheels', 'CUATRO ESQUINAS': 'four corners', 'CRUZ HUECA': 'hollow cross',
+      'REJILLA DOBLE': 'double grid', PASILLO: 'corridor', PUAS: 'spikes', ESCALERA: 'staircase',
+      DIENTES: 'teeth', LABERINTO: 'maze', 'DOS JAULAS': 'twin cages', FINAL: 'finale',
+    },
+    tagline: 'a block-built journey',
+    gridSummary: '20×20 grid · {levels} levels · {modes} modes',
+    controls: 'controls',
+    hideGrid: 'hide scanlines',
+    showGrid: 'show scanlines',
+    clearRecords: 'clear records',
+    chooseGroup: 'choose a group',
+    preview: 'preview',
+    previewMode: 'mode preview',
+    previewGroupHint: 'choose a group to see its modes',
+    groupAria: 'groups',
+    menuNumber: 'menu · {number}',
+    groups: 'groups',
+    switchGroup: 'switch group',
+    modes: 'modes',
+    chooseMode: '↑↓ choose · ←→ switch group · enter play',
+    campaignProgress: '{cleared}/{total} cleared',
+    campaignDescription: '20 levels with walls · {cleared} cleared',
+    chooseLevel: 'choose a level',
+    blocked: 'locked',
+    fruits: '{count} {unit}',
+    levelPreviewData: '{goal} {unit} · speed {speed}',
+    levelPreviewDataWithRecord: '{goal} {unit} · speed {speed} · best {record}',
+    levelControls: 'arrow keys to move · enter to play',
+    helpTitle: 'how to play',
+    helpHeading: 'controls',
+    back: 'back',
+    turn: 'turn',
+    turnKeys: 'arrows or WASD · swipe',
+    turbo: 'boost',
+    turboKeys: 'space / shift / A · except in hunter',
+    pauseHelp: 'pause',
+    pauseKeys: 'P or esc · controller: start',
+    restart: 'restart',
+    restartKeys: 'R · sound M',
+    menus: 'menus',
+    menuKeys: 'arrows + enter · ←→ switches groups',
+    comingSoon: 'the basics',
+    ruleChain: 'chain fruit to reach ×5; blocks drop bonuses and power-ups.',
+    ruleCampaign: 'campaign: 20 levels; the final fruit is golden.',
+    ruleModes: 'frenzy: wrap around the edges. hunter: eat pellets, then stay ahead.',
+    ruleHunter: 'hunter: its head is deadly; its body and pellets are safe.',
+    gridMode: 'grid',
+    levelNumberName: 'level {number} {name}',
+    nextLevelMeta: 'next · {name} · {goal} {unit}',
+    levelGoalRecord: 'level goal: {goal} {unit} · best {record}',
+    recordFruitMeta: 'best {record} · {fruits} {unit}',
+    recordNew: 'new record',
+    end: 'game over',
+    retry: 'retry',
+    menu: 'menu',
+    levelCleared: 'level {number} cleared',
+    campaignComplete: 'campaign complete · no more levels',
+    next: 'next',
+    repeat: 'play again',
+    fruitsRecord: '{fruits} {unit} · best {record}',
+    paused: 'paused',
+    eraseConfirm: 'Clear records and progress?',
+    gamepadConnected: 'controller connected',
+    activeEffects: 'active effects',
+    hintHome: '↑↓ group · enter open',
+    hintModes: '↑↓ mode · ←→ group · enter play · esc back',
+    hintLevels: 'arrows move · enter play · esc groups',
+    hintHelp: 'esc back',
+    hintPaused: 'P resume · R restart · esc menu',
+    hintDead: 'R retry · esc menu',
+    hintCleared: 'enter next · esc menu',
+    hintSwipe: 'swipe to turn',
+    hintGame: 'arrows turn · P pause · R restart · M sound',
+    hintGameTurbo: 'arrows turn · space boost · P pause · R restart · M sound',
+    best: 'best {score}',
+    fruitScore: '{mode} · {fruits} {unit}',
+    levelScore: '{number} {name} · {fruits}/{goal}',
+    ghost: 'ghost',
+    slow: 'slow',
+    turboEffect: 'boost',
+    hunted: 'hunted',
+    locked: 'locked',
+    routeHome: '',
+    routeModes: 'modes',
+    routeHelp: 'help',
+    routeCampaign: 'campaign',
+    routeClassic: 'classic',
+    routeFrenzy: 'frenzy',
+    routeHunter: 'hunter',
+    routeEndless: 'endless',
+    previewCampaign: 'preview · level {number} {name}',
+    campaignAt: 'campaign continues here · {cleared} of {total} cleared',
+    nextCampaignLevel: 'preview of the next campaign level',
+    previewModeTitle: 'preview · {mode}',
+    enterForModes: '{tag} · enter to see the rest',
+    footerGroups: 'groups',
+  },
+};
+
+const MODE_KEYS = {
+  campaign: 'campaign',
+  classic: 'modeClassic',
+  frenzy: 'modeFrenzy',
+  hunter: 'modeHunter',
+};
+const MODE_TAG_KEYS = {
+  classic: 'modeClassicTag',
+  frenzy: 'modeFrenzyTag',
+  hunter: 'modeHunterTag',
+};
+const GROUP_KEYS = ['groupCampaign', 'groupEndless'];
+const GROUP_TAG_KEYS = ['groupCampaignTag', 'groupEndlessTag'];
+let language = 'es';
+
+try {
+  const stored = localStorage.getItem(KEY);
+  if (stored === 'es' || stored === 'en') language = stored;
+} catch (error) {
+  // El idioma también funciona sin almacenamiento local.
+}
+
+function getLanguage() {
+  return language;
+}
+
+function setLanguage(value) {
+  language = value === 'en' ? 'en' : 'es';
+  try {
+    localStorage.setItem(KEY, language);
+  } catch (error) {
+    // El idioma se mantiene en memoria durante esta sesión.
+  }
+  return language;
+}
+
+function t(key, values = {}) {
+  let text = STRINGS[language][key] ?? STRINGS.es[key] ?? key;
+  if (typeof text !== 'string') return text;
+  return text.replace(/\{([a-zA-Z0-9_]+)\}/g, (match, name) =>
+    Object.prototype.hasOwnProperty.call(values, name) ? String(values[name]) : match,
+  );
+}
+
+function modeName(mode) {
+  return t(MODE_KEYS[mode] || 'campaign');
+}
+
+function modeTag(mode) {
+  return t(MODE_TAG_KEYS[mode] || 'campaign');
+}
+
+function groupName(index) {
+  return t(GROUP_KEYS[index] || GROUP_KEYS[0]);
+}
+
+function groupTag(index) {
+  return t(GROUP_TAG_KEYS[index] || GROUP_TAG_KEYS[0]);
+}
+
+function levelName(name) {
+  const names = STRINGS[language].levelNames || STRINGS.es.levelNames;
+  return names[name] || String(name).toLowerCase();
+}
+
+function fruitUnit(count) {
+  const singular = Number(count) === 1;
+  if (language === 'en') return singular ? 'fruit' : 'fruits';
+  return singular ? 'fruta' : 'frutas';
+}
+
+function routeSlug(name) {
+  const key = `route${name[0].toUpperCase()}${name.slice(1)}`;
+  return t(key);
+}
+
+function routeWords() {
+  return {
+    home: '',
+    modes: [STRINGS.es.routeModes, STRINGS.en.routeModes],
+    help: [STRINGS.es.routeHelp, STRINGS.en.routeHelp],
+    campaign: [STRINGS.es.routeCampaign, STRINGS.en.routeCampaign],
+    classic: [STRINGS.es.routeClassic, 'clasico', STRINGS.en.routeClassic],
+    frenzy: [STRINGS.es.routeFrenzy, 'frenesi', STRINGS.en.routeFrenzy],
+    hunter: [STRINGS.es.routeHunter, STRINGS.en.routeHunter],
+    endless: [STRINGS.es.routeEndless, STRINGS.en.routeEndless],
+  };
+}
+
+  Object.assign(modulo, { getLanguage, setLanguage, t, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, routeSlug, routeWords });
+})(modulos['i18n']);
+
 // ---- main ----
 (function (modulo) {
 'use strict';
 const { Game, POWER_INFO } = modulos['engine'];
-const { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS, // BORRAR-COMPETITIVO
-  COMPETITIVE, mapaDePartida, modificadorDePartida, configCompetitivo, ajustarRango, rangoInfo, escalaBots, castigoMuerte } = modulos['levels'];
+const { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS } = modulos['levels'];
 const { audio } = modulos['audio'];
 const { attachInput } = modulos['input'];
+const { t, getLanguage, setLanguage, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, routeSlug, routeWords } = modulos['i18n'];
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -2491,13 +2472,12 @@ function avisar(mensaje) {
 
 function comprobarPiezas() {
   const faltan = [];
-  // BORRAR-COMPETITIVO (la parte de competitive se puede quitar)
-  if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.hunter || !MODES.competitive) faltan.push('modos');
-  if (!COMPETITIVE || !COMPETITIVE.rangos || COMPETITIVE.rangos.length !== 7) faltan.push('competitivo');
+  // BORRAR-COMPETITIVO · retirado en v1.0; sólo quedan los modos publicados.
+  if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.hunter || MODES.competitive) faltan.push('modos');
   if (!Array.isArray(LEVELS) || LEVELS.length !== 20) faltan.push('niveles');
   if (typeof Game !== 'function') faltan.push('motor');
   if (faltan.length) {
-    avisar(`faltan piezas (${faltan.join(', ')}). casi seguro hay ficheros viejos en caché: pulsa recargar limpio.`);
+    avisar(t('missingPieces', { pieces: faltan.join(', ') }));
     return false;
   }
   return true;
@@ -2514,24 +2494,16 @@ const el = {
   prompt: $('#prompt'),
   meta: $('#hud-meta'),
   score: $('#hud-score'),
-  reloj: $('#reloj'), // BORRAR-COMPETITIVO
-  minis: $('#minis'), // BORRAR-COMPETITIVO
-  aviso: $('#aviso'), // BORRAR-COMPETITIVO
-  sorteo: $('#sorteo'), // BORRAR-COMPETITIVO
-  sorteoMapa: $('#sorteo-mapa'), // BORRAR-COMPETITIVO
-  sorteoMod: $('#sorteo-mod'), // BORRAR-COMPETITIVO
-  cuenta: $('#cuenta'), // BORRAR-COMPETITIVO
-  pila: $('#pila'), // BORRAR-COMPETITIVO
   best: $('#hud-best'),
   mult: $('#hud-mult'),
   chain: $('#chain-bar'),
   effects: $('#effects'),
   mute: $('#btn-mute'),
   pause: $('#btn-pause'),
+  lang: $('#lang-switch'),
   hint: $('#hint'),
   avisoFoco: $('#aviso-foco'),
   barrido: $('#barrido'), // transición de bloques entre pantallas
-  festejo: $('#festejo'), // BORRAR-COMPETITIVO
 };
 
 const pincel = el.canvas.getContext('2d', { alpha: false });
@@ -2540,10 +2512,8 @@ const pincel = el.canvas.getContext('2d', { alpha: false });
 
 function nuevoRegistro() {
   return {
-    best: { classic: 0, frenzy: 0, hunter: 0, competitive: 0 },
+    best: { classic: 0, frenzy: 0, hunter: 0 },
     campaign: { unlocked: 1, best: {} },
-    // BORRAR-COMPETITIVO
-    comp: { rango: 0, dentro: 0, partidas: 0, victorias: 0 },
     sound: true,
     crt: true,
   };
@@ -2582,14 +2552,6 @@ function leerGuardado() {
       datos.campaign.best[nivel] = Number(valor) || 0;
     }
   }
-  // BORRAR-COMPETITIVO
-  const comp = bruto.comp || {};
-  datos.comp = {
-    rango: Math.min(COMPETITIVE.rangos.length - 1, Math.max(0, parseInt(comp.rango, 10) || 0)),
-    dentro: Math.min(COMPETITIVE.porRango, Math.max(0, parseInt(comp.dentro, 10) || 0)),
-    partidas: Math.max(0, parseInt(comp.partidas, 10) || 0),
-    victorias: Math.max(0, parseInt(comp.victorias, 10) || 0),
-  };
   if (typeof bruto.sound === 'boolean') datos.sound = bruto.sound;
   if (typeof bruto.crt === 'boolean') datos.crt = bruto.crt;
   return datos;
@@ -2624,12 +2586,10 @@ const app = {
   temporizador: 0,
   record: false,
   chips: new Map(),
-  comp: null, // BORRAR-COMPETITIVO
-  mapasComp: [], // BORRAR-COMPETITIVO
-  mapaComp: null, // BORRAR-COMPETITIVO
-  modComp: null, // BORRAR-COMPETITIVO
-  intervalo: 0, // BORRAR-COMPETITIVO
 };
+
+const rutas = { listas: false, restaurando: false };
+const BASE_PATH = '/snake/';
 
 const vista = { cell: 24, ox: 0, oy: 0, width: 480, height: 480, dpr: 1 };
 const vistaDemo = { cell: 10, ox: 0, oy: 0, width: 200, height: 200, dpr: 1 };
@@ -2647,18 +2607,13 @@ function esTactil() {
 }
 
 function turboPermitido() {
-  return app.pantalla === 'playing' && app.modo !== 'hunter' && app.modo !== 'competitive';
+  return app.pantalla === 'playing' && app.modo !== 'hunter';
 }
 
 function pararTemporizador() {
   if (app.temporizador) {
     clearTimeout(app.temporizador);
     app.temporizador = 0;
-  }
-  // BORRAR-COMPETITIVO · el sorteo va con intervalo propio
-  if (app.intervalo) {
-    clearInterval(app.intervalo);
-    app.intervalo = 0;
   }
 }
 
@@ -2700,7 +2655,7 @@ const serpientesDe = (texto, glifos) => {
       }
     }
     // las otras letras se quedan en su sitio; sólo la e va a por la manzana final
-    const ultimo = i === caracteres.length - 1;
+    const ultimo = i === caracteres.length - 1 && letra === 'e';
     const objetivo = ultimo ? { x: x0 + 5, y: 4 } : cabeza;
     const punto = ultimo ? { ...objetivo } : null;
     if (cabeza) serpientes.push({ cuerpo, cabeza, objetivo, punto });
@@ -2737,7 +2692,7 @@ const MARCA_DIGITOS = {
   9: ['.##.', '#..#', '.###', '...#', '.##.'],
 };
 
-const CICLO_NOMBRE = 3200;
+const CICLO_NOMBRE = 10000;
 const CICLO_RECORD = 3000;
 
 // el récord más alto de todo lo jugado: es lo que escribe la serpiente
@@ -2791,14 +2746,15 @@ function dibujarMarca(dt) {
 
   // cinco serpientes, pero sólo la última tiene manzana y anima la mordida
   const cicloSerpientes = (serpientes, t) => {
-    serpientes.forEach((serp, i) => {
-      const tt = (t + i * 700) % 3200;
+    serpientes.forEach((serp) => {
+      // El ciclo largo deja ver cómo la e avanza, bloque a bloque, hacia la manzana.
+      const tt = t % CICLO_NOMBRE;
       let avance = 0;
       let comido = false;
       if (serp.punto) {
-        if (tt >= 400 && tt < 700) avance = Math.round(((tt - 400) / 300) * 3) / 3;
-        else if (tt >= 700 && tt < 1900) { avance = 1; comido = true; }
-        else if (tt >= 1900 && tt < 2200) avance = Math.round((1 - (tt - 1900) / 300) * 3) / 3;
+        if (tt >= 800 && tt < 6200) avance = (tt - 800) / 5400;
+        else if (tt >= 6200 && tt < 8000) { avance = 1; comido = true; }
+        else if (tt >= 8000) avance = 1 - (tt - 8000) / 2000;
       }
 
       serp.cuerpo.forEach((c, k) => {
@@ -2821,13 +2777,20 @@ function dibujarMarca(dt) {
       const cx = base.x + avance * (destino.x - base.x);
       const cy = base.y + avance * (destino.y - base.y);
 
-      // el último bloque sale de la e y se alarga en cubos hasta la manzana
+      // El cuerpo se extiende de forma continua y lenta hasta la manzana.
       if (serp.punto && avance > 0) {
-        const pasos = Math.floor(Math.hypot(cx - base.x, cy - base.y));
-        const dx = Math.sign(destino.x - base.x);
-        const dy = Math.sign(destino.y - base.y);
-        for (let paso = 0; paso < pasos; paso++) {
-          bloque(base.x + dx * paso, base.y + dy * paso, '#cfcfcf');
+        bloque(base.x, base.y, '#cfcfcf');
+        const dx = destino.x - base.x;
+        const dy = destino.y - base.y;
+        const x1 = aire + (base.x + 0.5) * lado;
+        const y1 = base.y * lado + lado / 2;
+        const x2 = aire + (cx + 0.5) * lado;
+        const y2 = cy * lado + lado / 2;
+        ctx.fillStyle = '#cfcfcf';
+        if (dx) {
+          ctx.fillRect(Math.min(x1, x2), y1 - tam / 2, Math.max(1, Math.abs(x2 - x1)), tam);
+        } else {
+          ctx.fillRect(x1 - tam / 2, Math.min(y1, y2), tam, Math.max(1, Math.abs(y2 - y1)));
         }
       }
       cara(cx, cy, avance > 0.05 ? 0.24 : 0.14);
@@ -2852,15 +2815,8 @@ function ajustarLienzo() {
   // tiramos de la ventana para no quedarnos con un tablero de 0 px
   const anchoCaja = caja.width || window.innerWidth || 480;
   const altoCaja = caja.height || Math.max(240, (window.innerHeight || 720) * 0.6);
-  // BORRAR-COMPETITIVO · con las minis al lado, el tablero les deja su columna
-  const conMinis = !!(app.comp && app.comp.activo && el.minis && !el.minis.hidden);
-  const apilado = conMinis && esApilado();
-  if (el.pila) el.pila.classList.toggle('apilado', apilado);
-  const hueco = conMinis ? (apilado ? 96 : 106) : 0;
-  const anchoUtil = apilado ? anchoCaja : anchoCaja - hueco;
-  const altoUtil = apilado ? altoCaja - hueco : altoCaja;
   // el tablero ocupa todo el hueco: celdas fraccionarias, sin bordes muertos
-  const lado = Math.max(160, Math.min(anchoUtil, altoUtil) - 2);
+  const lado = Math.max(160, Math.min(anchoCaja, altoCaja) - 2);
   const celda = lado / Math.max(COLS, ROWS);
   const ancho = lado;
   const alto = lado;
@@ -2996,46 +2952,134 @@ function pantalla(nombre) {
   const antes = app.pantalla;
   app.pantalla = nombre;
   document.body.dataset.screen = nombre;
-  // BORRAR-COMPETITIVO · el reloj, las minis y la cuenta sólo existen jugando
-  if (nombre !== 'playing' && nombre !== 'paused') {
-    if (el.reloj) el.reloj.hidden = true;
-    if (el.minis) el.minis.hidden = true;
-    if (el.cuenta) el.cuenta.hidden = true;
-    if (el.sorteo) el.sorteo.hidden = true;
-  }
-  if (nombre !== 'playing') audio.ambienteParar(); // BORRAR-COMPETITIVO · pausa/menú/final
-  if (antes === 'versus-fin' && nombre !== 'versus-fin') pararFestejo(); // BORRAR-COMPETITIVO
+  // BORRAR-COMPETITIVO · pantallas y audio del modo retirados para v1.0.
   if (antes !== nombre) taparPantalla();
   actualizarPista();
+  if (rutas.listas && !rutas.restaurando) sincronizarRuta(false);
 }
 
 const PISTAS = {
-  home: '↑↓ grupo · enter abrir',
-  modes: '↑↓ modo · ←→ grupo · enter jugar · esc volver',
-  levels: 'flechas nav · enter jugar · esc grupos',
-  help: 'esc volver',
-  playing: '',
-  paused: 'P seguir · R reiniciar · esc menú',
-  dead: 'R reintentar · esc menú',
-  cleared: 'enter siguiente · esc menú',
-  // BORRAR-COMPETITIVO
-  rango: 'enter jugar · esc menú',
-  sorteo: 'sorteando mapa y modificador…',
-  'versus-fin': 'enter revancha · esc menú',
+  home: 'hintHome',
+  modes: 'hintModes',
+  levels: 'hintLevels',
+  help: 'hintHelp',
+  paused: 'hintPaused',
+  dead: 'hintDead',
+  cleared: 'hintCleared',
 };
 
 function actualizarPista() {
   if (app.pantalla === 'playing') {
-    const sinTurbo = app.modo === 'hunter' || app.modo === 'competitive';
     el.hint.textContent = esTactil()
-      ? 'desliza para girar'
-      : sinTurbo
-        ? 'flechas girar · P pausa · R reiniciar · M sonido'
-        : 'flechas girar · espacio turbo · P pausa · R reiniciar · M sonido';
+      ? t('hintSwipe')
+      : t(app.modo === 'hunter' ? 'hintGame' : 'hintGameTurbo');
     return;
   }
-  el.hint.textContent = PISTAS[app.pantalla] || '';
+  el.hint.textContent = PISTAS[app.pantalla] ? t(PISTAS[app.pantalla]) : '';
 }
+
+const ALIAS_RUTA = routeWords();
+
+function coincideRuta(segmento, clave) {
+  return (ALIAS_RUTA[clave] || []).includes(segmento);
+}
+
+function rutaActual() {
+  let camino = location.pathname;
+  try {
+    camino = decodeURIComponent(camino);
+  } catch (error) {
+    // Usamos la ruta sin decodificar si contiene escapes inválidos.
+  }
+  camino = camino.replace(/\/+$/, '');
+  if (camino === '/snake' || camino === '/' || camino === '') return [];
+  if (camino.startsWith('/snake/')) camino = camino.slice('/snake/'.length);
+  else if (camino.startsWith('/')) camino = camino.slice(1);
+  return camino.split('/').filter(Boolean).map((parte) => parte.toLowerCase());
+}
+
+function pantallaDeRuta() {
+  const partes = rutaActual();
+  const [primera, segunda] = partes;
+  if (!primera) return { tipo: 'home' };
+
+  if (coincideRuta(primera, 'modes')) {
+    const grupo = coincideRuta(segunda || '', 'campaign') ? 0 : 1;
+    return { tipo: 'modes', grupo };
+  }
+  if (coincideRuta(primera, 'help')) return { tipo: 'help' };
+  if (coincideRuta(primera, 'campaign')) {
+    const nivel = /^(?:nivel|level)-?(\d{1,2})$/.exec(segunda || '');
+    return nivel
+      ? { tipo: 'campaign-level', nivel: Number(nivel[1]) - 1 }
+      : { tipo: 'levels' };
+  }
+  for (const modo of ['classic', 'frenzy', 'hunter']) {
+    if (coincideRuta(primera, modo)) return { tipo: 'game', modo };
+  }
+  if (coincideRuta(primera, 'endless')) return { tipo: 'modes', grupo: 1 };
+  return { tipo: 'home' };
+}
+
+function rutaDeEstado() {
+  if (app.pantalla === 'home') return BASE_PATH;
+  if (app.pantalla === 'modes') {
+    const grupo = app.grupo === 0 ? 'campaign' : 'endless';
+    return `${BASE_PATH}${routeSlug('modes')}/${routeSlug(grupo)}`;
+  }
+  if (app.pantalla === 'help') return `${BASE_PATH}${routeSlug('help')}`;
+  if (app.pantalla === 'levels') return `${BASE_PATH}${routeSlug('campaign')}`;
+  if (app.modo === 'campaign') {
+    return `${BASE_PATH}${routeSlug('campaign')}/nivel-${dosDigitos(app.nivel + 1)}`;
+  }
+  return `${BASE_PATH}${routeSlug(app.modo)}`;
+}
+
+function sincronizarRuta(reemplazar = false) {
+  if (location.protocol === 'file:') return;
+  const destino = `${rutaDeEstado()}${location.hash}`;
+  const actual = `${location.pathname}${location.search}${location.hash}`;
+  if (actual === destino) return;
+  const metodo = reemplazar ? 'replaceState' : 'pushState';
+  history[metodo]({ snake: true }, '', destino);
+}
+
+function mostrarRuta(ruta) {
+  if (ruta.tipo === 'modes') {
+    mostrarModos(ruta.grupo);
+  } else if (ruta.tipo === 'levels') {
+    mostrarNiveles();
+  } else if (ruta.tipo === 'help') {
+    mostrarAyuda();
+  } else if (ruta.tipo === 'game') {
+    empezarPartida(ruta.modo, 0);
+  } else if (ruta.tipo === 'campaign-level') {
+    if (ruta.nivel >= 0 && ruta.nivel < LEVELS.length && ruta.nivel < guardado.campaign.unlocked) {
+      empezarPartida('campaign', ruta.nivel);
+    } else if (ruta.nivel >= 0 && ruta.nivel < LEVELS.length) {
+      mostrarNiveles();
+    } else {
+      mostrarInicio();
+    }
+  } else {
+    mostrarInicio();
+  }
+}
+
+function restaurarRuta() {
+  rutas.restaurando = true;
+  mostrarRuta(pantallaDeRuta());
+  rutas.restaurando = false;
+  rutas.listas = true;
+  sincronizarRuta(true);
+}
+
+window.addEventListener('popstate', () => {
+  rutas.restaurando = true;
+  mostrarRuta(pantallaDeRuta());
+  rutas.restaurando = false;
+  sincronizarRuta(true);
+});
 
 /* ---------------------------------------------------------- marcador */
 
@@ -3050,33 +3094,20 @@ function actualizarMarcador() {
   if (el.score.textContent !== valor) el.score.textContent = valor;
 
   let meta;
-  // BORRAR-COMPETITIVO
-  if (app.modo === 'competitive' && app.comp) {
-    const info = rangoInfo(guardado.comp);
-    const puestos = tablaCompetitivo(app.comp);
-    const puesto = Math.max(1, puestos.findIndex((f) => f.yo) + 1);
-    meta = `${info.nombre} · ${puesto}º/${puestos.length}`;
-  } else if (app.modo === 'campaign') {
+  if (app.modo === 'campaign') {
     const nivel = LEVELS[app.nivel];
-    meta = `${dosDigitos(app.nivel + 1)} ${nivel.name.toLowerCase()} · ${Math.min(juego.fruits, nivel.goal)}/${nivel.goal}`;
+    meta = t('levelScore', {
+      number: dosDigitos(app.nivel + 1),
+      name: levelName(nivel.name),
+      fruits: Math.min(juego.fruits, nivel.goal),
+      goal: nivel.goal,
+    });
   } else {
-    meta = `${MODES[app.modo].name.toLowerCase()} · ${juego.fruits} frutas`;
+    meta = t('fruitScore', { mode: modeName(app.modo), fruits: juego.fruits, unit: fruitUnit(juego.fruits) });
   }
   if (el.meta.textContent !== meta) el.meta.textContent = meta;
 
-  // BORRAR-COMPETITIVO · cuenta atrás centrada sobre el tablero
-  if (el.reloj) {
-    const conReloj = app.modo === 'competitive' && !!app.comp && app.comp.activo;
-    el.reloj.hidden = !conReloj;
-    if (conReloj) {
-      const segundos = Math.max(0, Math.ceil(app.comp.restante / 1000));
-      const texto = String(segundos);
-      if (el.reloj.textContent !== texto) el.reloj.textContent = texto;
-      el.reloj.classList.toggle('apurado', app.comp.restante <= 10000);
-    }
-  }
-
-  const marca = `récord ${mejorActual()}`;
+  const marca = t('best', { score: mejorActual() });
   if (el.best.textContent !== marca) el.best.textContent = marca;
 
   const mult = juego.multiplier;
@@ -3087,8 +3118,9 @@ function actualizarMarcador() {
   el.chain.style.width = `${((juego.chainTimer / juego.chainWindow) * 100 || 0).toFixed(1)}%`;
 
   el.prompt.classList.toggle('visible', juego.state === 'ready');
-  el.pause.textContent = app.pantalla === 'paused' ? 'seguir' : 'pausa';
-  el.pause.disabled = (app.pantalla !== 'playing' && app.pantalla !== 'paused') || !!(app.comp && app.comp.fase === 'fin');
+  el.pause.textContent = t(app.pantalla === 'paused' ? 'resume' : 'pause');
+  el.pause.title = t(app.pantalla === 'paused' ? 'resumeTitle' : 'pauseTitle');
+  el.pause.disabled = app.pantalla !== 'playing' && app.pantalla !== 'paused';
 
   actualizarEfectos(juego);
 }
@@ -3096,14 +3128,14 @@ function actualizarMarcador() {
 function actualizarEfectos(juego) {
   const activos = [];
   if (juego) {
-    if (juego.fx.ghost > 0) activos.push(['fantasma', juego.fx.ghost / POWER_INFO.ghost.ms]);
-    if (juego.fx.slow > 0) activos.push(['lento', juego.fx.slow / POWER_INFO.slow.ms]);
-    if (juego.turbo && app.modo !== 'hunter' && app.modo !== 'competitive') activos.push(['turbo', 1]);
+    if (juego.fx.ghost > 0) activos.push([t('ghost'), juego.fx.ghost / POWER_INFO.ghost.ms]);
+    if (juego.fx.slow > 0) activos.push([t('slow'), juego.fx.slow / POWER_INFO.slow.ms]);
+    if (juego.turbo && app.modo !== 'hunter') activos.push([t('turboEffect'), 1]);
     if (juego.cfg && juego.cfg.hunter && juego.hunter && juego.hunterPelea) {
       const tope = juego.cfg.hunterCap || 18;
       const umbral = juego.hunterUmbral();
       const largo = juego.hunter.body.length;
-      activos.push(['te caza', largo >= tope ? 1 : (largo - umbral) / Math.max(1, tope - umbral)]);
+      activos.push([t('hunted'), largo >= tope ? 1 : (largo - umbral) / Math.max(1, tope - umbral)]);
     }
   }
 
@@ -3261,14 +3293,11 @@ function modosDelGrupo(indice = app.grupo) {
   return GROUPS[((indice % GROUPS.length) + GROUPS.length) % GROUPS.length].modes;
 }
 
-function nombreModo(modo) {
-  if (modo === 'campaign') return 'campaña';
-  return MODES[modo].name.toLowerCase();
-}
-
 function descripcion(modo) {
-  if (modo === 'campaign') return `20 niveles con muros · ${guardado.campaign.unlocked - 1} superados`;
-  return MODES[modo].tag;
+  if (modo === 'campaign') {
+    return t('campaignDescription', { cleared: guardado.campaign.unlocked - 1 });
+  }
+  return modeTag(modo);
 }
 
 function valorDerecha(modo) {
@@ -3280,11 +3309,6 @@ function valorDerecha(modo) {
 function resumenGrupo(indice) {
   const grupo = GROUPS[indice];
   if (indice === 0) return `${guardado.campaign.unlocked - 1}/${LEVELS.length}`;
-  // BORRAR-COMPETITIVO
-  if (grupo.modes.includes('competitive')) {
-    const info = rangoInfo(guardado.comp);
-    return `${icoRango(info.rango)}${info.nombre} ${info.dentro}/${COMPETITIVE.porRango}`;
-  }
   const hechos = grupo.modes.filter((m) => (guardado.best[m] || 0) > 0).length;
   return `${hechos}/${grupo.modes.length}`;
 }
@@ -3300,7 +3324,7 @@ function modoDeGrupo(indice) {
 function filaModo(modo, i) {
   return `<button class="row" type="button" data-modo="${modo}" data-i="${i}">
     <span class="row-idx">${dosDigitos(i + 1)}</span>
-    <span class="row-name">${nombreModo(modo)}<small>${descripcion(modo)}</small></span>
+    <span class="row-name">${modeName(modo)}<small>${descripcion(modo)}</small></span>
     <span class="row-right">${valorDerecha(modo)}</span>
   </button>`;
 }
@@ -3313,7 +3337,7 @@ function mostrarInicio() {
 
   const filas = GROUPS.map((grupo, i) => `<button class="row" type="button" data-grupo="${i}" data-i="${i}">
       <span class="row-idx">${dosDigitos(i + 1)}</span>
-      <span class="row-name">${grupo.name}<small>${grupo.tag}${grupo.modes.length > 1 ? ` · ${grupo.modes.length} modos` : ''}</small></span>
+      <span class="row-name">${groupName(i)}<small>${groupTag(i)}${grupo.modes.length > 1 ? ` · ${grupo.modes.length} ${t('modes')}` : ''}</small></span>
       <span class="row-right">${resumenGrupo(i)}</span>
     </button>`).join('');
 
@@ -3321,31 +3345,33 @@ function mostrarInicio() {
     <div class="inicio-texto">
       <header class="inicio-cabeza">
         <h1 class="marca"><canvas id="marca" role="img" aria-label="snake"></canvas></h1>
-        <p class="kicker">rejilla 20×20 · ${LEVELS.length} niveles · ${MODE_ORDER.length - 1} modos</p>
+        <p class="tagline">${t('tagline')}</p>
+        <p class="kicker">${t('gridSummary', { levels: LEVELS.length, modes: MODE_ORDER.length - 1 })}</p>
       </header>
-      <nav class="filas" aria-label="grupos">${filas}</nav>
+      <nav class="filas" aria-label="${t('groupAria')}">${filas}</nav>
       <p class="pie">
-        <button class="link" type="button" data-accion="help">controles</button>
+        <button class="link" type="button" data-accion="help">${t('controls')}</button>
         <span aria-hidden="true">·</span>
-        <button class="link" type="button" data-accion="crt">${guardado.crt ? 'quitar' : 'poner'} trama</button>
+        <button class="link" type="button" data-accion="crt">${t(guardado.crt ? 'hideGrid' : 'showGrid')}</button>
         <span aria-hidden="true">·</span>
-        <button class="link" type="button" data-accion="wipe">borrar récords</button>
+        <button class="link" type="button" data-accion="wipe">${t('clearRecords')}</button>
       </p>
     </div>
     <aside class="inicio-demo">
-      <p class="kicker" id="demo-titulo">vista previa</p>
-      <canvas id="demo" aria-label="vista previa"></canvas>
-      <p class="nota" id="demo-nota">elige un grupo para ver sus modos</p>
+      <p class="kicker" id="demo-titulo">${t('preview')}</p>
+      <canvas id="demo" aria-label="${t('preview')}"></canvas>
+      <p class="nota" id="demo-nota">${t('previewGroupHint')}</p>
     </aside>
   </div>`);
 
   el.score.textContent = '—';
-  el.meta.textContent = 'elige un grupo';
+  el.meta.textContent = t('chooseGroup');
   el.best.textContent = '';
   el.mult.textContent = '';
   el.chain.style.width = '0%';
   el.pause.disabled = true;
-  el.pause.textContent = 'pausa';
+  el.pause.textContent = t('pause');
+  el.pause.title = t('pauseTitle');
   el.prompt.classList.remove('visible');
   pantalla('home');
   seleccionarGrupo(app.grupo);
@@ -3376,35 +3402,36 @@ function mostrarModos(indice = app.grupo) {
   const grupo = GROUPS[app.grupo];
   const filas = grupo.modes.map((modo, i) => filaModo(modo, i)).join('');
   const tabs = GROUPS.map((g, i) =>
-    `<button class="tab${i === app.grupo ? ' sel' : ''}" type="button" data-tab="${i}">${g.name}</button>`).join('');
+    `<button class="tab${i === app.grupo ? ' sel' : ''}" type="button" data-tab="${i}">${groupName(i)}</button>`).join('');
 
   ponerOverlay(`<div class="panel modos">
     <div class="niveles-cabeza">
       <div>
-        <p class="kicker">menú · ${dosDigitos(app.grupo + 1)}</p>
-        <h2>${grupo.name}</h2>
+        <p class="kicker">${t('menuNumber', { number: dosDigitos(app.grupo + 1) })}</p>
+        <h2>${groupName(app.grupo)}</h2>
       </div>
-      <button class="ghost" type="button" data-accion="home">grupos <kbd>esc</kbd></button>
+      <button class="ghost" type="button" data-accion="home">${t('groups')} <kbd>esc</kbd></button>
     </div>
-    <nav class="tabs" aria-label="cambiar de grupo">${tabs}</nav>
+    <nav class="tabs" aria-label="${t('switchGroup')}">${tabs}</nav>
     <div class="modos-cuerpo">
-      <nav class="filas" aria-label="modos">${filas}</nav>
+      <nav class="filas" aria-label="${t('modes')}">${filas}</nav>
       <aside class="inicio-demo">
-        <p class="kicker" id="demo-titulo">vista previa</p>
-        <canvas id="demo" aria-label="vista previa del modo"></canvas>
+        <p class="kicker" id="demo-titulo">${t('preview')}</p>
+        <canvas id="demo" aria-label="${t('previewMode')}"></canvas>
         <p class="nota" id="demo-nota"></p>
       </aside>
     </div>
-    <p class="pie"><span>↑↓ elegir · ←→ cambiar de grupo · enter jugar</span></p>
+    <p class="pie"><span>${t('chooseMode')}</span></p>
   </div>`);
 
   el.score.textContent = '—';
-  el.meta.textContent = grupo.name;
+  el.meta.textContent = groupName(app.grupo);
   el.best.textContent = '';
   el.mult.textContent = '';
   el.chain.style.width = '0%';
   el.pause.disabled = true;
-  el.pause.textContent = 'pausa';
+  el.pause.textContent = t('pause');
+  el.pause.title = t('pauseTitle');
   el.prompt.classList.remove('visible');
   pantalla('modes');
   seleccionarModo(0);
@@ -3427,8 +3454,6 @@ function seleccionarModo(i) {
 
 function elegirModo(modo) {
   if (modo === 'campaign') mostrarNiveles();
-  // BORRAR-COMPETITIVO
-  else if (modo === 'competitive') mostrarRangos(); // BORRAR-COMPETITIVO
   else empezarPartida(modo, 0);
 }
 
@@ -3441,16 +3466,27 @@ function mostrarNiveles() {
   app.nivelSel = Math.min(guardado.campaign.unlocked - 1, LEVELS.length - 1);
   pintarNiveles();
   el.score.textContent = '—';
-  el.meta.textContent = 'campaña';
+  el.meta.textContent = t('campaign');
   el.best.textContent = '';
   el.mult.textContent = '';
   el.chain.style.width = '0%';
   el.pause.disabled = true;
-  el.pause.textContent = 'pausa';
+  el.pause.textContent = t('pause');
+  el.pause.title = t('pauseTitle');
   el.prompt.classList.remove('visible');
 }
 
 function pintarNiveles() {
+  el.score.textContent = '—';
+  el.meta.textContent = t('campaign');
+  el.best.textContent = '';
+  el.mult.textContent = '';
+  el.chain.style.width = '0%';
+  el.pause.disabled = true;
+  el.pause.textContent = t('pause');
+  el.pause.title = t('pauseTitle');
+  el.prompt.classList.remove('visible');
+
   const celdas = LEVELS.map((nivel, i) => {
     const bloqueado = i >= guardado.campaign.unlocked;
     const hecho = i < guardado.campaign.unlocked - 1;
@@ -3458,28 +3494,28 @@ function pintarNiveles() {
     return `<button class="celda${bloqueado ? ' bloqueada' : ''}${hecho ? ' hecha' : ''}"
       type="button" data-nivel="${i}"${bloqueado ? ' aria-disabled="true"' : ''}>
       <span class="celda-top"><span class="celda-num">${dosDigitos(i + 1)}</span>${hecho ? '<span class="celda-tick">✓</span>' : ''}</span>
-      <span class="celda-nombre">${bloqueado ? '· · ·' : nivel.name.toLowerCase()}</span>
-      <span class="celda-meta">${bloqueado ? 'bloqueado' : marca ? `récord ${marca}` : `${nivel.goal} frutas`}</span>
+      <span class="celda-nombre">${bloqueado ? '· · ·' : levelName(nivel.name)}</span>
+      <span class="celda-meta">${bloqueado ? t('blocked') : marca ? t('best', { score: marca }) : t('fruits', { count: nivel.goal, unit: fruitUnit(nivel.goal) })}</span>
     </button>`;
   }).join('');
 
   ponerOverlay(`<div class="panel niveles">
     <div class="niveles-cabeza">
       <div>
-        <p class="kicker">campaña · ${guardado.campaign.unlocked - 1}/${LEVELS.length} superados</p>
-        <h2>elige nivel</h2>
+        <p class="kicker">${t('campaign')} · ${t('campaignProgress', { cleared: guardado.campaign.unlocked - 1, total: LEVELS.length })}</p>
+        <h2>${t('chooseLevel')}</h2>
       </div>
-      <button class="ghost" type="button" data-accion="modos">grupos <kbd>esc</kbd></button>
+      <button class="ghost" type="button" data-accion="modos">${t('groups')} <kbd>esc</kbd></button>
     </div>
     <div class="niveles-cuerpo">
       <div class="rejilla">${celdas}</div>
       <aside class="vistazo">
-        <canvas id="preview"></canvas>
+        <canvas id="preview" aria-label="${t('preview')}"></canvas>
         <p class="kicker" id="vistazo-nombre"></p>
         <p class="nota" id="vistazo-datos"></p>
       </aside>
     </div>
-    <p class="pie"><span>flechas para moverte · enter para jugar</span></p>
+    <p class="pie"><span>${t('levelControls')}</span></p>
   </div>`);
 
   pantalla('levels');
@@ -3528,10 +3564,12 @@ function pintarVistazo(indice) {
 
   const nombre = document.getElementById('vistazo-nombre');
   const datos = document.getElementById('vistazo-datos');
-  if (nombre) nombre.textContent = `${dosDigitos(indice + 1)} ${nivel.name.toLowerCase()}`;
+  if (nombre) nombre.textContent = t('levelNumberName', { number: dosDigitos(indice + 1), name: levelName(nivel.name) });
   if (datos) {
     const marca = guardado.campaign.best[indice] || 0;
-    datos.textContent = `${nivel.goal} frutas · ritmo ${nivel.speed}${marca ? ` · récord ${marca}` : ''}`;
+    datos.textContent = marca
+      ? t('levelPreviewDataWithRecord', { goal: nivel.goal, speed: nivel.speed, record: marca, unit: fruitUnit(nivel.goal) })
+      : t('levelPreviewData', { goal: nivel.goal, speed: nivel.speed, unit: fruitUnit(nivel.goal) });
   }
 }
 
@@ -3546,641 +3584,46 @@ function elegirNivel(indice) {
 /* ---------------------------------------------------------- ayuda */
 
 function mostrarAyuda() {
+  el.score.textContent = '—';
+  el.meta.textContent = t('controls');
+  el.best.textContent = '';
+  el.mult.textContent = '';
+  el.chain.style.width = '0%';
+  el.pause.disabled = true;
+  el.pause.textContent = t('pause');
+  el.pause.title = t('pauseTitle');
+  el.prompt.classList.remove('visible');
+
   ponerOverlay(`<div class="panel ayuda">
     <div class="niveles-cabeza">
       <div>
-        <p class="kicker">cómo se juega</p>
-        <h2>controles</h2>
+        <p class="kicker">${t('helpTitle')}</p>
+        <h2>${t('helpHeading')}</h2>
       </div>
-      <button class="ghost" type="button" data-accion="home">volver</button>
+      <button class="ghost" type="button" data-accion="home">${t('back')}</button>
     </div>
     <table class="tabla">
       <tbody>
-        <tr><th>girar</th><td>flechas o WASD · desliza</td></tr>
-        <tr><th>turbo</th><td>espacio / mayús / A · salvo cazador y competitivo</td></tr>
-        <tr><th>pausa</th><td>P o esc · mando: start</td></tr>
-        <tr><th>reiniciar</th><td>R · sonido M</td></tr>
-        <tr><th>menús</th><td>flechas + enter · ←→ cambia de grupo</td></tr>
+        <tr><th>${t('turn')}</th><td>${t('turnKeys')}</td></tr>
+        <tr><th>${t('turbo')}</th><td>${t('turboKeys')}</td></tr>
+        <tr><th>${t('pauseHelp')}</th><td>${t('pauseKeys')}</td></tr>
+        <tr><th>${t('restart')}</th><td>${t('restartKeys')}</td></tr>
+        <tr><th>${t('menus')}</th><td>${t('menuKeys')}</td></tr>
       </tbody>
     </table>
-    <p class="kicker">en breve</p>
+    <p class="kicker">${t('comingSoon')}</p>
     <ul class="reglas">
-      <li>encadena frutas para subir hasta ×5; los cubos dan premios o poderes.</li>
-      <li>campaña: 20 niveles; la fruta final es amarilla.</li>
-      <li>frenesí: los bordes dan la vuelta. cazador: come puntos y después te persigue.</li>
-      <li>cazador: su cabeza te mata; su cuerpo y los puntos son seguros.</li>
-      <li>competitivo: cuatro jugadores, 60 s; al chocar revives con penalización.</li>
+      <li>${t('ruleChain')}</li>
+      <li>${t('ruleCampaign')}</li>
+      <li>${t('ruleModes')}</li>
+      <li>${t('ruleHunter')}</li>
     </ul>
   </div>`);
   pantalla('help');
   enfocarPrimero('button[data-accion="home"]');
 }
 
-/* ------------------------------------------- competitivo (BORRAR-COMPETITIVO)
-   modo temporal: 1 vs 1 vs 1 vs 1 contra bots, con sorteo de mapa y modificador,
-   cuenta atrás para que los cuatro empiecen a la vez y las cuadrículas rivales
-   en directo. para quitarlo entero:  grep -rn BORRAR-COMPETITIVO .
---------------------------------------------------------------------------- */
-
-// BORRAR-COMPETITIVO · iconos de rango: cubos, sin degradados ni adornos
-const RANGO_ICONO = [
-  '<rect x="10" y="10" width="8" height="8"/>',
-  '<rect x="10" y="4" width="8" height="8"/><rect x="10" y="16" width="8" height="8"/>',
-  '<rect x="4" y="4" width="8" height="8"/><rect x="4" y="16" width="8" height="8"/><rect x="16" y="16" width="8" height="8"/>',
-  '<rect x="4" y="4" width="8" height="8"/><rect x="16" y="4" width="8" height="8"/><rect x="4" y="16" width="8" height="8"/><rect x="16" y="16" width="8" height="8"/>',
-  '<rect x="4" y="4" width="8" height="8"/><rect x="16" y="4" width="8" height="8"/><rect x="10" y="10" width="8" height="8"/><rect x="4" y="16" width="8" height="8"/><rect x="16" y="16" width="8" height="8"/>',
-  '<rect x="10" y="2" width="8" height="8"/><rect x="2" y="10" width="8" height="8"/><rect x="18" y="10" width="8" height="8"/><rect x="10" y="18" width="8" height="8"/>',
-  '<rect x="10" y="2" width="8" height="8"/><rect x="2" y="10" width="8" height="8"/><rect x="10" y="10" width="8" height="8"/><rect x="18" y="10" width="8" height="8"/><rect x="10" y="18" width="8" height="8"/>',
-];
-
-function icoRango(indice, clase = '') {
-  return `<svg class="ico-rango${clase ? ` ${clase}` : ''}" viewBox="0 0 28 28" aria-hidden="true" focusable="false">${RANGO_ICONO[indice] || ''}</svg>`;
-}
-
-// los siete iconos, con el actual marcado
-function tiraRangos(rangoActual) {
-  return `<div class="rangos" aria-label="rango ${rangoActual + 1} de ${COMPETITIVE.rangos.length}">${
-    COMPETITIVE.rangos.map((nombre, i) => {
-      const clase = i === rangoActual ? ' aqui' : i < rangoActual ? ' hecho' : '';
-      return `<span class="bloque${clase}" title="${nombre}">${icoRango(i)}</span>`;
-    }).join('')
-  }</div>`;
-}
-
-/* BORRAR-COMPETITIVO · subir de rango se festeja con cubos: caen desde arriba y
-   el icono nuevo se completa bloque a bloque justo en su hueco */
-
-const festejo = {
-  ctx: null, ancho: 0, alto: 0, dpr: 1, t: 0, activo: false,
-  cubos: [], celdas: null, caja: null, icono: null,
-};
-const DURACION_FESTEJO = 2200;
-
-function ajustarFestejo() {
-  const lienzo = el.festejo;
-  if (!lienzo) return false;
-  const ancho = Math.max(1, Math.round(window.innerWidth || 480));
-  const alto = Math.max(1, Math.round(window.innerHeight || 480));
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  if (festejo.ctx && festejo.ancho === ancho && festejo.alto === alto && festejo.dpr === dpr) return true;
-  lienzo.style.width = `${ancho}px`;
-  lienzo.style.height = `${alto}px`;
-  lienzo.width = Math.round(ancho * dpr);
-  lienzo.height = Math.round(alto * dpr);
-  festejo.ctx = lienzo.getContext('2d');
-  Object.assign(festejo, { ancho, alto, dpr });
-  return true;
-}
-
-function pararFestejo() {
-  festejo.activo = false;
-  festejo.caja = null;
-  festejo.celdas = null;
-  if (festejo.ctx) festejo.ctx.clearRect(0, 0, festejo.ancho, festejo.alto);
-  if (el.festejo) el.festejo.hidden = true;
-  if (festejo.icono) festejo.icono.style.visibility = '';
-  festejo.icono = null;
-}
-
-function festejar(indice) {
-  if (!el.festejo || sinMovimiento()) return;
-  if (!ajustarFestejo()) return;
-
-  const ancho = festejo.ancho;
-  const alto = festejo.alto;
-  festejo.cubos = [];
-  for (let i = 0; i < 84; i++) {
-    const lado = 6 + (i % 3) * 6; // 6, 12 o 18 px: siempre cubos enteros
-    festejo.cubos.push({
-      x: Math.random() * Math.max(1, ancho - lado),
-      y: -Math.random() * alto,
-      v: 170 + Math.random() * 340,
-      lado,
-      gris: i % 5 === 0 ? '#8a8a8a' : '#ffffff',
-    });
-  }
-
-  // el icono grande del resultado se tapa y se va dibujando encima, bloque a bloque
-  const svg = el.overlay.querySelector('.ico-rango.grande');
-  festejo.icono = svg || null;
-  festejo.caja = null;
-  festejo.celdas = null;
-  if (svg) {
-    const caja = svg.getBoundingClientRect();
-    if (caja.width > 0) {
-      const celdas = [];
-      for (const trozo of (RANGO_ICONO[indice] || '').match(/<rect[^>]*>/g) || []) {
-        const x = Number((trozo.match(/x="(-?[\d.]+)"/) || [])[1] || 0);
-        const y = Number((trozo.match(/y="(-?[\d.]+)"/) || [])[1] || 0);
-        celdas.push({ x, y });
-      }
-      festejo.caja = { x: caja.left, y: caja.top, lado: caja.width };
-      festejo.celdas = celdas;
-      svg.style.visibility = 'hidden';
-    }
-  }
-
-  festejo.t = 0;
-  festejo.activo = true;
-  el.festejo.hidden = false;
-}
-
-function pasoFestejo(dt) {
-  if (!festejo.activo) return;
-  const ctx = festejo.ctx;
-  if (!ctx) {
-    pararFestejo();
-    return;
-  }
-  festejo.t += dt;
-  const t = festejo.t;
-  ctx.setTransform(festejo.dpr, 0, 0, festejo.dpr, 0, 0);
-  ctx.clearRect(0, 0, festejo.ancho, festejo.alto);
-
-  for (const c of festejo.cubos) {
-    c.y += (c.v * dt) / 1000;
-    if (c.y > festejo.alto) c.y = -c.lado * 2;
-    ctx.fillStyle = c.gris;
-    ctx.fillRect(Math.round(c.x), Math.round(c.y), c.lado, c.lado);
-  }
-
-  if (festejo.caja && festejo.celdas) {
-    // el SVG mide 28 y los cubos van a 8 desde 2: se copia la misma rejilla
-    const u = festejo.caja.lado / 28;
-    const escritos = Math.min(festejo.celdas.length, Math.floor(t / 70));
-    ctx.fillStyle = '#ffffff';
-    for (let i = 0; i < escritos; i++) {
-      const celda = festejo.celdas[i];
-      ctx.fillRect(
-        Math.round(festejo.caja.x + celda.x * u),
-        Math.round(festejo.caja.y + celda.y * u),
-        Math.max(1, Math.round(8 * u)),
-        Math.max(1, Math.round(8 * u)),
-      );
-    }
-  }
-
-  if (t >= DURACION_FESTEJO) pararFestejo();
-}
-
-// BORRAR-COMPETITIVO · ambiente automático durante el juego, si el sonido está activo
-function empezarAmbiente() {
-  if (app.pantalla !== 'playing') return;
-  if (!app.comp || !app.comp.activo || app.comp.fase !== 'juego') return;
-  audio.ambienteEmpezar();
-}
-
-function nombresDeMapas() {
-  if (!app.mapasComp.length) {
-    app.mapasComp = [
-      ...COMPETITIVE.arenas.map((a) => a.nombre),
-      ...LEVELS.map((n, i) => `nivel ${dosDigitos(i + 1)}`),
-    ];
-  }
-  return app.mapasComp;
-}
-
-/* BORRAR-COMPETITIVO · los rangos, antes de darle a jugar */
-
-function mostrarRangos() {
-  pararTemporizador();
-  audio.unlock();
-  app.juego = null;
-  app.demo = null;
-  app.comp = null;
-  app.modo = 'competitive';
-  const info = rangoInfo(guardado.comp);
-
-  const iconos = COMPETITIVE.rangos.map((nombre, i) => {
-    const clase = i === info.rango ? ' aqui' : i < info.rango ? ' hecho' : '';
-    return `<figure class="escalon${clase}">
-        ${icoRango(i)}
-        <figcaption>${nombre}</figcaption>
-      </figure>`;
-  }).join('');
-
-  ponerOverlay(`<div class="panel versus rangos-comp">
-    <div class="niveles-cabeza">
-      <div>
-        <p class="kicker">competitivo · 4 jugadores · ${COMPETITIVE.tiempo / 1000} s</p>
-        <h2>${info.nombre}</h2>
-      </div>
-      <button class="ghost" type="button" data-accion="modos">grupos <kbd>esc</kbd></button>
-    </div>
-    <div class="escalera" style="--paso:${info.rango}">${iconos}</div>
-    <div class="comp-barra"><i style="width:${(info.progreso * 100).toFixed(0)}%"></i></div>
-    <p class="nota">${info.siguiente ? `${info.dentro}/${COMPETITIVE.porRango} para ${info.siguiente}` : 'rango máximo'}</p>
-    <p class="pie"><span>1º +3 · 2º +1 · 3º −1 · 4º −2</span></p>
-    <div class="acciones">
-      <button class="principal" type="button" data-accion="comp-start">jugar <kbd>enter</kbd></button>
-      <button type="button" data-accion="home">menú <kbd>esc</kbd></button>
-    </div>
-  </div>`);
-
-  el.score.textContent = '—';
-  el.meta.textContent = `competitivo · ${info.nombre}`;
-  el.best.textContent = '';
-  el.mult.textContent = '';
-  el.chain.style.width = '0%';
-  el.pause.disabled = true;
-  el.prompt.classList.remove('visible');
-  pantalla('rango');
-  enfocarPrimero('button[data-accion="comp-start"]');
-}
-
-/* BORRAR-COMPETITIVO · sorteo de mapa y modificador, ya en el tablero */
-
-function sorteoCompetitivo() {
-  pararTemporizador();
-  audio.unlock();
-  app.demo = null;
-  app.juego = null;
-  app.comp = null;
-  app.modo = 'competitive';
-  app.mapaComp = mapaDePartida();
-  app.modComp = modificadorDePartida();
-
-  el.score.textContent = '—';
-  el.meta.textContent = 'competitivo · sorteando';
-  el.best.textContent = '';
-  el.mult.textContent = '';
-  el.chain.style.width = '0%';
-  el.pause.disabled = true;
-  el.prompt.classList.remove('visible');
-  ponerOverlay(null);
-  pantalla('sorteo');
-
-  const mapas = nombresDeMapas();
-  const mods = COMPETITIVE.modificadores.map((m) => m.nombre);
-  const alAzar = (lista) => lista[Math.floor(Math.random() * lista.length)];
-  if (el.sorteo) {
-    el.sorteo.hidden = false;
-    el.sorteo.classList.remove('fijo');
-  }
-  const pintar = () => {
-    if (el.sorteoMapa) el.sorteoMapa.textContent = alAzar(mapas);
-    if (el.sorteoMod) el.sorteoMod.textContent = alAzar(mods);
-  };
-  pintar();
-  let paso = 0;
-  const total = 16;
-  app.intervalo = setInterval(() => {
-    paso += 1;
-    if (paso < total) {
-      pintar();
-      // cada giro suena y da un salto de un bloque
-      if (el.sorteo) {
-        el.sorteo.classList.remove('gira');
-        void el.sorteo.offsetWidth;
-        el.sorteo.classList.add('gira');
-      }
-      audio.play('sorteo');
-      return;
-    }
-    clearInterval(app.intervalo);
-    app.intervalo = 0;
-    // se queda con lo sorteado
-    if (el.sorteoMapa) el.sorteoMapa.textContent = app.mapaComp.nombre;
-    if (el.sorteoMod) el.sorteoMod.textContent = app.modComp.nombre;
-    if (el.sorteo) {
-      el.sorteo.classList.add('fijo');
-      el.sorteo.classList.remove('gira');
-    }
-    audio.play('fija');
-    app.temporizador = setTimeout(() => {
-      if (el.sorteo) {
-        el.sorteo.hidden = true;
-        el.sorteo.classList.remove('fijo');
-      }
-      empezarCompetitivo();
-    }, 780);
-  }, 85);
-}
-
-/* BORRAR-COMPETITIVO · partida: cuenta atrás y los cuatro a la vez */
-
-function empezarCompetitivo() {
-  if (!app.mapaComp) app.mapaComp = mapaDePartida();
-  if (!app.modComp) app.modComp = modificadorDePartida();
-  pararTemporizador();
-  audio.unlock();
-  app.demo = null;
-
-  const cfg = configCompetitivo(app.mapaComp, app.modComp);
-  app.comp = {
-    activo: true,
-    fase: 'cuenta',
-    cuenta: 3000,
-    restante: COMPETITIVE.tiempo,
-    mapa: app.mapaComp,
-    mod: app.modComp,
-    rivales: [],
-    muertes: 0,
-    minis: null,
-    resultado: null,
-  };
-  app.comp.rivales = crearRivales(cfg);
-  app.modo = 'competitive';
-  app.nivel = 0;
-  app.record = false;
-  app.juego = new Game(cfg, eventosJuego);
-  app.marca = mejorActual();
-
-  ponerOverlay(null);
-  pantalla('playing');
-  if (el.reloj) {
-    el.reloj.hidden = false;
-    el.reloj.textContent = String(COMPETITIVE.tiempo / 1000);
-    el.reloj.classList.remove('apurado');
-  }
-  if (el.cuenta) {
-    el.cuenta.hidden = false;
-    el.cuenta.textContent = '3';
-  }
-  montarMinis();
-  ajustarLienzo();
-  actualizarMarcador();
-}
-
-function crearRivales(cfg) {
-  const escala = escalaBots(guardado.comp.rango);
-  const ajustes = [0.97, 1, 1.04];
-  return COMPETITIVE.bots.slice(0, COMPETITIVE.jugadores - 1).map((nombre, i) => {
-    const ajuste = ajustes[i % ajustes.length] * escala;
-    const juego = new Game(configCompetitivo(app.mapaComp, app.modComp, {
-      startSpeed: Math.round(cfg.startSpeed * ajuste),
-      minSpeed: Math.round(cfg.minSpeed * ajuste),
-    }), () => {});
-    juego.state = 'running';
-    return { nombre, juego };
-  });
-}
-
-/* BORRAR-COMPETITIVO · las cuadrículas rivales, en vivo a la derecha */
-
-function montarMinis() {
-  if (!el.minis || !app.comp) return;
-  const gente = app.comp.rivales.map((r) => ({ nombre: r.nombre, juego: r.juego }));
-  el.minis.innerHTML = gente.map((p, i) => `<figure class="mini" data-i="${i}">
-      <figcaption><span>${p.nombre}</span><b>0</b></figcaption>
-      <canvas aria-hidden="true"></canvas>
-    </figure>`).join('');
-  el.minis.hidden = false;
-  if (el.pila) {
-    el.pila.classList.add('con-minis');
-    el.pila.classList.toggle('apilado', esApilado());
-  }
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  app.comp.minis = gente.map((p, i) => {
-    const figura = el.minis.querySelector(`.mini[data-i="${i}"]`);
-    const lienzo = figura.querySelector('canvas');
-    const ancho = Math.round(figura.getBoundingClientRect().width) || 72;
-    lienzo.style.width = `${ancho}px`;
-    lienzo.style.height = `${ancho}px`;
-    lienzo.width = Math.round(ancho * dpr);
-    lienzo.height = Math.round(ancho * dpr);
-    return {
-      figura,
-      lienzo,
-      ctx: lienzo.getContext('2d'),
-      juego: p.juego,
-      lado: ancho,
-      dpr,
-      marca: figura.querySelector('b'),
-      ultimo: -1,
-    };
-  });
-}
-
-function esApilado() {
-  const caja = el.stage.getBoundingClientRect();
-  return (caja.width || window.innerWidth || 480) < 560;
-}
-
-function dibujarMinis() {
-  const c = app.comp;
-  if (!c || !c.minis || !el.minis || el.minis.hidden) return;
-  for (const m of c.minis) {
-    m.juego.draw(m.ctx, {
-      cell: m.lado / COLS,
-      ox: 0,
-      oy: 0,
-      width: m.lado,
-      height: m.lado,
-      dpr: m.dpr,
-      mini: true,
-    });
-    const valor = m.juego.score;
-    if (valor !== m.ultimo) {
-      const sube = valor > m.ultimo && m.ultimo >= 0;
-      m.ultimo = valor;
-      if (m.marca) m.marca.textContent = puntos(valor);
-      // BORRAR-COMPETITIVO · cuando un bot come, su cuadrícula da un salto
-      if (sube && m.figura) {
-        m.figura.classList.remove('suma');
-        void m.figura.offsetWidth;
-        m.figura.classList.add('suma');
-      }
-    }
-  }
-}
-
-function quitarMinis() {
-  if (!el.minis) return;
-  el.minis.hidden = true;
-  el.minis.innerHTML = '';
-  if (el.pila) {
-    el.pila.classList.remove('con-minis', 'apilado');
-  }
-  if (app.comp) app.comp.minis = null;
-}
-
-function avisarCastigo(mensaje) {
-  if (!el.aviso) return;
-  el.aviso.textContent = mensaje;
-  el.aviso.classList.add('ver');
-  clearTimeout(avisarCastigo.turno);
-  avisarCastigo.turno = setTimeout(() => el.aviso.classList.remove('ver'), 1100);
-}
-
-/* BORRAR-COMPETITIVO · clasificación y reloj */
-
-function tablaCompetitivo(c) {
-  const filas = [{
-    nombre: 'tú',
-    puntos: app.juego ? app.juego.score : 0,
-    vivo: !!app.juego && app.juego.state === 'running',
-    yo: true,
-  }];
-  for (const rival of c.rivales) {
-    filas.push({
-      nombre: rival.nombre,
-      puntos: rival.juego.score,
-      vivo: rival.juego.state === 'running',
-    });
-  }
-  return filas.sort((a, b) => b.puntos - a.puntos);
-}
-
-function pintarReloj() {
-  const c = app.comp;
-  if (!el.reloj || !c || !c.activo) return;
-  const segundos = c.fase === 'cuenta'
-    ? Math.ceil(COMPETITIVE.tiempo / 1000)
-    : Math.max(0, Math.ceil(c.restante / 1000));
-  const texto = String(segundos);
-  if (el.reloj.textContent !== texto) el.reloj.textContent = texto;
-  const apurado = c.fase === 'juego' && c.restante <= 10000;
-  el.reloj.classList.toggle('apurado', apurado);
-  audio.ambienteApurado(apurado); // BORRAR-COMPETITIVO · el pulso se acelera al final
-}
-
-function pintarCuenta() {
-  const c = app.comp;
-  if (!el.cuenta || !c) return;
-  if (c.fase !== 'cuenta') {
-    el.cuenta.hidden = true;
-    return;
-  }
-  el.cuenta.hidden = false;
-  const paso = Math.max(1, Math.ceil(c.cuenta / 1000));
-  const texto = c.cuenta > 300 ? String(paso) : 'ya';
-  if (el.cuenta.textContent !== texto) {
-    el.cuenta.textContent = texto;
-    el.cuenta.classList.remove('pop');
-    // reinicia la animación del número
-    void el.cuenta.offsetWidth;
-    el.cuenta.classList.add('pop');
-    if (texto !== 'ya') audio.play('cuenta', paso);
-  }
-}
-
-function congelarCompetitivo(c) {
-  if (!c || c.fase === 'fin') return;
-  c.fase = 'fin';
-  c.finRestante = 1000;
-  c.restante = 0;
-  pararTemporizador();
-  audio.ambienteParar();
-  // el último temblor no debe seguir desplazando una pantalla que ya está quieta
-  if (app.juego) app.juego.shake = 0;
-  for (const rival of c.rivales) rival.juego.shake = 0;
-  if (el.minis) el.minis.querySelectorAll('.suma').forEach((nodo) => nodo.classList.remove('suma'));
-}
-
-function pasoCompetitivo(dt) {
-  const c = app.comp;
-  if (!c || !c.activo) return;
-
-  // al acabarse el reloj, jugador y bots quedan inmóviles un segundo antes del resultado
-  if (c.fase === 'fin') {
-    c.finRestante = Math.max(0, c.finRestante - dt);
-    if (c.finRestante <= 0) finCompetitivo();
-    return;
-  }
-
-  // cuenta atrás: nadie se mueve hasta el mismo instante
-  if (c.fase === 'cuenta') {
-    c.cuenta = Math.max(0, c.cuenta - dt);
-    pintarCuenta();
-    pintarReloj();
-    if (c.cuenta <= 0) {
-      c.fase = 'juego';
-      // al acabar la cuenta, todos arrancan solos: también tú
-      if (app.juego.state === 'ready') {
-        app.juego.state = 'running';
-        app.juego.savedState = 'running';
-      }
-      el.prompt.classList.remove('visible');
-      pintarCuenta();
-      audio.play('start');
-      empezarAmbiente();
-    }
-    return;
-  }
-
-  c.restante = Math.max(0, c.restante - dt);
-  app.juego.update(dt);
-  for (const rival of c.rivales) {
-    if (rival.juego.state === 'running') {
-      rival.juego.botTurn();
-      rival.juego.update(dt);
-    }
-  }
-  pintarReloj();
-  if (c.restante <= 0) {
-    congelarCompetitivo(c);
-    pintarReloj();
-  }
-}
-
-function finCompetitivo() {
-  const c = app.comp;
-  if (!c || !c.activo) return;
-  if (c.fase !== 'fin') {
-    congelarCompetitivo(c);
-    return;
-  }
-  c.activo = false;
-
-  const filas = tablaCompetitivo(c).map((f, i) => ({ ...f, puesto: i + 1 }));
-  const yo = filas.find((f) => f.yo) || { puesto: filas.length };
-  const delta = COMPETITIVE.premios[Math.min(COMPETITIVE.premios.length - 1, yo.puesto - 1)];
-  const cambio = ajustarRango(guardado.comp, delta);
-  guardado.comp = {
-    rango: cambio.rango,
-    dentro: cambio.dentro,
-    partidas: (guardado.comp.partidas || 0) + 1,
-    victorias: (guardado.comp.victorias || 0) + (yo.puesto === 1 ? 1 : 0),
-  };
-  guardado.best.competitive = Math.max(guardado.best.competitive || 0, app.juego ? app.juego.score : 0);
-  guardar();
-
-  const despues = rangoInfo(guardado.comp);
-  c.resultado = { filas, puesto: yo.puesto, delta, antes: despues };
-  const signo = delta > 0 ? `+${delta}` : String(delta);
-  const titulo = yo.puesto === 1 ? 'has ganado' : `${yo.puesto}º de ${filas.length}`;
-  const movimiento = cambio.sube
-    ? `subes a ${despues.nombre}`
-    : cambio.baja
-      ? `bajas a ${despues.nombre}`
-      : `${despues.dentro}/${COMPETITIVE.porRango} para ${despues.siguiente || 'nada'}`;
-
-  const tabla = filas.map((f) => `<li${f.yo ? ' class="propio"' : ''}>
-      <span class="p">${f.puesto}</span>
-      <span class="n">${f.nombre}</span>
-      <span class="s">${puntos(f.puntos)}</span>
-    </li>`).join('');
-
-  ponerOverlay(`<div class="panel versus fin-comp">
-    <div class="fin-cabeza">
-      <div class="rango-cabeza">
-        ${icoRango(despues.rango, ' grande')}
-        <div>
-          <p class="kicker">competitivo · ${c.mod.nombre} · ${c.mapa.nombre}</p>
-          <p class="cifra">${titulo}</p>
-        </div>
-      </div>
-      <p class="nota">${signo} de rango · ${movimiento}${c.muertes ? ` · reviviste ${c.muertes}×` : ''}</p>
-    </div>
-    ${tiraRangos(despues.rango)}
-    <ol class="comp-tabla">${tabla}</ol>
-    <div class="acciones">
-      <button class="principal" type="button" data-accion="comp-again">revancha <kbd>enter</kbd></button>
-      <button type="button" data-accion="home">menú <kbd>esc</kbd></button>
-    </div>
-  </div>`);
-  pantalla('versus-fin');
-  quitarMinis();
-  enfocarPrimero('button[data-accion="comp-again"]');
-  if (el.reloj) el.reloj.hidden = true;
-  if (el.cuenta) el.cuenta.hidden = true;
-  el.pause.disabled = true;
-  el.prompt.classList.remove('visible');
-  if (cambio.sube || cambio.baja) audio.play('rango', cambio.sube);
-  else audio.play(yo.puesto === 1 ? 'level' : 'ui');
-  if (cambio.sube) festejar(despues.rango); // BORRAR-COMPETITIVO · cubos al subir
-}
+// BORRAR-COMPETITIVO · rangos y salas eliminados en v1.0.
 
 /* ---------------------------------------------------------- partida */
 
@@ -4206,10 +3649,6 @@ function empezarPartida(modo, nivel = 0) {
   pararTemporizador();
   audio.unlock();
   app.demo = null;
-  app.comp = null; // BORRAR-COMPETITIVO
-  if (el.reloj) el.reloj.hidden = true; // BORRAR-COMPETITIVO
-  if (el.minis) el.minis.innerHTML = ''; // BORRAR-COMPETITIVO
-  if (el.minis) el.minis.hidden = true; // BORRAR-COMPETITIVO
   app.modo = modo;
   app.nivel = nivel;
   app.record = false;
@@ -4270,20 +3709,8 @@ function eventosJuego(tipo, datos) {
       break;
     case 'die':
       audio.play('death');
-      // BORRAR-COMPETITIVO · en competitivo te mueres y vuelves, pagando puntos
-      if (app.comp && app.comp.activo) {
-        const castigo = castigoMuerte(app.juego ? app.juego.score : 0);
-        app.temporizador = setTimeout(() => {
-          if (!app.comp || !app.comp.activo || !app.juego) return;
-          const pagado = app.juego.revivir(castigo);
-          app.comp.muertes += 1;
-          audio.play('revive');
-          avisarCastigo(`−${pagado}`);
-        }, 620);
-      } else {
-        guardarMarca();
-        app.temporizador = setTimeout(mostrarFin, 900);
-      }
+      guardarMarca();
+      app.temporizador = setTimeout(mostrarFin, 900);
       break;
     case 'clear':
       audio.play('level');
@@ -4318,18 +3745,26 @@ function mostrarFin() {
   app.record = juego.score > app.marca;
   const esCampana = app.modo === 'campaign';
   const meta = esCampana
-    ? `nivel ${LEVELS[app.nivel].goal} frutas · récord ${Math.max(app.marca, juego.score)}`
-    : `récord ${Math.max(app.marca, juego.score)} · ${juego.fruits} frutas`;
+    ? t('levelGoalRecord', {
+      goal: LEVELS[app.nivel].goal,
+      record: Math.max(app.marca, juego.score),
+      unit: fruitUnit(LEVELS[app.nivel].goal),
+    })
+    : t('recordFruitMeta', {
+      record: Math.max(app.marca, juego.score),
+      fruits: juego.fruits,
+      unit: fruitUnit(juego.fruits),
+    });
 
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
-      <p class="kicker">${app.record ? 'récord nuevo' : 'fin'}</p>
+      <p class="kicker">${t(app.record ? 'recordNew' : 'end')}</p>
       <p class="cifra" data-cifra>${puntos(juego.score)}</p>
       <p class="nota">${meta}</p>
     </div>
     <div class="acciones">
-      <button class="principal" type="button" data-accion="retry">reintentar <kbd>R</kbd></button>
-      <button type="button" data-accion="home">menú <kbd>esc</kbd></button>
+      <button class="principal" type="button" data-accion="retry">${t('retry')} <kbd>R</kbd></button>
+      <button type="button" data-accion="home">${t('menu')} <kbd>esc</kbd></button>
     </div>
   </div>`);
   pantalla('dead');
@@ -4348,14 +3783,14 @@ function mostrarNivelSuperado() {
 
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
-      <p class="kicker">nivel ${dosDigitos(app.nivel + 1)} superado</p>
+      <p class="kicker">${t('levelCleared', { number: dosDigitos(app.nivel + 1) })}</p>
       <p class="cifra" data-cifra>${puntos(juego.score)}</p>
-      <p class="nota">${ultimo ? 'campaña completa · ya no hay margen' : `siguiente · ${siguiente.name.toLowerCase()} · ${siguiente.goal} frutas`}</p>
+      <p class="nota">${ultimo ? t('campaignComplete') : t('nextLevelMeta', { name: levelName(siguiente.name), goal: siguiente.goal, unit: fruitUnit(siguiente.goal) })}</p>
     </div>
     <div class="acciones">
-      ${ultimo ? '' : '<button class="principal" type="button" data-accion="next">siguiente <kbd>↵</kbd></button>'}
-      <button${ultimo ? ' class="principal"' : ''} type="button" data-accion="retry">repetir <kbd>R</kbd></button>
-      <button type="button" data-accion="home">menú <kbd>esc</kbd></button>
+      ${ultimo ? '' : `<button class="principal" type="button" data-accion="next">${t('next')} <kbd>↵</kbd></button>`}
+      <button${ultimo ? ' class="principal"' : ''} type="button" data-accion="retry">${t('repeat')} <kbd>R</kbd></button>
+      <button type="button" data-accion="home">${t('menu')} <kbd>esc</kbd></button>
     </div>
   </div>`);
   pantalla('cleared');
@@ -4397,37 +3832,42 @@ function animarCifra(nodo, total) {
 
 /* ---------------------------------------------------------- pausa */
 
-function pausar() {
-  if (!app.juego || app.pantalla !== 'playing') return;
-  if (app.comp && app.comp.fase === 'fin') return;
-  app.juego.pause();
-  if (app.juego.state !== 'paused') return;
-  audio.play('ui');
-
+function mostrarPausa() {
   const juego = app.juego;
+  if (!juego) return;
   const cifra = puntos(juego.score);
-  // BORRAR-COMPETITIVO
-  const nota = app.comp
-    ? `${juego.fruits} frutas · ${Math.ceil(app.comp.restante / 1000)} s de partida`
-    : `${juego.fruits} frutas · récord ${Math.max(app.marca, juego.score)}`;
+  const nota = t('fruitsRecord', {
+    fruits: juego.fruits,
+    record: Math.max(app.marca, juego.score),
+    unit: fruitUnit(juego.fruits),
+  });
 
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
-      <p class="kicker">en pausa</p>
+      <p class="kicker">${t('paused')}</p>
       <p class="cifra">${cifra}</p>
       <p class="nota">${nota}</p>
     </div>
     <div class="acciones">
-      <button class="principal" type="button" data-accion="resume">seguir <kbd>P</kbd></button>
-      <button type="button" data-accion="retry">reiniciar <kbd>R</kbd></button>
-      <button type="button" data-accion="home">menú <kbd>esc</kbd></button>
+      <button class="principal" type="button" data-accion="resume">${t('resume')} <kbd>P</kbd></button>
+      <button type="button" data-accion="retry">${t('restart')} <kbd>R</kbd></button>
+      <button type="button" data-accion="home">${t('menu')} <kbd>esc</kbd></button>
     </div>
   </div>`);
-  pantalla('paused');
   enfocarPrimero('button[data-accion="resume"]');
-  el.pause.textContent = 'seguir';
+  el.pause.textContent = t('resume');
+  el.pause.title = t('resumeTitle');
   el.pause.disabled = false;
   el.prompt.classList.remove('visible');
+}
+
+function pausar() {
+  if (!app.juego || app.pantalla !== 'playing') return;
+  app.juego.pause();
+  if (app.juego.state !== 'paused') return;
+  audio.play('ui');
+  pantalla('paused');
+  mostrarPausa();
 }
 
 function reanudar() {
@@ -4436,9 +3876,9 @@ function reanudar() {
   ponerOverlay(null);
   foco.indice = -1;
   pantalla('playing');
-  el.pause.textContent = 'pausa';
+  el.pause.textContent = t('pause');
+  el.pause.title = t('pauseTitle');
   el.pause.disabled = false;
-  empezarAmbiente(); // BORRAR-COMPETITIVO · al seguir, vuelve el pulso
 }
 
 function alternarPausa() {
@@ -4461,7 +3901,6 @@ function accion(nombre) {
 
   audio.unlock();
 
-  if (app.pantalla === 'playing' && app.comp && app.comp.fase === 'fin') return;
 
   if (nombre === 'tap') {
     if (turboPermitido() && app.juego) app.juego.toggleTurbo();
@@ -4476,7 +3915,7 @@ function accion(nombre) {
     return;
   }
   if (nombre === 'padConectado') {
-    el.hint.textContent = 'mando conectado';
+    el.hint.textContent = t('gamepadConnected');
     return;
   }
 
@@ -4519,47 +3958,6 @@ function accion(nombre) {
     } else if (nombre === 'back' || nombre === 'pause') {
       mostrarInicio();
     }
-    return;
-  }
-
-  // BORRAR-COMPETITIVO
-  // BORRAR-COMPETITIVO · pantalla de rangos
-  if (app.pantalla === 'rango') {
-    if (esDireccion) {
-      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
-      return;
-    }
-    if (nombre === 'confirm') {
-      if (!activarFoco()) sorteoCompetitivo();
-      return;
-    }
-    if (nombre === 'back') mostrarInicio();
-    return;
-  }
-
-  if (app.pantalla === 'sorteo') {
-    // BORRAR-COMPETITIVO · mientras se sortea, sólo se puede salir
-    if (nombre === 'back' || nombre === 'pause') {
-      pararTemporizador();
-      mostrarInicio();
-    }
-    return;
-  }
-
-  if (app.pantalla === 'versus-fin') {
-    if (esDireccion) {
-      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
-      return;
-    }
-    if (nombre === 'confirm') {
-      activarFoco();
-      return;
-    }
-    if (nombre === 'restart') {
-      mostrarRangos();
-      return;
-    }
-    if (nombre === 'back') mostrarInicio();
     return;
   }
 
@@ -4615,11 +4013,6 @@ function accion(nombre) {
     return;
   }
   if (nombre === 'restart') {
-    // BORRAR-COMPETITIVO
-    if (app.comp && app.comp.activo) {
-      sorteoCompetitivo();
-      return;
-    }
     if (app.juego) empezarPartida(app.modo, app.nivel);
     return;
   }
@@ -4645,7 +4038,7 @@ function ejecutar(nombre) {
       mostrarInicio();
       break;
     case 'modos':
-      mostrarModos(0);
+      mostrarInicio();
       break;
     case 'help':
       mostrarAyuda();
@@ -4659,21 +4052,14 @@ function ejecutar(nombre) {
     case 'wipe':
       borrarRecords();
       break;
-    // BORRAR-COMPETITIVO
-    case 'comp-start':
-      sorteoCompetitivo();
-      break;
-    case 'comp-again':
-      mostrarRangos();
-      break;
     default:
       break;
   }
 }
 
 function borrarRecords() {
-  if (!window.confirm('¿borrar récords y progreso?')) return;
-  guardado.best = { classic: 0, frenzy: 0, hunter: 0, blind: 0 };
+  if (!window.confirm(t('eraseConfirm'))) return;
+  guardado.best = { classic: 0, frenzy: 0, hunter: 0 };
   guardado.campaign = { unlocked: 1, best: {} };
   guardar();
   audio.play('ui');
@@ -4686,7 +4072,8 @@ function aplicarSonido() {
   audio.set(guardado.sound);
   el.mute.classList.toggle('apagado', !guardado.sound);
   el.mute.setAttribute('aria-pressed', String(guardado.sound));
-  el.mute.title = guardado.sound ? 'sonido activo (M)' : 'sonido apagado (M)';
+  el.mute.title = t(guardado.sound ? 'soundTitleOn' : 'soundTitleOff');
+  el.mute.setAttribute('aria-label', el.mute.title);
 }
 
 function alternarSonido() {
@@ -4695,7 +4082,51 @@ function alternarSonido() {
   guardar();
   aplicarSonido();
   if (guardado.sound) audio.play('ui');
-  empezarAmbiente(); // BORRAR-COMPETITIVO
+}
+
+function aplicarIdiomaBase() {
+  document.documentElement.lang = getLanguage();
+  document.title = t('documentTitle');
+  const descripcionPagina = document.getElementById('meta-description');
+  if (descripcionPagina) descripcionPagina.content = t('description');
+  document.querySelectorAll('[data-i18n]').forEach((nodo) => {
+    nodo.textContent = t(nodo.dataset.i18n);
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach((nodo) => {
+    nodo.title = t(nodo.dataset.i18nTitle);
+  });
+  document.querySelectorAll('[data-i18n-aria]').forEach((nodo) => {
+    nodo.setAttribute('aria-label', t(nodo.dataset.i18nAria));
+  });
+  if (el.lang) el.lang.value = getLanguage();
+  const efectos = document.getElementById('effects');
+  if (efectos) efectos.setAttribute('aria-label', t('activeEffects'));
+  if (el.pause) el.pause.title = t(app.pantalla === 'paused' ? 'resumeTitle' : 'pauseTitle');
+  aplicarSonido();
+}
+
+function cambiarIdioma() {
+  setLanguage(el.lang.value);
+  aplicarIdiomaBase();
+  rutas.restaurando = true;
+  if (app.pantalla === 'home') mostrarInicio();
+  else if (app.pantalla === 'modes') mostrarModos(app.grupo);
+  else if (app.pantalla === 'levels') pintarNiveles();
+  else if (app.pantalla === 'help') mostrarAyuda();
+  else if (app.pantalla === 'playing') {
+    actualizarPista();
+    actualizarMarcador();
+  } else if (app.pantalla === 'paused') {
+    actualizarMarcador();
+    mostrarPausa();
+  } else if (app.pantalla === 'dead') mostrarFin();
+  else if (app.pantalla === 'cleared') {
+    mostrarNivelSuperado();
+    actualizarMarcador();
+  }
+  rutas.restaurando = false;
+  sincronizarRuta(true);
+  if (el.lang && typeof el.lang.focus === 'function') el.lang.focus({ preventScroll: true });
 }
 
 /* ---------------------------------------------------------- demo del menú */
@@ -4728,15 +4159,15 @@ function pintarTituloDemo(modo, contexto = 'modo') {
   if (modo === 'campaign') {
     const indice = Math.min(guardado.campaign.unlocked - 1, LEVELS.length - 1);
     const nivel = LEVELS[indice];
-    titulo.textContent = `vista previa · nivel ${dosDigitos(indice + 1)} ${nivel.name.toLowerCase()}`;
+    titulo.textContent = t('previewCampaign', { number: dosDigitos(indice + 1), name: levelName(nivel.name) });
     nota.textContent = contexto === 'grupo'
-      ? `la campaña sigue por aquí · ${guardado.campaign.unlocked - 1} de ${LEVELS.length} superados`
-      : 'así es el siguiente nivel de la campaña';
+      ? t('campaignAt', { cleared: guardado.campaign.unlocked - 1, total: LEVELS.length })
+      : t('nextCampaignLevel');
   } else {
-    titulo.textContent = `vista previa · ${nombreModo(modo)}`;
+    titulo.textContent = t('previewModeTitle', { mode: modeName(modo) });
     nota.textContent = contexto === 'grupo'
-      ? `${MODES[modo].tag} · entra para ver los demás`
-      : MODES[modo].tag;
+      ? t('enterForModes', { tag: modeTag(modo) })
+      : modeTag(modo);
   }
 }
 
@@ -4767,9 +4198,8 @@ el.overlay.addEventListener('click', (e) => {
     audio.unlock();
     audio.play('ui');
     const grupo = GROUPS[Number(boton.dataset.grupo)];
-    // BORRAR-COMPETITIVO · competitivo va directo a los rangos, sin subpágina de un solo modo
-    if (grupo && grupo.modes.length === 1 && grupo.modes[0] === 'competitive') {
-      mostrarRangos();
+    if (grupo && grupo.modes.length === 1) {
+      elegirModo(grupo.modes[0]);
       return;
     }
     mostrarModos(Number(boton.dataset.grupo));
@@ -4829,6 +4259,8 @@ el.mute.addEventListener('click', () => {
   alternarSonido();
 });
 
+el.lang.addEventListener('change', cambiarIdioma);
+
 // dentro de un iframe el teclado no llega hasta que alguien hace clic dentro
 let focoResuelto = false;
 
@@ -4862,22 +4294,14 @@ function bucle(t) {
   const dt = app.reloj ? t - app.reloj : 16;
   app.reloj = t;
 
-  // transición de pantallas y festejo del rango, siempre por encima del resto
   pasoBarrido(dt);
-  pasoFestejo(dt); // BORRAR-COMPETITIVO
 
   if (app.pantalla === 'home' || app.pantalla === 'modes') {
     pasoDemo(dt);
     dibujarMarca(dt);
   } else if (app.juego) {
-    // BORRAR-COMPETITIVO · con partida de competitivo corren también los tres bots
-    if (app.comp) {
-      if (app.comp.activo && app.pantalla === 'playing') pasoCompetitivo(dt);
-    } else {
-      app.juego.update(dt);
-    }
+    app.juego.update(dt);
     app.juego.draw(pincel, vista);
-    if (app.comp && app.comp.activo) dibujarMinis(); // BORRAR-COMPETITIVO
     actualizarMarcador();
   }
 
@@ -4888,8 +4312,8 @@ function arrancar() {
   if (!comprobarPiezas()) return;
 
   document.documentElement.classList.toggle('trama', guardado.crt);
-  aplicarSonido();
-  mostrarInicio();
+  aplicarIdiomaBase();
+  restaurarRuta();
   ajustarLienzo();
 
   if (window.ResizeObserver) {
@@ -4917,18 +4341,11 @@ try {
 
 if (location.hash === '#debug') {
   window.__snake = { app, guardado, accion, empezarPartida, mostrarInicio, crearDemo, mostrarFin };
-  // BORRAR-COMPETITIVO
-  window.__snake.mostrarRangos = mostrarRangos;
-  // rótulo y festejo: para poder mirarlos desde las pruebas
+  // rótulo: para poder mirarlo desde las pruebas
   window.__snake.marca = marca;
   window.__snake.serpientesMarca = SERPIENTES_NOMBRE;
   window.__snake.mejorGlobal = mejorGlobal;
-  window.__snake.festejar = festejar;
   window.__snake.dibujarMarca = dibujarMarca;
-  window.__snake.sorteoCompetitivo = sorteoCompetitivo;
-  window.__snake.empezarCompetitivo = empezarCompetitivo;
-  window.__snake.finCompetitivo = finCompetitivo;
-  window.__snake.pasoCompetitivo = pasoCompetitivo;
 }
 })(modulos['main']);
 })();

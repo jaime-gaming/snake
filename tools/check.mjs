@@ -8,12 +8,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Game } from '../js/engine.js';
-import {
-  MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS,
-  // BORRAR-COMPETITIVO
-  COMPETITIVE, mapaDePartida, modificadorDePartida, configCompetitivo,
-  ajustarRango, rangoInfo, escalaBots, castigoMuerte,
-} from '../js/levels.js';
+import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS } from '../js/levels.js';
+import { setLanguage, t, routeSlug, levelName, fruitUnit } from '../js/i18n.js';
+
+const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const K = (x, y) => y * 4096 + x;
 let fallos = 0;
@@ -44,12 +42,12 @@ function configNivel(nivel) {
 // estructura: grupos del menú, 20 niveles y velocidades coherentes
 process.stdout.write('estructura\n');
 {
-  comprobar(GROUPS.length === 3, 'grupos: tienen que ser tres');
+  comprobar(GROUPS.length === 2, 'grupos: tienen que ser dos');
   comprobar(GROUPS[0].modes[0] === 'campaign', 'grupos: la campaña va primero');
   const planos = GROUPS.flatMap((g) => g.modes);
   comprobar(planos.length === MODE_ORDER.length, 'grupos: MODE_ORDER no coincide con los grupos');
   comprobar(new Set(planos).size === planos.length, 'grupos: hay un modo repetido');
-  comprobar(Object.keys(MODES).length === 4, 'modos: no son cuatro');
+  comprobar(Object.keys(MODES).length === 3, 'modos: la versión 1.0 conserva tres modos');
   comprobar(!MODES.blind, 'modos: el modo ciego sigue ahí');
   comprobar(
     Object.keys(MODES).every((id) => planos.includes(id)),
@@ -153,8 +151,8 @@ LEVELS.forEach((nivel, i) => {
 
 // modos infinitos: aguantan 30 s sin romperse
 process.stdout.write('modos\n');
-// BORRAR-COMPETITIVO · el competitivo también aguanta 30 s con el piloto
-for (const id of ['classic', 'frenzy', 'hunter', 'competitive']) {
+// BORRAR-COMPETITIVO · sólo se prueban los modos publicados en v1.0.
+for (const id of ['classic', 'frenzy', 'hunter']) {
   const juego = new Game({ ...MODES[id] }, () => {});
   let ms = 0;
   let poderes = 0;
@@ -825,217 +823,88 @@ process.stdout.write('cazador al choque\n');
   process.stdout.write('  cazador: avanza interpolado entre casillas\n');
 }
 /* ═══════════════════════════════════════════════════════════════════════════
-   BORRAR-COMPETITIVO · pruebas del modo competitivo. se van con el modo.
+   BORRAR-COMPETITIVO · el modo y sus pruebas se retiraron para v1.0.
    ═══════════════════════════════════════════════════════════════════════════ */
-process.stdout.write('competitivo\n');
-// BORRAR-COMPETITIVO · raíz del repo, para leer los ficheros con la marca
-const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+process.stdout.write('v1.0, idioma y publicación\n');
 {
-  comprobar(COMPETITIVE.rangos.length === 7, 'competitivo: no hay siete rangos');
-  comprobar(
-    COMPETITIVE.rangos.every((r) => typeof r === 'string' && r.length > 2),
-    'competitivo: algún rango no tiene nombre',
-  );
-  comprobar(new Set(COMPETITIVE.rangos).size === 7, 'competitivo: hay rangos repetidos');
-  comprobar(COMPETITIVE.jugadores === 4, 'competitivo: no es 1 vs 1 vs 1 vs 1');
-  comprobar(COMPETITIVE.bots.length === 3, 'competitivo: no hay tres bots');
-  comprobar(COMPETITIVE.tiempo > 10000, 'competitivo: el límite de tiempo es absurdo');
-  comprobar(COMPETITIVE.premios.length === 4, 'competitivo: faltan premios por puesto');
-  comprobar(COMPETITIVE.premios[0] > 0 && COMPETITIVE.premios[3] < 0, 'competitivo: ganar no sube y perder no baja');
-  process.stdout.write(`  rangos: ${COMPETITIVE.rangos.join(' · ')}\n`);
+  const main = fs.readFileSync(path.join(RAIZ, 'js/main.js'), 'utf8');
+  const input = fs.readFileSync(path.join(RAIZ, 'js/input.js'), 'utf8');
+  const pagina = fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8');
+  const niveles = fs.readFileSync(path.join(RAIZ, 'js/levels.js'), 'utf8');
+  const motor = fs.readFileSync(path.join(RAIZ, 'js/engine.js'), 'utf8');
+  const audio = fs.readFileSync(path.join(RAIZ, 'js/audio.js'), 'utf8');
+  const css = fs.readFileSync(path.join(RAIZ, 'styles.css'), 'utf8');
+  const servidor = fs.readFileSync(path.join(RAIZ, 'serve.mjs'), 'utf8');
+  const workflow = fs.readFileSync(path.join(RAIZ, '.github/workflows/pages.yml'), 'utf8');
+  const idiomas = fs.readFileSync(path.join(RAIZ, 'js/i18n.js'), 'utf8');
+  const fallback = fs.readFileSync(path.join(RAIZ, '404.html'), 'utf8');
 
-  // mapas y modificadores: siempre válidos, con muros dentro del tablero
-  const azar = (v) => () => v;
-  for (const v of [0, 0.2, 0.4, 0.6, 0.8, 0.999]) {
-    const mapa = mapaDePartida(azar(v));
-    comprobar(mapa && typeof mapa.nombre === 'string', 'competitivo: mapa sin nombre');
-    comprobar(
-      mapa.walls.every(([x, y]) => x >= 0 && y >= 0 && x < COLS && y < ROWS),
-      `competitivo: el mapa ${mapa.nombre} tiene muros fuera`,
-    );
-  }
-  comprobar(COMPETITIVE.modificadores.length >= 4, 'competitivo: hay muy pocos modificadores');
-  for (const mod of COMPETITIVE.modificadores) {
-    const cfg = configCompetitivo(mapaDePartida(azar(0.3)), mod);
-    comprobar(typeof mod.nombre === 'string' && mod.nombre.length > 2, 'competitivo: modificador sin nombre');
-    comprobar(typeof mod.tag === 'string' && mod.tag.length > 4, 'competitivo: modificador sin explicación');
-    comprobar(cfg.startSpeed >= 60 && cfg.startSpeed <= 260, `competitivo: ${mod.nombre} deja una velocidad rara`);
-    comprobar(cfg.minSpeed <= cfg.startSpeed, `competitivo: ${mod.nombre} deja el mínimo por encima del inicio`);
-    comprobar(!cfg.goal, `competitivo: ${mod.nombre} pone meta`);
-    comprobar(cfg.competitive === true, `competitivo: ${mod.nombre} pierde la marca del modo`);
-    comprobar(cfg.tiempoTotal === COMPETITIVE.tiempo && cfg.fondoBrillo,
-      `competitivo: ${mod.nombre} pierde el brillo de fondo temporizado`);
-  }
-  process.stdout.write(`  ${COMPETITIVE.modificadores.length} modificadores y ${COMPETITIVE.arenas.length} arenas\n`);
+  comprobar(!MODES.competitive && !GROUPS.flatMap((g) => g.modes).includes('competitive'),
+    'v1.0: el modo competitivo sigue disponible');
+  comprobar(!/COMPETITIVE|configCompetitivo|mapaDePartida|modificadorDePartida/.test(niveles),
+    'v1.0: quedan configuraciones competitivas en levels.js');
+  comprobar(!/id="(?:reloj|minis|sorteo|cuenta|festejo)"/.test(pagina),
+    'v1.0: quedan nodos del modo competitivo en index.html');
+  comprobar(!/crearRivales|configCompetitivo|revivir\(|\.revive\(/.test(main + motor),
+    'v1.0: queda una rama funcional del competitivo');
+  comprobar(!/ambienteParar|ambienteIniciar|sorteo\(|cuenta\(/.test(audio),
+    'v1.0: queda audio del competitivo');
+  comprobar(!/comp-barra|#reloj|#minis|#sorteo|#cuenta|#festejo/.test(css),
+    'v1.0: quedan estilos exclusivos del competitivo');
+  comprobar(main.includes("app.modo !== 'hunter'") && input.includes('canTurbo'),
+    'turbo: no se desactiva para el cazador');
 
-  // los bots aceleran cerca de la comida, pero su error no se aplica a la campaña
-  {
-    const bot = new Game(configCompetitivo({ nombre: 'abierta', walls: [] }, null), () => {});
-    bot.state = 'running';
-    bot.body = [{ x: 5, y: 5 }, { x: 4, y: 5 }, { x: 3, y: 5 }, { x: 2, y: 5 }];
-    bot.prevBody = bot.body.map((c) => ({ ...c }));
-    bot.dir = { x: 1, y: 0 };
-    bot.food = { x: 8, y: 5 };
-    bot.botTurn();
-    comprobar(bot.turbo, 'bot competitivo: no usa el boost al acercarse a la comida');
-    bot.food = { x: 17, y: 17 };
-    bot.botTurn();
-    comprobar(!bot.turbo, 'bot competitivo: deja el boost encendido lejos de la comida');
+  comprobar(main.includes('const SERPIENTES_NOMBRE = serpientesDe(MARCA_PALABRA, MARCA_GLIFOS)')
+    && main.includes('cuerpo, cabeza, objetivo, punto'), 'marca: no hay una serpiente independiente por letra');
+  comprobar(main.includes("const ultimo = i === caracteres.length - 1 && letra === 'e';")
+    && main.includes('const punto = ultimo ? { ...objetivo } : null;')
+    && main.includes('const objetivo = ultimo ? { x: x0 + 5, y: 4 } : cabeza;'),
+  'marca: sólo la última serpiente debe tener manzana');
+  comprobar(main.includes('tt >= 800 && tt < 6200')
+    && main.includes('const CICLO_NOMBRE = 10000;')
+    && main.includes('El cuerpo se extiende de forma continua y lenta'),
+  'marca: la e no se aproxima despacio y de forma continua a la manzana');
 
-    // reproducible: forzar un fallo poco frecuente hacia una pared y comprobar el choque
-    const distraido = new Game(configCompetitivo({ nombre: 'abierta', walls: [] }, null), () => {});
-    distraido.state = 'running';
-    distraido.body = [{ x: 10, y: 0 }, { x: 9, y: 0 }, { x: 8, y: 0 }, { x: 7, y: 0 }];
-    distraido.prevBody = distraido.body.map((c) => ({ ...c }));
-    distraido.dir = { x: 1, y: 0 };
-    distraido.food = { x: 17, y: 10 };
-    distraido.botPausaHasta = 0;
-    distraido.botSiguienteFallo = 0;
-    const randomOriginal = Math.random;
-    const secuencia = [0, 0.08, 0];
-    Math.random = () => secuencia.shift() ?? 0;
-    try {
-      distraido.botTurn();
-    } finally {
-      Math.random = randomOriginal;
-    }
-    distraido.step();
-    comprobar(distraido.state === 'dead', 'bot competitivo: no puede cometer un choque ocasional');
-  }
+  comprobar(pagina.includes('snake.js?v=16') && pagina.includes('styles.css?v=16'),
+    'caché: falta la versión v16 en la página');
+  comprobar(pagina.includes('id="lang-switch"') && idiomas.includes("en: {")
+    && idiomas.includes('export function setLanguage'), 'idioma: falta el selector ES/EN o su traducción');
+  setLanguage('en');
+  comprobar(t('campaign') === 'campaign' && t('modeHunter') === 'hunter'
+    && levelName('LLANO') === 'open field' && routeSlug('campaign') === 'campaign'
+    && fruitUnit(1) === 'fruit' && fruitUnit(2) === 'fruits',
+  'idioma: faltan cadenas inglesas o nombres/rutas localizados');
+  setLanguage('es');
+  comprobar(t('campaign') === 'campaña' && routeSlug('campaign') === 'campaña'
+    && fruitUnit(1) === 'fruta' && fruitUnit(2) === 'frutas',
+    'idioma: el español no restaura sus textos y rutas');
 
-  // cada jugador recibe su propia cuadrícula: cambiar una no toca las demás
-  const mapa = mapaDePartida(azar(0.5));
-  const mod = modificadorDePartida(azar(0.1));
-  const a = configCompetitivo(mapa, mod);
-  const b = configCompetitivo(mapa, mod);
-  comprobar(a.walls !== b.walls, 'competitivo: los jugadores comparten el array de muros');
-  comprobar(a.walls !== mapa.walls, 'competitivo: el mapa se comparte con la configuración');
-  const juegoA = new Game(a, () => {});
-  const juegoB = new Game(b, () => {});
-  juegoA.raiseWall();
-  juegoA.updateFx(900);
-  comprobar(juegoA.walls.length !== juegoB.walls.length || juegoA.walls.length === 0,
-    'competitivo: lo que pasa en una cuadrícula se ve en la otra');
+  comprobar(main.includes("const BASE_PATH = '/snake/'")
+    && main.includes("window.addEventListener('popstate'")
+    && main.includes("history[metodo]") && main.includes('decodeURIComponent(camino)'),
+  'rutas: falta navegación interna o carga directa bajo /snake/');
+  comprobar(servidor.includes("rutaOriginal.startsWith('/snake/')")
+    && servidor.includes('(fallback)'), 'servidor local: falta el fallback de rutas');
+  comprobar(fallback.includes("var base = '/snake/'") && fallback.includes("'?route='")
+    && workflow.includes('cp index.html 404.html styles.css snake.js _site/'),
+  'GitHub Pages: no publica o restaura las subrutas en recarga');
 
-  // ascensos y descensos
-  comprobar(ajustarRango({ rango: 0, dentro: 10 }, 3).rango === 1, 'competitivo: ganar no asciende');
-  comprobar(ajustarRango({ rango: 3, dentro: 1 }, -2).rango === 2, 'competitivo: perder no desciende');
-  const tope = ajustarRango({ rango: 6, dentro: 11 }, 3);
-  comprobar(tope.rango === 6 && tope.dentro < COMPETITIVE.porRango, 'competitivo: se sube por encima del último rango');
-  const suelo = ajustarRango({ rango: 0, dentro: 0 }, -2);
-  comprobar(suelo.rango === 0 && suelo.dentro === 0, 'competitivo: se baja por debajo del primer rango');
-  const info = rangoInfo({ rango: 2, dentro: 6 });
-  comprobar(info.nombre === COMPETITIVE.rangos[2], 'competitivo: el rango no coincide con su nombre');
-  comprobar(info.siguiente === COMPETITIVE.rangos[3], 'competitivo: no dice cuál es el siguiente');
-  comprobar(Math.abs(info.progreso - 0.5) < 1e-9, 'competitivo: la barra del rango miente');
-  comprobar(info.nivel === 3 && info.total === 7, 'competitivo: el rango no dice en qué peldaño está');
-  comprobar(COMPETITIVE.rangos.every((r) => r.length <= 10), 'competitivo: algún rango se va de largo');
-  comprobar(rangoInfo({ rango: 6, dentro: 11 }).siguiente === null, 'competitivo: el último rango tiene siguiente');
+  const bloque = main.slice(main.indexOf('<ul class="reglas">'), main.indexOf('</ul>', main.indexOf('<ul class="reglas">')));
+  const reglas = [...bloque.matchAll(/<li>([^<]+)<\/li>/g)].map((match) => match[1]);
+  comprobar(reglas.length >= 4 && reglas.length <= 12, `minimalismo: ${reglas.length} reglas en la ayuda`);
+  const larga = reglas.find((regla) => regla.length > 80);
+  comprobar(!larga, `minimalismo: una regla pasa de 80 letras («${larga}»)`);
 
-  // los bots aprietan más según tu rango
-  comprobar(escalaBots(0) > escalaBots(3) && escalaBots(3) > escalaBots(6), 'competitivo: los bots no escalan con el rango');
-  comprobar(escalaBots(99) === escalaBots(6), 'competitivo: la escala de bots se sale');
-
-  // una partida entera con el piloto, con reloj propio: 4 cuadrículas a la vez
-  const jugadores = [0, 1, 2, 3].map(() => new Game(configCompetitivo(mapa, mod), () => {}));
-  for (const j of jugadores) j.state = 'running';
-  let t = 0;
-  while (t < 12000) {
-    for (const j of jugadores) {
-      if (j.state === 'running') {
-        j.botTurn();
-        j.update(30);
-      }
-    }
-    t += 30;
-  }
-  comprobar(jugadores.every((j) => j.score >= 0), 'competitivo: puntuación negativa');
-  comprobar(jugadores.slice(1).every((j) => j.walls !== jugadores[0].walls), 'competitivo: dos jugadores con la misma cuadrícula');
-  process.stdout.write(`  partida de prueba: ${jugadores.map((j) => j.score).join(' · ')} puntos\n`);
-
-  // morirse no cierra la partida: revives, sigues con tus frutas y pagas puntos
-  {
-    const juego = new Game(configCompetitivo(mapa, mod), () => {});
-    juego.state = 'running';
-    let revives = 0;
-    juego.onEvent = (tipo) => { if (tipo === 'revive') revives++; };
-    juego.score = 300;
-    juego.fruits = 9;
-    juego.body = [{ x: 19, y: 10 }, { x: 18, y: 10 }, { x: 17, y: 10 }, { x: 16, y: 10 }];
-    juego.dir = { x: 1, y: 0 };
-    juego.prevBody = juego.body.map((c) => ({ ...c }));
-    juego.step(); // se sale del tablero
-    comprobar(juego.state === 'dead', 'competitivo: morirse no te mata');
-
-    const castigo = castigoMuerte(juego.score);
-    comprobar(castigo === Math.max(COMPETITIVE.castigo.minimo, Math.round(300 * 0.2)),
-      'competitivo: el castigo no es un 20 % con mínimo');
-    const puntosAntes = juego.score;
-    const pagado = juego.revivir(castigo);
-    comprobar(revives === 1, 'competitivo: revivir no avisa');
-    comprobar(pagado === castigo && juego.score === puntosAntes - castigo, 'competitivo: revivir no descuenta puntos');
-    comprobar(juego.state === 'running', 'competitivo: no vuelves a jugar tras morir');
-    comprobar(juego.fruits === 9, 'competitivo: revivir te borra las frutas');
-    comprobar(juego.gracia > 0, 'competitivo: revives sin gracia y te matas otra vez');
-    comprobar(!juego.crash, 'competitivo: el choque se queda colgado al revivir');
-
-    // durante la gracia no te matas
-    juego.body = [{ x: 19, y: 10 }, { x: 18, y: 10 }, { x: 17, y: 10 }, { x: 16, y: 10 }];
-    juego.dir = { x: 1, y: 0 };
-    juego.prevBody = juego.body.map((c) => ({ ...c }));
-    juego.step();
-    comprobar(juego.state === 'running', 'competitivo: la gracia no te protege al revivir');
-    juego.gracia = 0;
-
-    // el castigo nunca deja la puntuación por debajo de cero
-    juego.score = 10;
-    const pagado2 = juego.revivir(castigoMuerte(juego.score));
-    comprobar(juego.score === 0 && pagado2 === 10, 'competitivo: el castigo deja puntos negativos');
-    process.stdout.write(`  revivir: ${castigo} puntos de castigo, ${juego.gracia} ms de gracia\n`);
-  }
-
-  // poco texto: la ayuda no puede volver a llenarse de párrafos
-  {
-    const fuente = fs.readFileSync(path.join(RAIZ, 'js/main.js'), 'utf8');
-    const entrada = fs.readFileSync(path.join(RAIZ, 'js/input.js'), 'utf8');
-    const pagina = fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8');
-    comprobar(fuente.includes('const SERPIENTES_NOMBRE = serpientesDe(MARCA_PALABRA, MARCA_GLIFOS)')
-      && fuente.includes('cuerpo, cabeza, objetivo, punto'), 'marca: no hay una serpiente independiente por letra');
-    comprobar(fuente.includes('const ultimo = i === caracteres.length - 1;')
-      && fuente.includes('const punto = ultimo ? { ...objetivo } : null;')
-      && fuente.includes('const objetivo = ultimo ? { x: x0 + 5, y: 4 } : cabeza;'),
-    'marca: sólo la última serpiente debe tener manzana');
-    comprobar(fuente.includes('if (serp.punto && avance > 0)')
-      && fuente.includes('const pasos = Math.floor(Math.hypot(cx - base.x, cy - base.y));')
-      && fuente.includes("bloque(base.x + dx * paso, base.y + dy * paso, '#cfcfcf');"),
-    'marca: el cuerpo de la e no se estira para alcanzar la manzana');
-    comprobar(pagina.includes('snake.js?v=16') && pagina.includes('styles.css?v=16'),
-      'caché: falta la versión v16 en la página');
-    const preferenciaAmbiente = ['guardado', 'ambiente'].join('.');
-    const accionAmbiente = ['comp', 'ambiente'].join('-');
-    comprobar(!fuente.includes(preferenciaAmbiente) && !fuente.includes(accionAmbiente),
-      'ambiente: sigue siendo configurable desde la pantalla de rangos');
-    comprobar(fuente.includes("app.modo !== 'hunter' && app.modo !== 'competitive'")
-      && entrada.includes('canTurbo'), 'turbo: no está bloqueado en cazador y competitivo');
-    comprobar(fuente.includes('finRestante = 1000') && fuente.includes("c.fase === 'fin'"),
-      'competitivo: falta el segundo de congelación antes de la tabla');
-    const bloque = fuente.slice(fuente.indexOf('<ul class="reglas">'), fuente.indexOf('</ul>', fuente.indexOf('<ul class="reglas">')));
-    const reglas = [...bloque.matchAll(/<li>([^<]+)<\/li>/g)].map((m) => m[1]);
-    comprobar(reglas.length > 4 && reglas.length <= 12, `minimalismo: ${reglas.length} reglas en la ayuda`);
-    const larga = reglas.find((r) => r.length > 80);
-    comprobar(!larga, `minimalismo: una regla pasa de 80 letras («${larga}»)`);
-    const sala = fuente.slice(fuente.indexOf('class="panel versus"'), fuente.indexOf('function crearRivales'));
-    comprobar(!/<p class="nota">[^<]{90,}/.test(sala), 'minimalismo: la sala del competitivo tiene un párrafo largo');
-    process.stdout.write(`  ${reglas.length} reglas de ${Math.max(...reglas.map((r) => r.length))} letras como mucho\n`);
-  }
-
-  // la marca de borrado tiene que seguir ahí, en todos los ficheros que toca
-  const marcados = ['js/levels.js', 'js/main.js', 'js/engine.js', 'index.html', 'styles.css', 'tools/check.mjs', 'README.md'];
+  // La marca se conserva como rastro de la retirada, no como funcionalidad.
+  const marcados = [
+    'js/levels.js', 'js/main.js', 'js/engine.js', 'js/audio.js', 'index.html',
+    'styles.css', 'tools/check.mjs', 'README.md',
+  ];
   for (const rel of marcados) {
     const texto = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
-    comprobar(texto.includes('BORRAR-COMPETITIVO'), `competitivo: falta la marca BORRAR-COMPETITIVO en ${rel}`);
+    comprobar(texto.includes('BORRAR-COMPETITIVO'), `v1.0: falta BORRAR-COMPETITIVO en ${rel}`);
   }
-  process.stdout.write(`  marca de borrado en ${marcados.length} ficheros\n`);
+  process.stdout.write(`  ${reglas.length} reglas de ayuda · marca de retirada en ${marcados.length} ficheros\n`);
 }
 
 process.stdout.write(fallos ? `\n${fallos} fallos\n` : '\ntodo en orden\n');

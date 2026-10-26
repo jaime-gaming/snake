@@ -27,6 +27,8 @@ export function attachInput({ stage, actions, canTurbo = () => true }) {
   const turboActivo = () => typeof canTurbo === 'function' && canTurbo();
 
   window.addEventListener('keydown', (e) => {
+    if (e.target && typeof e.target.closest === 'function'
+      && e.target.closest('input, select, textarea, [contenteditable="true"]')) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const accion = TECLAS[e.code];
     if (!accion) return;
