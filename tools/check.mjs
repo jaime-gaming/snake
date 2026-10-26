@@ -7,9 +7,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { Game } from '../js/engine.js';
+import { Game, POWER_INFO } from '../js/engine.js';
 import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS } from '../js/levels.js';
-import { setLanguage, t, routeSlug, levelName, fruitUnit } from '../js/i18n.js';
+import { setLanguage, t, routeSlug, routeWords, levelName, fruitUnit } from '../js/i18n.js';
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -21,6 +21,28 @@ function comprobar(condicion, mensaje) {
     fallos++;
     process.stdout.write(`  falla: ${mensaje}\n`);
   }
+}
+
+function lienzoFalso() {
+  const llamadas = [];
+  const ctx = {
+    llamadas,
+    fillStyle: '#000',
+    strokeStyle: '#000',
+    globalAlpha: 1,
+    setTransform() {},
+    save() {},
+    restore() {},
+    translate() {},
+    setLineDash() {},
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    stroke() {},
+    fillRect(...args) { llamadas.push({ tipo: 'fillRect', color: this.fillStyle, args }); },
+    strokeRect(...args) { llamadas.push({ tipo: 'strokeRect', color: this.strokeStyle, args }); },
+  };
+  return ctx;
 }
 
 function configNivel(nivel) {
@@ -70,6 +92,10 @@ process.stdout.write('estructura\n');
     comprobar(modo.startSpeed >= modo.minSpeed, `${id}: arranca más lento que su mínimo`);
     comprobar(modo.minSpeed >= 42, `${id}: baja del suelo de velocidad`);
   }
+  comprobar(MODES.frenzy.wrap && MODES.frenzy.rampPerSec <= 0.4 && MODES.frenzy.minSpeed >= 60,
+    'frenesí: la aceleración o el ritmo mínimo no están equilibrados');
+  comprobar(MODES.hunter.hunterPellets >= 2 && MODES.hunter.hunterCap <= 18 && MODES.hunter.hunterSight <= 4,
+    'cazador: la presión supera los límites de equilibrio');
   process.stdout.write('  velocidades dentro de rango y en orden\n');
 }
 {
@@ -149,26 +175,47 @@ LEVELS.forEach((nivel, i) => {
   }
 });
 
-// modos infinitos: aguantan 30 s sin romperse
+// modos infinitos: varias partidas reproducibles para medir estabilidad y ritmo
 process.stdout.write('modos\n');
 // BORRAR-COMPETITIVO · sólo se prueban los modos publicados en v1.0.
 for (const id of ['classic', 'frenzy', 'hunter']) {
-  const juego = new Game({ ...MODES[id] }, () => {});
-  let ms = 0;
-  let poderes = 0;
-  juego.onEvent = (tipo) => {
-    if (tipo === 'power') poderes++;
-  };
-  while (juego.state !== 'dead' && ms < 30000) {
-    juego.botTurn();
-    juego.update(30);
-    ms += 30;
+  let supervivientes = 0;
+  let frutasTotales = 0;
+  let puntosTotales = 0;
+  const randomOriginal = Math.random;
+  try {
+    for (let intento = 1; intento <= 8; intento++) {
+      let semilla = (id === 'classic' ? 101 : id === 'frenzy' ? 201 : 301) + intento;
+      Math.random = () => {
+        semilla = (semilla * 1664525 + 1013904223) >>> 0;
+        return semilla / 4294967296;
+      };
+      const juego = new Game({ ...MODES[id] }, () => {});
+      let ms = 0;
+      let poderes = 0;
+      juego.onEvent = (tipo) => {
+        if (tipo === 'power') poderes++;
+      };
+      while (juego.state !== 'dead' && ms < 30000) {
+        juego.botTurn();
+        juego.update(30);
+        ms += 30;
+      }
+      if (ms >= 30000) supervivientes++;
+      comprobar(juego.score >= 0 && juego.body.length >= 1, `${id}: estado incoherente`);
+      comprobar(juego.speed >= juego.cfg.minSpeed - 0.01, `${id}: la velocidad se sale por debajo del mínimo`);
+      comprobar(juego.chainTimer >= 0, `${id}: temporizador de cadena negativo`);
+      if (id === 'hunter') comprobar(!!juego.hunter, 'hunter: no hay cazador');
+      frutasTotales += juego.fruits;
+      puntosTotales += juego.score;
+    }
+  } finally {
+    Math.random = randomOriginal;
   }
-  comprobar(juego.score >= 0 && juego.body.length >= 1, `${id}: estado incoherente`);
-  comprobar(juego.speed >= juego.cfg.minSpeed - 0.01, `${id}: la velocidad se sale por debajo del mínimo`);
-  comprobar(juego.chainTimer >= 0, `${id}: temporizador de cadena negativo`);
-  if (id === 'hunter') comprobar(!!juego.hunter, 'hunter: no hay cazador');
-  process.stdout.write(`  ${id}: ${Math.round(ms / 1000)} s, ${juego.fruits} frutas, ${juego.score} puntos, ${poderes} poderes\n`);
+  comprobar(supervivientes >= 6, `${id}: sólo ${supervivientes}/8 simulaciones pasan de 30 s`);
+  process.stdout.write(
+    `  ${id}: ${supervivientes}/8 a 30 s · ${Math.round(frutasTotales / 8)} frutas · ${Math.round(puntosTotales / 8)} puntos de media\n`,
+  );
 }
 
 // reglas sueltas
@@ -216,11 +263,65 @@ process.stdout.write('reglas\n');
   comprobar(juego.multiplier === 5, 'cadena: el multiplicador no tope a ×5');
 }
 
+// potenciadores: catálogo, efectos, puntuación y protección contra un choque
+process.stdout.write('potenciadores\n');
+{
+  const poderes = ['ghost', 'slow', 'shrink', 'shield', 'double'];
+  comprobar(poderes.every((kind) => POWER_INFO[kind]), 'potenciadores: falta información de un poder');
+  for (const kind of poderes) {
+    const juego = new Game({ ...MODES.classic }, () => {});
+    juego.body = Array.from({ length: 8 }, (_, i) => ({ x: 10 - i, y: 10 }));
+    juego.prevBody = juego.body.map((p) => ({ ...p }));
+    juego.power = { x: 3, y: 3, kind, ttl: 9000 };
+    juego.draw(lienzoFalso(), { cell: 10, ox: 0, oy: 0, width: 200, height: 200, dpr: 1 });
+    juego.takePower();
+    if (kind === 'ghost') comprobar(juego.fx.ghost === POWER_INFO.ghost.ms, 'fantasma: no activa su temporizador');
+    if (kind === 'slow') comprobar(juego.fx.slow === POWER_INFO.slow.ms, 'lento: no activa su temporizador');
+    if (kind === 'shield') comprobar(juego.fx.shield === POWER_INFO.shield.ms, 'escudo: no activa su temporizador');
+    if (kind === 'double') comprobar(juego.fx.double === POWER_INFO.double.ms, 'doble: no activa su temporizador');
+    if (kind === 'shrink') {
+      comprobar(juego.body.length === 3, 'recorte: no conserva el mínimo seguro de anillos');
+      comprobar(juego.score === 30, 'recorte: no concede los puntos esperados');
+    }
+  }
+
+  const doble = new Game({ ...MODES.classic }, () => {});
+  doble.state = 'running';
+  doble.body = [{ x: 5, y: 5 }, { x: 4, y: 5 }, { x: 3, y: 5 }];
+  doble.prevBody = doble.body.map((p) => ({ ...p }));
+  doble.dir = { x: 1, y: 0 };
+  doble.queue = [];
+  doble.food = { x: 6, y: 5 };
+  doble.fx.double = POWER_INFO.double.ms;
+  doble.step();
+  comprobar(doble.score === 20, 'doble: no duplica los puntos de fruta');
+
+  let salvaciones = 0;
+  const escudo = new Game({ ...MODES.classic }, (tipo) => { if (tipo === 'shield') salvaciones++; });
+  escudo.state = 'running';
+  escudo.body = [{ x: 0, y: 5 }, { x: 1, y: 5 }, { x: 2, y: 5 }, { x: 3, y: 5 }];
+  escudo.prevBody = escudo.body.map((p) => ({ ...p }));
+  escudo.dir = { x: -1, y: 0 };
+  escudo.queue = [];
+  escudo.fx.shield = POWER_INFO.shield.ms;
+  escudo.step();
+  comprobar(escudo.state === 'running' && escudo.fx.shield === 0 && escudo.fx.ghost > 0,
+    'escudo: el primer choque no activa la salida de emergencia');
+  comprobar(salvaciones === 1, 'escudo: no informa del choque salvado');
+  escudo.step();
+  comprobar(escudo.state === 'running' && escudo.body[0].x === escudo.cols - 1,
+    'escudo: no deja atravesar el peligro tras salvarte');
+  escudo.fx.ghost = 0;
+  escudo.die('wall');
+  comprobar(escudo.state === 'dead', 'escudo: salva más de un choque');
+  process.stdout.write('  5 poderes · doble puntuación y escudo de un uso verificados\n');
+}
+
 // cazador: serpiente roja que come puntos azules y crece
 process.stdout.write('cazador\n');
 {
   const juego = new Game({ ...MODES.hunter }, () => {});
-  comprobar(!!juego.hunter && juego.hunter.body.length >= 2, 'cazador: no nace como serpiente');
+  comprobar(!!juego.hunter && juego.hunter.body.length === 3, 'cazador: no nace como serpiente visible de tres anillos');
   comprobar(
     juego.pellets.length === (MODES.hunter.hunterPellets || 2),
     'cazador: no salen todos los puntos azules al empezar',
@@ -229,6 +330,23 @@ process.stdout.write('cazador\n');
     juego.pellets.every((p) => !juego.wallSet.has(K(p.x, p.y))),
     'cazador: un punto cae dentro de un muro',
   );
+
+  for (let intento = 0; intento < 40; intento++) {
+    const partida = new Game({ ...MODES.hunter }, () => {});
+    const celdas = partida.hunter.body;
+    const ocupadas = new Set(celdas.map((c) => K(c.x, c.y)));
+    comprobar(celdas.length === 3, `cazador: inicio ${intento + 1} invisible/incompleto`);
+    comprobar(celdas.every((c) => c.x > 0 && c.y > 0 && c.x < COLS - 1 && c.y < ROWS - 1),
+      `cazador: inicio ${intento + 1} fuera del tablero`);
+    comprobar(celdas.every((c) => !partida.wallSet.has(K(c.x, c.y))
+      && !partida.body.some((s) => s.x === c.x && s.y === c.y)
+      && !partida.pellets.some((p) => p.x === c.x && p.y === c.y)
+      && (!partida.food || partida.food.x !== c.x || partida.food.y !== c.y)),
+    `cazador: inicio ${intento + 1} se solapa con el tablero`);
+    comprobar(celdas.slice(1).every((c, i) =>
+      Math.abs(c.x - celdas[i].x) + Math.abs(c.y - celdas[i].y) === 1)
+      && ocupadas.size === celdas.length, `cazador: inicio ${intento + 1} no forma un cuerpo continuo`);
+  }
 
   // el jugador se queda quieto y el cazador va a por los puntos azules
   const nacimiento = juego.hunter.body.length;
@@ -245,7 +363,8 @@ process.stdout.write('cazador\n');
     .find((p) => p.x >= 0 && p.y >= 0 && p.x < COLS && p.y < ROWS
       && !juego.wallSet.has(K(p.x, p.y))
       && !juego.body.some((c) => c.x === p.x && c.y === p.y)
-      && !juego.hunter.body.some((c) => c.x === p.x && c.y === p.y));
+      && !juego.hunter.body.some((c) => c.x === p.x && c.y === p.y)
+      && (!juego.food || juego.food.x !== p.x || juego.food.y !== p.y));
   if (vecino) juego.pellets = [vecino, ...juego.pellets.slice(1)];
   for (let i = 0; i < 400; i++) juego.moveHunter();
   comprobar(comidos > 0, 'cazador: no llega a comerse ningún punto azul');
@@ -312,6 +431,31 @@ process.stdout.write('revelado\n');
   process.stdout.write(`  revelado: ${medio.toFixed(2)} a los 300 ms, ${juego.reveal.toFixed(2)} a los 900 ms\n`);
 }
 
+
+// renderizado del cazador: siempre queda por encima de la capa de oscuridad
+process.stdout.write('visibilidad del cazador\n');
+{
+  const juego = new Game({ ...MODES.hunter }, () => {});
+  juego.reveal = 0.08;
+  const ctx = lienzoFalso();
+  juego.draw(ctx, { cell: 10, ox: 0, oy: 0, width: 200, height: 200, dpr: 1 });
+  const ultimaSombra = ctx.llamadas.reduce((ultimo, llamada, i) =>
+    llamada.tipo === 'fillRect' && llamada.color.startsWith('rgba(0,0,0,') ? i : ultimo, -1);
+  const cabezaVisible = ctx.llamadas.findIndex((llamada, i) =>
+    i > ultimaSombra && llamada.tipo === 'fillRect' && llamada.color === '#ff2b2b');
+  comprobar(ultimaSombra >= 0 && cabezaVisible > ultimaSombra,
+    'cazador: la sombra tapa su cabeza y lo hace invisible');
+
+  juego.hunter.recarga = 400;
+  const respawn = lienzoFalso();
+  juego.draw(respawn, { cell: 10, ox: 0, oy: 0, width: 200, height: 200, dpr: 1 });
+  const ultimaSombraRespawn = respawn.llamadas.reduce((ultimo, llamada, i) =>
+    llamada.tipo === 'fillRect' && llamada.color.startsWith('rgba(0,0,0,') ? i : ultimo, -1);
+  comprobar(respawn.llamadas.some((llamada, i) => i > ultimaSombraRespawn
+    && llamada.tipo === 'strokeRect' && llamada.color.startsWith('rgba(255,43,43,')),
+  'cazador: su recarga no deja una señal visible');
+  process.stdout.write('  el cazador activo y su reaparición se dibujan sobre la niebla\n');
+}
 
 // choque: deja marca y congela un instante
 process.stdout.write('choque\n');
@@ -872,15 +1016,22 @@ process.stdout.write('v1.0, idioma y publicación\n');
   setLanguage('en');
   comprobar(t('campaign') === 'campaign' && t('modeHunter') === 'hunter'
     && levelName('LLANO') === 'open field' && routeSlug('campaign') === 'campaign'
+    && routeSlug('settings') === 'settings' && routeWords().settings.includes('ajustes')
     && fruitUnit(1) === 'fruit' && fruitUnit(2) === 'fruits',
   'idioma: faltan cadenas inglesas o nombres/rutas localizados');
   setLanguage('es');
   comprobar(t('campaign') === 'campaña' && routeSlug('campaign') === 'campaña'
+    && routeSlug('settings') === 'ajustes' && routeWords().settings.includes('settings')
     && fruitUnit(1) === 'fruta' && fruitUnit(2) === 'frutas',
     'idioma: el español no restaura sus textos y rutas');
+  comprobar(main.includes('class="settings-quick"') && main.includes("case 'toggleSound':")
+    && main.includes("routeSlug('settings')"), 'ajustes: falta el acceso compacto o su navegación');
+  comprobar(!/fruta a fruta|fruit to fruit|gridSummary|20×20 grid|rejilla 20×20/.test(main + idiomas + pagina),
+    'interfaz: vuelve a mostrar alguno de los lemas retirados');
 
   comprobar(main.includes("const BASE_PATH = '/snake/'")
     && main.includes("window.addEventListener('popstate'")
+    && main.includes("coincideRuta(primera, 'settings')")
     && main.includes("history[metodo]") && main.includes('decodeURIComponent(camino)'),
   'rutas: falta navegación interna o carga directa bajo /snake/');
   comprobar(servidor.includes("rutaOriginal.startsWith('/snake/')")

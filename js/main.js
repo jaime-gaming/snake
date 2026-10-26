@@ -122,6 +122,7 @@ const app = {
   grupo: 0,
   modoSel: 0,
   nivelSel: 0,
+  settingsReturn: 'modes',
   marca: 0,
   reloj: 0,
   temporizador: 0,
@@ -493,6 +494,7 @@ function pantalla(nombre) {
   const antes = app.pantalla;
   app.pantalla = nombre;
   document.body.dataset.screen = nombre;
+  if (!app.juego) actualizarEfectos(null);
   // BORRAR-COMPETITIVO · pantallas y audio del modo retirados para v1.0.
   if (antes !== nombre) taparPantalla();
   actualizarPista();
@@ -502,6 +504,7 @@ function pantalla(nombre) {
 const PISTAS = {
   home: 'hintHome',
   modes: 'hintModes',
+  settings: 'hintSettings',
   levels: 'hintLevels',
   help: 'hintHelp',
   paused: 'hintPaused',
@@ -549,6 +552,7 @@ function pantallaDeRuta() {
     return { tipo: 'modes', grupo };
   }
   if (coincideRuta(primera, 'help')) return { tipo: 'help' };
+  if (coincideRuta(primera, 'settings')) return { tipo: 'settings' };
   if (coincideRuta(primera, 'campaign')) {
     const nivel = /^(?:nivel|level)-?(\d{1,2})$/.exec(segunda || '');
     return nivel
@@ -569,6 +573,7 @@ function rutaDeEstado() {
     return `${BASE_PATH}${routeSlug('modes')}/${routeSlug(grupo)}`;
   }
   if (app.pantalla === 'help') return `${BASE_PATH}${routeSlug('help')}`;
+  if (app.pantalla === 'settings') return `${BASE_PATH}${routeSlug('settings')}`;
   if (app.pantalla === 'levels') return `${BASE_PATH}${routeSlug('campaign')}`;
   if (app.modo === 'campaign') {
     return `${BASE_PATH}${routeSlug('campaign')}/nivel-${dosDigitos(app.nivel + 1)}`;
@@ -592,6 +597,8 @@ function mostrarRuta(ruta) {
     mostrarNiveles();
   } else if (ruta.tipo === 'help') {
     mostrarAyuda();
+  } else if (ruta.tipo === 'settings') {
+    mostrarAjustes('modes');
   } else if (ruta.tipo === 'game') {
     empezarPartida(ruta.modo, 0);
   } else if (ruta.tipo === 'campaign-level') {
@@ -671,6 +678,8 @@ function actualizarEfectos(juego) {
   if (juego) {
     if (juego.fx.ghost > 0) activos.push([t('ghost'), juego.fx.ghost / POWER_INFO.ghost.ms]);
     if (juego.fx.slow > 0) activos.push([t('slow'), juego.fx.slow / POWER_INFO.slow.ms]);
+    if (juego.fx.shield > 0) activos.push([t('shield'), juego.fx.shield / POWER_INFO.shield.ms]);
+    if (juego.fx.double > 0) activos.push([t('double'), juego.fx.double / POWER_INFO.double.ms]);
     if (juego.turbo && app.modo !== 'hunter') activos.push([t('turboEffect'), 1]);
     if (juego.cfg && juego.cfg.hunter && juego.hunter && juego.hunterPelea) {
       const tope = juego.cfg.hunterCap || 18;
@@ -886,16 +895,11 @@ function mostrarInicio() {
     <div class="inicio-texto">
       <header class="inicio-cabeza">
         <h1 class="marca"><canvas id="marca" role="img" aria-label="snake"></canvas></h1>
-        <p class="tagline">${t('tagline')}</p>
-        <p class="kicker">${t('gridSummary', { levels: LEVELS.length, modes: MODE_ORDER.length - 1 })}</p>
+        <p class="kicker">${t('menuSubtitle')}</p>
       </header>
       <nav class="filas" aria-label="${t('groupAria')}">${filas}</nav>
       <p class="pie">
         <button class="link" type="button" data-accion="help">${t('controls')}</button>
-        <span aria-hidden="true">·</span>
-        <button class="link" type="button" data-accion="crt">${t(guardado.crt ? 'hideGrid' : 'showGrid')}</button>
-        <span aria-hidden="true">·</span>
-        <button class="link" type="button" data-accion="wipe">${t('clearRecords')}</button>
       </p>
     </div>
     <aside class="inicio-demo">
@@ -955,7 +959,12 @@ function mostrarModos(indice = app.grupo) {
     </div>
     <nav class="tabs" aria-label="${t('switchGroup')}">${tabs}</nav>
     <div class="modos-cuerpo">
-      <nav class="filas" aria-label="${t('modes')}">${filas}</nav>
+      <div class="modos-listado">
+        <nav class="filas" aria-label="${t('modes')}">${filas}</nav>
+        <button class="settings-quick" type="button" data-accion="settings">
+          <span aria-hidden="true">⚙</span>${t('settings')}
+        </button>
+      </div>
       <aside class="inicio-demo">
         <p class="kicker" id="demo-titulo">${t('preview')}</p>
         <canvas id="demo" aria-label="${t('previewMode')}"></canvas>
@@ -1152,16 +1161,71 @@ function mostrarAyuda() {
         <tr><th>${t('menus')}</th><td>${t('menuKeys')}</td></tr>
       </tbody>
     </table>
-    <p class="kicker">${t('comingSoon')}</p>
+    <p class="kicker">${t('gameRules')}</p>
     <ul class="reglas">
       <li>${t('ruleChain')}</li>
       <li>${t('ruleCampaign')}</li>
       <li>${t('ruleModes')}</li>
       <li>${t('ruleHunter')}</li>
+      <li>${t('powerBasics')}</li>
+      <li>${t('powerAdvanced')}</li>
     </ul>
   </div>`);
   pantalla('help');
   enfocarPrimero('button[data-accion="home"]');
+}
+
+function ajustesDesde() {
+  if (app.settingsReturn === 'modes') mostrarModos(app.grupo);
+  else mostrarInicio();
+}
+
+function mostrarAjustes(desde = app.pantalla, focoInicial = 'button[data-accion="settingsBack"]') {
+  app.settingsReturn = desde === 'home' ? 'home' : 'modes';
+  pararTemporizador();
+  app.juego = null;
+  app.demo = null;
+
+  const sonido = guardado.sound;
+  const trama = guardado.crt;
+  const botonEstado = (activo) =>
+    `<span class="setting-state${activo ? ' on' : ''}">${t(activo ? 'enabled' : 'disabled')}</span>`;
+
+  ponerOverlay(`<div class="panel ajustes">
+    <div class="niveles-cabeza">
+      <div>
+        <p class="kicker">${t('settings')}</p>
+        <h2>${t('settingsHint')}</h2>
+      </div>
+      <button class="ghost" type="button" data-accion="settingsBack">${t('back')} <kbd>esc</kbd></button>
+    </div>
+    <div class="settings-list">
+      <button class="setting-row" type="button" data-accion="toggleSound" aria-pressed="${sonido}">
+        <span class="setting-copy"><b>${t('sound')}</b><small>${t('soundSettingHint')}</small></span>
+        ${botonEstado(sonido)}
+      </button>
+      <button class="setting-row" type="button" data-accion="crt" aria-pressed="${trama}">
+        <span class="setting-copy"><b>${t('scanlines')}</b><small>${t('scanlinesHint')}</small></span>
+        ${botonEstado(trama)}
+      </button>
+      <button class="setting-row peligro" type="button" data-accion="wipe">
+        <span class="setting-copy"><b>${t('clearRecords')}</b><small>${t('clearRecordsHint')}</small></span>
+        <span class="setting-arrow" aria-hidden="true">↗</span>
+      </button>
+    </div>
+  </div>`);
+
+  el.score.textContent = '—';
+  el.meta.textContent = t('settings');
+  el.best.textContent = '';
+  el.mult.textContent = '';
+  el.chain.style.width = '0%';
+  el.pause.disabled = true;
+  el.pause.textContent = t('pause');
+  el.pause.title = t('pauseTitle');
+  el.prompt.classList.remove('visible');
+  pantalla('settings');
+  enfocarPrimero(focoInicial);
 }
 
 // BORRAR-COMPETITIVO · rangos y salas eliminados en v1.0.
@@ -1216,6 +1280,9 @@ function eventosJuego(tipo, datos) {
       break;
     case 'power':
       audio.play('power');
+      break;
+    case 'shield':
+      audio.play('shield');
       break;
     case 'turbo':
       audio.play('turbo');
@@ -1524,6 +1591,14 @@ function accion(nombre) {
     return;
   }
 
+  if (app.pantalla === 'settings') {
+    if (nombre === 'up' || nombre === 'down' || nombre === 'left' || nombre === 'right') {
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
+    } else if (nombre === 'confirm') activarFoco();
+    else if (nombre === 'back' || nombre === 'pause') ajustesDesde();
+    return;
+  }
+
   if (app.pantalla === 'paused' || app.pantalla === 'dead' || app.pantalla === 'cleared') {
     if (esDireccion) {
       moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
@@ -1584,11 +1659,22 @@ function ejecutar(nombre) {
     case 'help':
       mostrarAyuda();
       break;
+    case 'settings':
+      mostrarAjustes(app.pantalla);
+      break;
+    case 'settingsBack':
+      ajustesDesde();
+      break;
+    case 'toggleSound':
+      alternarSonido();
+      mostrarAjustes(app.settingsReturn, 'button[data-accion="toggleSound"]');
+      break;
     case 'crt':
       guardado.crt = !guardado.crt;
       guardar();
       document.documentElement.classList.toggle('trama', guardado.crt);
-      mostrarInicio();
+      if (app.pantalla === 'settings') mostrarAjustes(app.settingsReturn, 'button[data-accion="crt"]');
+      else mostrarInicio();
       break;
     case 'wipe':
       borrarRecords();
@@ -1604,7 +1690,8 @@ function borrarRecords() {
   guardado.campaign = { unlocked: 1, best: {} };
   guardar();
   audio.play('ui');
-  mostrarInicio();
+  if (app.pantalla === 'settings') mostrarAjustes(app.settingsReturn, 'button[data-accion="wipe"]');
+  else mostrarInicio();
 }
 
 /* ---------------------------------------------------------- sonido */
@@ -1654,6 +1741,7 @@ function cambiarIdioma() {
   else if (app.pantalla === 'modes') mostrarModos(app.grupo);
   else if (app.pantalla === 'levels') pintarNiveles();
   else if (app.pantalla === 'help') mostrarAyuda();
+  else if (app.pantalla === 'settings') mostrarAjustes(app.settingsReturn);
   else if (app.pantalla === 'playing') {
     actualizarPista();
     actualizarMarcador();

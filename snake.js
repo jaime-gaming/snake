@@ -112,7 +112,7 @@ const slit = (x, y, alto) => vline(x, y, alto);
 // grupos del menú: cada uno es una subpágina con sus modos
 // BORRAR-COMPETITIVO · modo retirado en la preparación de v1.0.
 const GROUPS = [
-  { name: 'progreso', tag: 'campaña de 20 niveles', modes: ['campaign'] },
+  { name: 'progreso', tag: 'rutas con obstáculos', modes: ['campaign'] },
   { name: 'infinitos', tag: 'puntuación sin final', modes: ['classic', 'frenzy', 'hunter'] },
 ];
 
@@ -132,7 +132,7 @@ const MODES = {
     ...base,
     id: 'classic',
     name: 'CLÁSICO',
-    tag: 'cada fruta acelera · pasados 30 puntos empiezan a salir muros',
+    tag: 'cada fruta acelera · muros al llegar a 30 frutas',
     startSpeed: 142,
     minSpeed: 82,
     accelPerFood: 1.5,
@@ -145,13 +145,13 @@ const MODES = {
     id: 'frenzy',
     name: 'FRENESÍ',
     tag: 'bordes abiertos y la velocidad sube sola',
-    startSpeed: 124,
-    minSpeed: 56,
-    accelPerFood: 0.8,
-    rampPerSec: 0.5,
+    startSpeed: 132,
+    minSpeed: 68,
+    accelPerFood: 0.55,
+    rampPerSec: 0.28,
     wrap: true,
     bonusEvery: 4,
-    powerEvery: 5,
+    powerEvery: 6,
   },
   hunter: {
     ...base,
@@ -162,11 +162,11 @@ const MODES = {
     minSpeed: 86,
     accelPerFood: 1.2,
     hunter: true,
-    hunterPellets: 3,
-    hunterCap: 18,
-    hunterSight: 5,
+    hunterPellets: 2,
+    hunterCap: 16,
+    hunterSight: 4,
     bonusEvery: 6,
-    powerEvery: 5,
+    powerEvery: 6,
   },
 
 };
@@ -494,6 +494,10 @@ const SONIDOS = {
     tono(480, 0.08, { tipo: 'triangle', vol: 0.2 });
     tono(720, 0.1, { tipo: 'triangle', vol: 0.16, delay: 0.07 });
   },
+  shield() {
+    tono(240, 0.12, { tipo: 'triangle', vol: 0.18, fin: 520 });
+    tono(820, 0.08, { vol: 0.12, delay: 0.04 });
+  },
   turbo() {
     tono(140, 0.08, { tipo: 'sawtooth', vol: 0.1 });
   },
@@ -714,12 +718,14 @@ const { K, DIRS, bfsStep } = modulos['grid'];
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const rand = (n) => Math.floor(Math.random() * n);
 
-const POWER = ['ghost', 'slow', 'shrink'];
+const POWER = ['ghost', 'slow', 'shrink', 'shield', 'double'];
 
 const POWER_INFO = {
   ghost: { label: 'fantasma', ms: 5200 },
   slow: { label: 'lento', ms: 6000 },
   shrink: { label: 'recorte', ms: 0 },
+  shield: { label: 'escudo', ms: 10000 },
+  double: { label: 'doble', ms: 7000 },
 };
 
 class Game {
@@ -760,7 +766,7 @@ class Game {
     this.hitStop = 0;
     this.crash = null;
     this.wallTicks = 0;
-    this.fx = { ghost: 0, slow: 0 };
+    this.fx = { ghost: 0, slow: 0, shield: 0, double: 0 };
     this.bonus = null;
     this.power = null;
     this.hunter = null;
@@ -830,6 +836,10 @@ class Game {
     return this.fx.ghost > 0;
   }
 
+  get scoreFactor() {
+    return this.fx.double > 0 ? 2 : 1;
+  }
+
   interval() {
     const slow = this.fx.slow > 0 ? 1.5 : 1;
     return Math.max(42, this.speed * (this.turbo ? 0.68 : 1) * slow);
@@ -878,7 +888,7 @@ class Game {
       this.updateFx(dt * 0.25);
       return;
     }
-    for (const k of ['ghost', 'slow']) {
+    for (const k of ['ghost', 'slow', 'shield', 'double']) {
       if (this.fx[k] > 0) this.fx[k] = Math.max(0, this.fx[k] - dt);
     }
     if (this.state === 'running') {
@@ -981,7 +991,7 @@ class Game {
         this.hunter.body.splice(golpe, 1);
         this.hunter.prev.splice(golpe, 1);
         this.burst(hx + 0.5, hy + 0.5, 10, '#c21414', 5);
-        this.score += 20;
+        this.score += 20 * this.scoreFactor;
         this.shake = Math.max(this.shake, 3);
         this.chomp = 1;
         this.emit('bite', { x: hx, y: hy });
@@ -1022,7 +1032,7 @@ class Game {
     const rapido = this.chainTimer > this.chainWindow * 0.62;
     this.chain = Math.min(this.chain + 1, 30);
     this.chainTimer = this.chainWindow;
-    this.score += 10 * this.multiplier + (rapido ? 5 * this.multiplier : 0);
+    this.score += (10 * this.multiplier + (rapido ? 5 * this.multiplier : 0)) * this.scoreFactor;
     this.speed = Math.max(cfg.minSpeed, this.speed - (cfg.accelPerFood || 0));
     this.shake = 2.6;
     this.chomp = 1;
@@ -1033,7 +1043,7 @@ class Game {
     }
     this.burst(food.x + 0.5, food.y + 0.5, sube ? 16 : 10, '#ff2b2b', 7);
     // clásico: pasada la mitad de la partida empiezan a salir muros sueltos
-    if (cfg.wallFrom && this.fruits > cfg.wallFrom && cfg.wallEvery &&
+    if (cfg.wallFrom && this.fruits >= cfg.wallFrom && cfg.wallEvery &&
       this.fruits % cfg.wallEvery === 0 && this.walls.length < (cfg.wallMax || 999)) {
       this.raiseWall();
     }
@@ -1053,7 +1063,7 @@ class Game {
     if (indice < 0) return;
     this.pellets.splice(indice, 1);
     this.grow += 1;
-    this.score += 15 * this.multiplier;
+    this.score += 15 * this.multiplier * this.scoreFactor;
     this.chain = Math.min(this.chain + 1, 30);
     this.chainTimer = this.chainWindow;
     this.shake = 3;
@@ -1069,7 +1079,7 @@ class Game {
     this.grow += 2;
     this.chain = Math.min(this.chain + 2, 30);
     this.chainTimer = this.chainWindow;
-    this.score += 50 * this.multiplier;
+    this.score += 50 * this.multiplier * this.scoreFactor;
     this.shake = 5;
     this.burst(b.x + 0.5, b.y + 0.5, 18, '#ffffff', 9);
     if (this.cfg.hunter) this.placeHunter();
@@ -1085,10 +1095,14 @@ class Game {
       this.fx.ghost = POWER_INFO.ghost.ms;
     } else if (p.kind === 'slow') {
       this.fx.slow = POWER_INFO.slow.ms;
+    } else if (p.kind === 'shield') {
+      this.fx.shield = POWER_INFO.shield.ms;
+    } else if (p.kind === 'double') {
+      this.fx.double = POWER_INFO.double.ms;
     } else {
       const cut = Math.min(5, Math.max(0, this.body.length - 3));
       if (cut > 0) this.body.splice(this.body.length - cut, cut);
-      this.score += 30;
+      this.score += 30 * this.scoreFactor;
     }
     this.emit('power', { kind: p.kind, label: POWER_INFO[p.kind].label });
   }
@@ -1097,13 +1111,22 @@ class Game {
 
   die(reason, x, y) {
     if (this.state !== 'running') return;
+    const impactox = x ?? this.body[0].x;
+    const impactoY = y ?? this.body[0].y;
+    if (this.fx.shield > 0) {
+      this.fx.shield = 0;
+      this.fx.ghost = Math.max(this.fx.ghost, Math.max(250, this.interval() * 2));
+      this.shake = Math.max(this.shake, 4);
+      this.flash = Math.max(this.flash, 0.65);
+      this.burst(impactox + 0.5, impactoY + 0.5, 16, '#b9f4ff', 7);
+      this.emit('shield', { reason, x: impactox, y: impactoY });
+      return false;
+    }
     this.state = 'dead';
     this.turbo = false;
     this.shake = 11;
     this.flash = 0.8;
     this.hitStop = 90;
-    const impactox = x ?? this.body[0].x;
-    const impactoY = y ?? this.body[0].y;
     this.crash = { x: impactox, y: impactoY, t: 0, reason, popped: 0 };
     this.burst(impactox + 0.5, impactoY + 0.5, 22, '#ffffff', 10);
     this.emit('die', { reason, score: this.score, fruits: this.fruits });
@@ -1337,7 +1360,7 @@ class Game {
   matarCazador() {
     const h = this.hunter;
     for (const c of h.body) this.burst(c.x + 0.5, c.y + 0.5, 5, '#c21414', 4);
-    this.score += 100;
+    this.score += 100 * this.scoreFactor;
     this.flash = 0.75;
     this.shake = 6;
     this.hitStop = 90;
@@ -1357,7 +1380,12 @@ class Game {
       x >= 0 && y >= 0 && x < this.cols && y < this.rows &&
       !this.wallSet.has(K(x, y)) &&
       !nuevo.body.some((c) => c.x === x && c.y === y) &&
-      !this.body.some((c) => c.x === x && c.y === y);
+      !this.body.some((c) => c.x === x && c.y === y) &&
+      !this.pellets.some((p) => p.x === x && p.y === y) &&
+      (!this.food || this.food.x !== x || this.food.y !== y) &&
+      (!this.bonus || this.bonus.x !== x || this.bonus.y !== y) &&
+      (!this.power || this.power.x !== x || this.power.y !== y) &&
+      !this.pendingWalls.some((w) => w.x === x && w.y === y);
     while (nuevo.body.length < largo) {
       const cola = nuevo.body[nuevo.body.length - 1];
       const antes = nuevo.body[nuevo.body.length - 2];
@@ -1381,41 +1409,54 @@ class Game {
     this.flash = 0.3;
   }
 
-  // el cazador es una serpiente: empieza con tres anillos y crece comiendo
+  // el cazador nace fuera del foco, en un tramo libre y con espacio para verse
   placeHunter() {
     const cabeza = this.body[0];
     const libre = (x, y) =>
-      x >= 0 && y >= 0 && x < this.cols && y < this.rows &&
+      x > 0 && y > 0 && x < this.cols - 1 && y < this.rows - 1 &&
       !this.wallSet.has(K(x, y)) &&
       !this.body.some((s) => s.x === x && s.y === y) &&
-      !this.pellets.some((p) => p.x === x && p.y === y);
+      !this.pellets.some((p) => p.x === x && p.y === y) &&
+      (!this.food || this.food.x !== x || this.food.y !== y) &&
+      (!this.bonus || this.bonus.x !== x || this.bonus.y !== y) &&
+      (!this.power || this.power.x !== x || this.power.y !== y) &&
+      !this.pendingWalls.some((w) => w.x === x && w.y === y) &&
+      (!this.hunter || !this.hunter.body.some((p) => p.x === x && p.y === y));
 
-    let origen = null;
+    let mejor = null;
+    let mejorPuntaje = -Infinity;
     for (let i = 0; i < 300; i++) {
-      const c = this.freeCell(1);
-      if (!c) break;
-      if (Math.abs(c.x - cabeza.x) + Math.abs(c.y - cabeza.y) >= 8) {
-        origen = c;
-        break;
+      const origen = this.freeCell(1);
+      if (!origen) break;
+      const distancia = Math.abs(origen.x - cabeza.x) + Math.abs(origen.y - cabeza.y);
+      for (const [dx, dy] of DIRS) {
+        const cuerpo = [origen];
+        for (let n = 1; n <= 2; n++) {
+          const x = origen.x + dx * n;
+          const y = origen.y + dy * n;
+          if (!libre(x, y)) break;
+          cuerpo.push({ x, y });
+        }
+        const puntaje = cuerpo.length * 100 + Math.min(distancia, 20) + (distancia >= 8 ? 30 : 0);
+        if (puntaje > mejorPuntaje) {
+          mejor = { cuerpo, dir: { x: -dx, y: -dy } };
+          mejorPuntaje = puntaje;
+        }
+        if (cuerpo.length === 3 && distancia >= 8) break;
       }
-    }
-    if (!origen) origen = this.freeCell(1) || { x: 0, y: 0 };
-
-    const cuerpo = [origen];
-    for (const [dx, dy] of DIRS) {
-      if (cuerpo.length >= 3) break;
-      for (let n = 1; n <= 2; n++) {
-        const x = origen.x + dx * n;
-        const y = origen.y + dy * n;
-        if (!libre(x, y)) break;
-        cuerpo.push({ x, y });
-      }
+      if (mejor && mejor.cuerpo.length === 3 &&
+        Math.abs(mejor.cuerpo[0].x - cabeza.x) + Math.abs(mejor.cuerpo[0].y - cabeza.y) >= 8) break;
     }
 
+    if (!mejor) {
+      const origen = this.freeCell(1) || { x: 0, y: 0 };
+      mejor = { cuerpo: [origen], dir: { x: 1, y: 0 } };
+    }
+    const cuerpo = mejor.cuerpo;
     this.hunter = {
       body: cuerpo,
       prev: cuerpo.map((p) => ({ ...p })),
-      dir: { x: 0, y: 0 },
+      dir: mejor.dir,
       grow: 0,
       aim: null,
       botSiguienteFallo: 48 + rand(30),
@@ -1569,9 +1610,12 @@ class Game {
       this.body.slice(1, -1).map((s) => K(s.x, s.y)),
     );
     // corto va a comer y no te toca: tu cabeza tampoco es paso para él.
-    // a partir de siete anillos ya te caza, y ahí sí puede caer sobre ti
+    // al pasar el umbral de crecimiento ya te caza, y puede caer sobre ti
     const agresivo = this.hunterPelea;
     const bloqueado = new Set([...this.wallSet, ...ocupadoCuerpo]);
+    for (const item of [this.food, this.bonus, this.power]) {
+      if (item) bloqueado.add(K(item.x, item.y));
+    }
     const tuCabeza = K(this.body[0].x, this.body[0].y);
     if (!agresivo) bloqueado.add(tuCabeza);
 
@@ -1862,23 +1906,21 @@ class Game {
         ctx.moveTo(px + w * 0.28, py + w * 0.5);
         ctx.lineTo(px + w * 0.72, py + w * 0.5);
         ctx.stroke();
+      } else if (kind === 'shield') {
+        ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
+        ctx.strokeRect(px + w * 0.22, py + w * 0.22, w * 0.56, w * 0.56);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(Math.round(px + w * 0.42), Math.round(py + w * 0.42), Math.max(2, Math.round(w * 0.16)), Math.max(2, Math.round(w * 0.16)));
+      } else if (kind === 'double') {
+        ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
+        ctx.fillStyle = '#fff';
+        const side = Math.max(2, Math.round(w * 0.22));
+        ctx.fillRect(Math.round(px + w * 0.25 - side / 2), Math.round(py + w * 0.5 - side / 2), side, side);
+        ctx.fillRect(Math.round(px + w * 0.75 - side / 2), Math.round(py + w * 0.5 - side / 2), side, side);
       } else {
         ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
         ctx.fillStyle = '#fff';
         ctx.fillRect(Math.round(px + w * 0.36), Math.round(py + w * 0.36), Math.max(2, Math.round(w * 0.28)), Math.max(2, Math.round(w * 0.28)));
-      }
-    }
-
-    // el cazador avisa de por dónde va a cortar
-    if (this.hunter && this.hunter.aim) {
-      const aim = this.hunter.aim;
-      const dist = Math.abs(aim.x - this.body[0].x) + Math.abs(aim.y - this.body[0].y);
-      if (dist <= (this.cfg.hunterAimShow || 7) && Math.floor(this.time / 110) % 2 === 0) {
-        const m = Math.round(cell * 0.2);
-        const [px, py, w] = caja(aim.x, aim.y, m, lado - m * 2);
-        ctx.strokeStyle = 'rgba(255,43,43,0.85)';
-        ctx.lineWidth = Math.max(1, Math.round(cell * 0.07));
-        ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
       }
     }
 
@@ -1887,43 +1929,6 @@ class Game {
       const [px, py, w] = caja(punto.x, punto.y, Math.round(cell * 0.33), lado - Math.round(cell * 0.66));
       ctx.fillStyle = '#3d7bff';
       ctx.fillRect(px, py, w, w);
-    }
-
-    // el cazador: cubos rojos, uno por anillo, con la cabeza marcada
-    if (this.hunter && this.hunter.recarga <= 0) {
-      const avance = this.hunterAvance;
-      const m = Math.max(1, Math.round(cell * 0.07));
-      const ancho = lado - m * 2;
-      const centro = Math.max(2, Math.round(ancho * 0.22));
-      for (let i = this.hunter.body.length - 1; i >= 0; i--) {
-        const actual = this.hunter.body[i];
-        const previo = this.hunter.prev[i] || actual;
-        const salto = Math.abs(actual.x - previo.x) > 1 || Math.abs(actual.y - previo.y) > 1;
-        const px = salto ? actual.x : previo.x + (actual.x - previo.x) * avance;
-        const py = salto ? actual.y : previo.y + (actual.y - previo.y) * avance;
-        const x0 = Math.round(ox + px * cell) + m;
-        const y0 = Math.round(oy + py * cell) + m;
-        ctx.fillStyle = i === 0 ? '#ff2b2b' : '#c21414';
-        ctx.fillRect(x0, y0, ancho, ancho);
-        ctx.strokeStyle = i === 0 ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.3)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x0 + 0.5, y0 + 0.5, ancho - 1, ancho - 1);
-        if (i === 0 && this.hunterPelea) {
-          ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-          ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
-          ctx.strokeRect(x0 - 2.5, y0 - 2.5, ancho + 5, ancho + 5);
-        }
-        if (i === 0) {
-          const dx = this.hunter.dir.x || 0;
-          const dy = this.hunter.dir.y || 0;
-          ctx.fillStyle = '#000';
-          for (const ladoOjo of [-1, 1]) {
-            const ex = x0 + ancho / 2 + dx * ancho * 0.16 + (dy !== 0 ? ladoOjo * ancho * 0.18 : 0);
-            const ey = y0 + ancho / 2 + dy * ancho * 0.16 + (dx !== 0 ? ladoOjo * ancho * 0.18 : 0);
-            ctx.fillRect(Math.round(ex - centro / 2), Math.round(ey - centro / 2), centro, centro);
-          }
-        }
-      }
     }
 
     // ---- luz: todo a bloques, un escalón por casilla ----
@@ -1967,6 +1972,66 @@ class Game {
           Math.round(r * 2),
           Math.round(r * 2),
         );
+      }
+    }
+
+    // el aviso de corte y el cazador quedan sobre la capa de sombra para no desaparecer
+    if (this.hunter && this.hunter.aim && this.hunter.recarga <= 0) {
+      const aim = this.hunter.aim;
+      const dist = Math.abs(aim.x - this.body[0].x) + Math.abs(aim.y - this.body[0].y);
+      if (dist <= (this.cfg.hunterAimShow || 7) && Math.floor(this.time / 110) % 2 === 0) {
+        const m = Math.round(cell * 0.2);
+        const [px, py, w] = caja(aim.x, aim.y, m, lado - m * 2);
+        ctx.strokeStyle = 'rgba(255,43,43,0.95)';
+        ctx.lineWidth = Math.max(1, Math.round(cell * 0.07));
+        ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
+      }
+    }
+
+    if (this.hunter && this.hunter.recarga > 0 && this.hunter.body[0]) {
+      const cabezaCazador = this.hunter.body[0];
+      const pulso = 0.3 + 0.45 * (0.5 + 0.5 * Math.sin(this.time / 95));
+      const m = Math.max(2, Math.round(cell * 0.2));
+      const [px, py, w] = caja(cabezaCazador.x, cabezaCazador.y, m, lado - m * 2);
+      ctx.strokeStyle = `rgba(255,43,43,${pulso.toFixed(2)})`;
+      ctx.lineWidth = Math.max(1, Math.round(cell * 0.08));
+      ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
+    }
+
+    // el cazador: cubos rojos, uno por anillo, con la cabeza marcada
+    if (this.hunter && this.hunter.recarga <= 0) {
+      const avance = this.hunterAvance;
+      const m = Math.max(1, Math.round(cell * 0.07));
+      const ancho = lado - m * 2;
+      const centro = Math.max(2, Math.round(ancho * 0.22));
+      for (let i = this.hunter.body.length - 1; i >= 0; i--) {
+        const actual = this.hunter.body[i];
+        const previo = this.hunter.prev[i] || actual;
+        const salto = Math.abs(actual.x - previo.x) > 1 || Math.abs(actual.y - previo.y) > 1;
+        const px = salto ? actual.x : previo.x + (actual.x - previo.x) * avance;
+        const py = salto ? actual.y : previo.y + (actual.y - previo.y) * avance;
+        const x0 = Math.round(ox + px * cell) + m;
+        const y0 = Math.round(oy + py * cell) + m;
+        ctx.fillStyle = i === 0 ? '#ff2b2b' : '#c21414';
+        ctx.fillRect(x0, y0, ancho, ancho);
+        ctx.strokeStyle = i === 0 ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x0 + 0.5, y0 + 0.5, ancho - 1, ancho - 1);
+        if (i === 0 && this.hunterPelea) {
+          ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+          ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
+          ctx.strokeRect(x0 - 2.5, y0 - 2.5, ancho + 5, ancho + 5);
+        }
+        if (i === 0) {
+          const dx = this.hunter.dir.x || 0;
+          const dy = this.hunter.dir.y || 0;
+          ctx.fillStyle = '#000';
+          for (const ladoOjo of [-1, 1]) {
+            const ex = x0 + ancho / 2 + dx * ancho * 0.16 + (dy !== 0 ? ladoOjo * ancho * 0.18 : 0);
+            const ey = y0 + ancho / 2 + dy * ancho * 0.16 + (dx !== 0 ? ladoOjo * ancho * 0.18 : 0);
+            ctx.fillRect(Math.round(ex - centro / 2), Math.round(ey - centro / 2), centro, centro);
+          }
+        }
       }
     }
 
@@ -2102,7 +2167,7 @@ const KEY = 'snake.language';
 const STRINGS = {
   es: {
     documentTitle: 'Snake — v1.0',
-    description: 'Snake v1.0: una campaña de 20 niveles, modos infinitos y una serpiente cazadora.',
+    description: 'Snake v1.0: campaña, modos infinitos y una serpiente cazadora.',
     language: 'Idioma',
     sound: 'sonido',
     soundTitleOn: 'sonido activo (M)',
@@ -2121,11 +2186,11 @@ const STRINGS = {
     missingPieces: 'faltan piezas ({pieces}). casi seguro hay ficheros viejos en caché: pulsa recargar limpio.',
     campaign: 'campaña',
     groupCampaign: 'progreso',
-    groupCampaignTag: 'campaña de 20 niveles',
+    groupCampaignTag: 'rutas con obstáculos',
     groupEndless: 'infinitos',
     groupEndlessTag: 'puntuación sin final',
     modeClassic: 'clásico',
-    modeClassicTag: 'cada fruta acelera · pasados 30 puntos empiezan a salir muros',
+    modeClassicTag: 'cada fruta acelera · muros al llegar a 30 frutas',
     modeFrenzy: 'frenesí',
     modeFrenzyTag: 'bordes abiertos y la velocidad sube sola',
     modeHunter: 'cazador',
@@ -2137,13 +2202,20 @@ const STRINGS = {
       'REJILLA DOBLE': 'rejilla doble', PASILLO: 'pasillo', PUAS: 'púas', ESCALERA: 'escalera',
       DIENTES: 'dientes', LABERINTO: 'laberinto', 'DOS JAULAS': 'dos jaulas', FINAL: 'final',
     },
-    tagline: 'fruta a fruta, nivel a nivel',
-    gridSummary: 'rejilla 20×20 · {levels} niveles · {modes} modos',
     controls: 'controles',
     hideGrid: 'quitar trama',
     showGrid: 'poner trama',
     clearRecords: 'borrar récords',
     chooseGroup: 'elige un grupo',
+    menuSubtitle: 'elige una partida',
+    settings: 'configuración',
+    settingsHint: 'ajusta la experiencia de juego',
+    soundSettingHint: 'efectos sonoros del juego',
+    scanlines: 'trama de fósforo',
+    scanlinesHint: 'líneas de pantalla para dar textura',
+    clearRecordsHint: 'borra récords y progreso guardados',
+    enabled: 'activado',
+    disabled: 'desactivado',
     preview: 'vista previa',
     previewMode: 'vista previa del modo',
     previewGroupHint: 'elige un grupo para ver sus modos',
@@ -2154,7 +2226,7 @@ const STRINGS = {
     modes: 'modos',
     chooseMode: '↑↓ elegir · ←→ cambiar de grupo · enter jugar',
     campaignProgress: '{cleared}/{total} superados',
-    campaignDescription: '20 niveles con muros · {cleared} superados',
+    campaignDescription: 'recorrido con muros · {cleared} superados',
     chooseLevel: 'elige nivel',
     blocked: 'bloqueado',
     fruits: '{count} {unit}',
@@ -2174,11 +2246,13 @@ const STRINGS = {
     restartKeys: 'R · sonido M',
     menus: 'menús',
     menuKeys: 'flechas + enter · ←→ cambia de grupo',
-    comingSoon: 'en breve',
+    gameRules: 'reglas de juego',
     ruleChain: 'encadena frutas para subir hasta ×5; los cubos dan premios o poderes.',
-    ruleCampaign: 'campaña: 20 niveles; la fruta final es amarilla.',
+    ruleCampaign: 'campaña: supera cada nivel; la fruta final es amarilla.',
     ruleModes: 'frenesí: los bordes dan la vuelta. cazador: come puntos y después te persigue.',
     ruleHunter: 'cazador: su cabeza te mata; su cuerpo y los puntos son seguros.',
+    powerBasics: 'fantasma atraviesa obstáculos; lento baja el ritmo; recorte acorta la cola.',
+    powerAdvanced: 'escudo salva un choque; el doble de puntos dura 7 s.',
     gridMode: 'rejilla',
     levelNumberName: 'nivel {number} {name}',
     nextLevelMeta: 'siguiente · {name} · {goal} {unit}',
@@ -2201,6 +2275,7 @@ const STRINGS = {
     hintModes: '↑↓ modo · ←→ grupo · enter jugar · esc volver',
     hintLevels: 'flechas nav · enter jugar · esc grupos',
     hintHelp: 'esc volver',
+    hintSettings: '↑↓ elegir · enter cambiar · esc volver',
     hintPaused: 'P seguir · R reiniciar · esc menú',
     hintDead: 'R reintentar · esc menú',
     hintCleared: 'enter siguiente · esc menú',
@@ -2212,12 +2287,15 @@ const STRINGS = {
     levelScore: '{number} {name} · {fruits}/{goal}',
     ghost: 'fantasma',
     slow: 'lento',
+    shield: 'escudo',
+    double: 'doble',
     turboEffect: 'turbo',
     hunted: 'te caza',
     locked: 'bloqueado',
     routeHome: '',
     routeModes: 'modos',
     routeHelp: 'ayuda',
+    routeSettings: 'ajustes',
     routeCampaign: 'campaña',
     routeClassic: 'clásico',
     routeFrenzy: 'frenesí',
@@ -2232,7 +2310,7 @@ const STRINGS = {
   },
   en: {
     documentTitle: 'Snake — v1.0',
-    description: 'Snake v1.0: a 20-level campaign, endless modes, and a hunter snake.',
+    description: 'Snake v1.0: campaign, endless modes, and a hunter snake.',
     language: 'Language',
     sound: 'sound',
     soundTitleOn: 'sound on (M)',
@@ -2251,11 +2329,11 @@ const STRINGS = {
     missingPieces: 'missing pieces ({pieces}). The browser may have cached old files; try a clean reload.',
     campaign: 'campaign',
     groupCampaign: 'campaign',
-    groupCampaignTag: '20-level journey',
+    groupCampaignTag: 'obstacle routes',
     groupEndless: 'endless',
     groupEndlessTag: 'chase a high score',
     modeClassic: 'classic',
-    modeClassicTag: 'each fruit speeds you up · walls appear after 30 points',
+    modeClassicTag: 'each fruit speeds you up · walls begin at 30 fruits',
     modeFrenzy: 'frenzy',
     modeFrenzyTag: 'open edges · your speed keeps rising',
     modeHunter: 'hunter',
@@ -2267,13 +2345,20 @@ const STRINGS = {
       'REJILLA DOBLE': 'double grid', PASILLO: 'corridor', PUAS: 'spikes', ESCALERA: 'staircase',
       DIENTES: 'teeth', LABERINTO: 'maze', 'DOS JAULAS': 'twin cages', FINAL: 'finale',
     },
-    tagline: 'a block-built journey',
-    gridSummary: '20×20 grid · {levels} levels · {modes} modes',
     controls: 'controls',
     hideGrid: 'hide scanlines',
     showGrid: 'show scanlines',
     clearRecords: 'clear records',
     chooseGroup: 'choose a group',
+    menuSubtitle: 'choose a run',
+    settings: 'settings',
+    settingsHint: 'adjust your game experience',
+    soundSettingHint: 'game sound effects',
+    scanlines: 'scanlines',
+    scanlinesHint: 'screen lines for a little texture',
+    clearRecordsHint: 'erase saved records and progress',
+    enabled: 'on',
+    disabled: 'off',
     preview: 'preview',
     previewMode: 'mode preview',
     previewGroupHint: 'choose a group to see its modes',
@@ -2284,7 +2369,7 @@ const STRINGS = {
     modes: 'modes',
     chooseMode: '↑↓ choose · ←→ switch group · enter play',
     campaignProgress: '{cleared}/{total} cleared',
-    campaignDescription: '20 levels with walls · {cleared} cleared',
+    campaignDescription: 'obstacle course · {cleared} cleared',
     chooseLevel: 'choose a level',
     blocked: 'locked',
     fruits: '{count} {unit}',
@@ -2304,11 +2389,13 @@ const STRINGS = {
     restartKeys: 'R · sound M',
     menus: 'menus',
     menuKeys: 'arrows + enter · ←→ switches groups',
-    comingSoon: 'the basics',
+    gameRules: 'game rules',
     ruleChain: 'chain fruit to reach ×5; blocks drop bonuses and power-ups.',
-    ruleCampaign: 'campaign: 20 levels; the final fruit is golden.',
+    ruleCampaign: 'campaign: clear each level; the final fruit is golden.',
     ruleModes: 'frenzy: wrap around the edges. hunter: eat pellets, then stay ahead.',
     ruleHunter: 'hunter: its head is deadly; its body and pellets are safe.',
+    powerBasics: 'ghost passes hazards; slow eases the pace; shrink trims your tail.',
+    powerAdvanced: 'shield saves one crash; the double-points boost lasts 7 s.',
     gridMode: 'grid',
     levelNumberName: 'level {number} {name}',
     nextLevelMeta: 'next · {name} · {goal} {unit}',
@@ -2331,6 +2418,7 @@ const STRINGS = {
     hintModes: '↑↓ mode · ←→ group · enter play · esc back',
     hintLevels: 'arrows move · enter play · esc groups',
     hintHelp: 'esc back',
+    hintSettings: '↑↓ choose · enter toggle · esc back',
     hintPaused: 'P resume · R restart · esc menu',
     hintDead: 'R retry · esc menu',
     hintCleared: 'enter next · esc menu',
@@ -2342,12 +2430,15 @@ const STRINGS = {
     levelScore: '{number} {name} · {fruits}/{goal}',
     ghost: 'ghost',
     slow: 'slow',
+    shield: 'shield',
+    double: 'double points',
     turboEffect: 'boost',
     hunted: 'hunted',
     locked: 'locked',
     routeHome: '',
     routeModes: 'modes',
     routeHelp: 'help',
+    routeSettings: 'settings',
     routeCampaign: 'campaign',
     routeClassic: 'classic',
     routeFrenzy: 'frenzy',
@@ -2443,6 +2534,7 @@ function routeWords() {
     home: '',
     modes: [STRINGS.es.routeModes, STRINGS.en.routeModes],
     help: [STRINGS.es.routeHelp, STRINGS.en.routeHelp],
+    settings: [STRINGS.es.routeSettings, STRINGS.en.routeSettings],
     campaign: [STRINGS.es.routeCampaign, STRINGS.en.routeCampaign],
     classic: [STRINGS.es.routeClassic, 'clasico', STRINGS.en.routeClassic],
     frenzy: [STRINGS.es.routeFrenzy, 'frenesi', STRINGS.en.routeFrenzy],
@@ -2581,6 +2673,7 @@ const app = {
   grupo: 0,
   modoSel: 0,
   nivelSel: 0,
+  settingsReturn: 'modes',
   marca: 0,
   reloj: 0,
   temporizador: 0,
@@ -2952,6 +3045,7 @@ function pantalla(nombre) {
   const antes = app.pantalla;
   app.pantalla = nombre;
   document.body.dataset.screen = nombre;
+  if (!app.juego) actualizarEfectos(null);
   // BORRAR-COMPETITIVO · pantallas y audio del modo retirados para v1.0.
   if (antes !== nombre) taparPantalla();
   actualizarPista();
@@ -2961,6 +3055,7 @@ function pantalla(nombre) {
 const PISTAS = {
   home: 'hintHome',
   modes: 'hintModes',
+  settings: 'hintSettings',
   levels: 'hintLevels',
   help: 'hintHelp',
   paused: 'hintPaused',
@@ -3008,6 +3103,7 @@ function pantallaDeRuta() {
     return { tipo: 'modes', grupo };
   }
   if (coincideRuta(primera, 'help')) return { tipo: 'help' };
+  if (coincideRuta(primera, 'settings')) return { tipo: 'settings' };
   if (coincideRuta(primera, 'campaign')) {
     const nivel = /^(?:nivel|level)-?(\d{1,2})$/.exec(segunda || '');
     return nivel
@@ -3028,6 +3124,7 @@ function rutaDeEstado() {
     return `${BASE_PATH}${routeSlug('modes')}/${routeSlug(grupo)}`;
   }
   if (app.pantalla === 'help') return `${BASE_PATH}${routeSlug('help')}`;
+  if (app.pantalla === 'settings') return `${BASE_PATH}${routeSlug('settings')}`;
   if (app.pantalla === 'levels') return `${BASE_PATH}${routeSlug('campaign')}`;
   if (app.modo === 'campaign') {
     return `${BASE_PATH}${routeSlug('campaign')}/nivel-${dosDigitos(app.nivel + 1)}`;
@@ -3051,6 +3148,8 @@ function mostrarRuta(ruta) {
     mostrarNiveles();
   } else if (ruta.tipo === 'help') {
     mostrarAyuda();
+  } else if (ruta.tipo === 'settings') {
+    mostrarAjustes('modes');
   } else if (ruta.tipo === 'game') {
     empezarPartida(ruta.modo, 0);
   } else if (ruta.tipo === 'campaign-level') {
@@ -3130,6 +3229,8 @@ function actualizarEfectos(juego) {
   if (juego) {
     if (juego.fx.ghost > 0) activos.push([t('ghost'), juego.fx.ghost / POWER_INFO.ghost.ms]);
     if (juego.fx.slow > 0) activos.push([t('slow'), juego.fx.slow / POWER_INFO.slow.ms]);
+    if (juego.fx.shield > 0) activos.push([t('shield'), juego.fx.shield / POWER_INFO.shield.ms]);
+    if (juego.fx.double > 0) activos.push([t('double'), juego.fx.double / POWER_INFO.double.ms]);
     if (juego.turbo && app.modo !== 'hunter') activos.push([t('turboEffect'), 1]);
     if (juego.cfg && juego.cfg.hunter && juego.hunter && juego.hunterPelea) {
       const tope = juego.cfg.hunterCap || 18;
@@ -3345,16 +3446,11 @@ function mostrarInicio() {
     <div class="inicio-texto">
       <header class="inicio-cabeza">
         <h1 class="marca"><canvas id="marca" role="img" aria-label="snake"></canvas></h1>
-        <p class="tagline">${t('tagline')}</p>
-        <p class="kicker">${t('gridSummary', { levels: LEVELS.length, modes: MODE_ORDER.length - 1 })}</p>
+        <p class="kicker">${t('menuSubtitle')}</p>
       </header>
       <nav class="filas" aria-label="${t('groupAria')}">${filas}</nav>
       <p class="pie">
         <button class="link" type="button" data-accion="help">${t('controls')}</button>
-        <span aria-hidden="true">·</span>
-        <button class="link" type="button" data-accion="crt">${t(guardado.crt ? 'hideGrid' : 'showGrid')}</button>
-        <span aria-hidden="true">·</span>
-        <button class="link" type="button" data-accion="wipe">${t('clearRecords')}</button>
       </p>
     </div>
     <aside class="inicio-demo">
@@ -3414,7 +3510,12 @@ function mostrarModos(indice = app.grupo) {
     </div>
     <nav class="tabs" aria-label="${t('switchGroup')}">${tabs}</nav>
     <div class="modos-cuerpo">
-      <nav class="filas" aria-label="${t('modes')}">${filas}</nav>
+      <div class="modos-listado">
+        <nav class="filas" aria-label="${t('modes')}">${filas}</nav>
+        <button class="settings-quick" type="button" data-accion="settings">
+          <span aria-hidden="true">⚙</span>${t('settings')}
+        </button>
+      </div>
       <aside class="inicio-demo">
         <p class="kicker" id="demo-titulo">${t('preview')}</p>
         <canvas id="demo" aria-label="${t('previewMode')}"></canvas>
@@ -3611,16 +3712,71 @@ function mostrarAyuda() {
         <tr><th>${t('menus')}</th><td>${t('menuKeys')}</td></tr>
       </tbody>
     </table>
-    <p class="kicker">${t('comingSoon')}</p>
+    <p class="kicker">${t('gameRules')}</p>
     <ul class="reglas">
       <li>${t('ruleChain')}</li>
       <li>${t('ruleCampaign')}</li>
       <li>${t('ruleModes')}</li>
       <li>${t('ruleHunter')}</li>
+      <li>${t('powerBasics')}</li>
+      <li>${t('powerAdvanced')}</li>
     </ul>
   </div>`);
   pantalla('help');
   enfocarPrimero('button[data-accion="home"]');
+}
+
+function ajustesDesde() {
+  if (app.settingsReturn === 'modes') mostrarModos(app.grupo);
+  else mostrarInicio();
+}
+
+function mostrarAjustes(desde = app.pantalla, focoInicial = 'button[data-accion="settingsBack"]') {
+  app.settingsReturn = desde === 'home' ? 'home' : 'modes';
+  pararTemporizador();
+  app.juego = null;
+  app.demo = null;
+
+  const sonido = guardado.sound;
+  const trama = guardado.crt;
+  const botonEstado = (activo) =>
+    `<span class="setting-state${activo ? ' on' : ''}">${t(activo ? 'enabled' : 'disabled')}</span>`;
+
+  ponerOverlay(`<div class="panel ajustes">
+    <div class="niveles-cabeza">
+      <div>
+        <p class="kicker">${t('settings')}</p>
+        <h2>${t('settingsHint')}</h2>
+      </div>
+      <button class="ghost" type="button" data-accion="settingsBack">${t('back')} <kbd>esc</kbd></button>
+    </div>
+    <div class="settings-list">
+      <button class="setting-row" type="button" data-accion="toggleSound" aria-pressed="${sonido}">
+        <span class="setting-copy"><b>${t('sound')}</b><small>${t('soundSettingHint')}</small></span>
+        ${botonEstado(sonido)}
+      </button>
+      <button class="setting-row" type="button" data-accion="crt" aria-pressed="${trama}">
+        <span class="setting-copy"><b>${t('scanlines')}</b><small>${t('scanlinesHint')}</small></span>
+        ${botonEstado(trama)}
+      </button>
+      <button class="setting-row peligro" type="button" data-accion="wipe">
+        <span class="setting-copy"><b>${t('clearRecords')}</b><small>${t('clearRecordsHint')}</small></span>
+        <span class="setting-arrow" aria-hidden="true">↗</span>
+      </button>
+    </div>
+  </div>`);
+
+  el.score.textContent = '—';
+  el.meta.textContent = t('settings');
+  el.best.textContent = '';
+  el.mult.textContent = '';
+  el.chain.style.width = '0%';
+  el.pause.disabled = true;
+  el.pause.textContent = t('pause');
+  el.pause.title = t('pauseTitle');
+  el.prompt.classList.remove('visible');
+  pantalla('settings');
+  enfocarPrimero(focoInicial);
 }
 
 // BORRAR-COMPETITIVO · rangos y salas eliminados en v1.0.
@@ -3675,6 +3831,9 @@ function eventosJuego(tipo, datos) {
       break;
     case 'power':
       audio.play('power');
+      break;
+    case 'shield':
+      audio.play('shield');
       break;
     case 'turbo':
       audio.play('turbo');
@@ -3983,6 +4142,14 @@ function accion(nombre) {
     return;
   }
 
+  if (app.pantalla === 'settings') {
+    if (nombre === 'up' || nombre === 'down' || nombre === 'left' || nombre === 'right') {
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
+    } else if (nombre === 'confirm') activarFoco();
+    else if (nombre === 'back' || nombre === 'pause') ajustesDesde();
+    return;
+  }
+
   if (app.pantalla === 'paused' || app.pantalla === 'dead' || app.pantalla === 'cleared') {
     if (esDireccion) {
       moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
@@ -4043,11 +4210,22 @@ function ejecutar(nombre) {
     case 'help':
       mostrarAyuda();
       break;
+    case 'settings':
+      mostrarAjustes(app.pantalla);
+      break;
+    case 'settingsBack':
+      ajustesDesde();
+      break;
+    case 'toggleSound':
+      alternarSonido();
+      mostrarAjustes(app.settingsReturn, 'button[data-accion="toggleSound"]');
+      break;
     case 'crt':
       guardado.crt = !guardado.crt;
       guardar();
       document.documentElement.classList.toggle('trama', guardado.crt);
-      mostrarInicio();
+      if (app.pantalla === 'settings') mostrarAjustes(app.settingsReturn, 'button[data-accion="crt"]');
+      else mostrarInicio();
       break;
     case 'wipe':
       borrarRecords();
@@ -4063,7 +4241,8 @@ function borrarRecords() {
   guardado.campaign = { unlocked: 1, best: {} };
   guardar();
   audio.play('ui');
-  mostrarInicio();
+  if (app.pantalla === 'settings') mostrarAjustes(app.settingsReturn, 'button[data-accion="wipe"]');
+  else mostrarInicio();
 }
 
 /* ---------------------------------------------------------- sonido */
@@ -4113,6 +4292,7 @@ function cambiarIdioma() {
   else if (app.pantalla === 'modes') mostrarModos(app.grupo);
   else if (app.pantalla === 'levels') pintarNiveles();
   else if (app.pantalla === 'help') mostrarAyuda();
+  else if (app.pantalla === 'settings') mostrarAjustes(app.settingsReturn);
   else if (app.pantalla === 'playing') {
     actualizarPista();
     actualizarMarcador();

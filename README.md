@@ -13,16 +13,18 @@ Snake de rejilla, en blanco y negro y sin dependencias ni peticiones de red. Se 
 | Sonido | M | Botón de sonido |
 | Menús | Flechas y Enter | Toca una opción |
 
-La navegación de grupos, modos, niveles y ayuda funciona con teclado y mantiene un foco visible. En la rejilla de niveles, `↑↓` se mueve por las filas.
+La navegación de grupos, modos, niveles, ayuda y ajustes funciona con teclado y mantiene un foco visible. En la rejilla de niveles, `↑↓` se mueve por las filas. El botón compacto de configuración está bajo la lista de modos; desde ahí se cambian el sonido y la trama de pantalla, o se borran los récords.
 
 ## Modos
 
 La portada tiene dos grupos: **progreso** e **infinitos**. Dentro de la pantalla de modos se puede cambiar de grupo con `←→`.
 
 - **Campaña** — 20 niveles con muros diseñados a mano. Se desbloquean al superarlos y cada nivel guarda su mejor puntuación.
-- **Clásico** — partida sin fin. Cada fruta acelera la serpiente y, al pasar los 30 puntos, empiezan a aparecer muros.
-- **Frenesí** — los bordes conectan entre sí y la velocidad aumenta con el tiempo.
+- **Clásico** — partida sin fin. Cada fruta acelera la serpiente y, al llegar a 30 frutas, empiezan a aparecer muros.
+- **Frenesí** — los bordes conectan entre sí y la velocidad aumenta gradualmente con el tiempo.
 - **Cazador** — una serpiente roja come puntos azules y después te persigue. Su cabeza es peligrosa; su cuerpo y los puntos son seguros. Si choca contra tu cuerpo, desaparece y vuelve más pequeña. Los puntos azules también los puedes comer tú.
+
+Los poderes disponibles son **fantasma** (atraviesa obstáculos), **lento** (reduce el ritmo), **recorte** (acorta la cola), **escudo** (salva un choque) y **doble** (duplica los puntos durante unos segundos).
 
 El modo competitivo se retiró para preparar la versión 1.0: no aparece en el menú, no puede iniciarse y ya no conserva salas, bots, clasificación, reloj, reapariciones ni audio propio.
 

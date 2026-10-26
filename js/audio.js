@@ -88,6 +88,10 @@ const SONIDOS = {
     tono(480, 0.08, { tipo: 'triangle', vol: 0.2 });
     tono(720, 0.1, { tipo: 'triangle', vol: 0.16, delay: 0.07 });
   },
+  shield() {
+    tono(240, 0.12, { tipo: 'triangle', vol: 0.18, fin: 520 });
+    tono(820, 0.08, { vol: 0.12, delay: 0.04 });
+  },
   turbo() {
     tono(140, 0.08, { tipo: 'sawtooth', vol: 0.1 });
   },

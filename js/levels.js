@@ -37,7 +37,7 @@ const slit = (x, y, alto) => vline(x, y, alto);
 // grupos del menú: cada uno es una subpágina con sus modos
 // BORRAR-COMPETITIVO · modo retirado en la preparación de v1.0.
 export const GROUPS = [
-  { name: 'progreso', tag: 'campaña de 20 niveles', modes: ['campaign'] },
+  { name: 'progreso', tag: 'rutas con obstáculos', modes: ['campaign'] },
   { name: 'infinitos', tag: 'puntuación sin final', modes: ['classic', 'frenzy', 'hunter'] },
 ];
 
@@ -57,7 +57,7 @@ export const MODES = {
     ...base,
     id: 'classic',
     name: 'CLÁSICO',
-    tag: 'cada fruta acelera · pasados 30 puntos empiezan a salir muros',
+    tag: 'cada fruta acelera · muros al llegar a 30 frutas',
     startSpeed: 142,
     minSpeed: 82,
     accelPerFood: 1.5,
@@ -70,13 +70,13 @@ export const MODES = {
     id: 'frenzy',
     name: 'FRENESÍ',
     tag: 'bordes abiertos y la velocidad sube sola',
-    startSpeed: 124,
-    minSpeed: 56,
-    accelPerFood: 0.8,
-    rampPerSec: 0.5,
+    startSpeed: 132,
+    minSpeed: 68,
+    accelPerFood: 0.55,
+    rampPerSec: 0.28,
     wrap: true,
     bonusEvery: 4,
-    powerEvery: 5,
+    powerEvery: 6,
   },
   hunter: {
     ...base,
@@ -87,11 +87,11 @@ export const MODES = {
     minSpeed: 86,
     accelPerFood: 1.2,
     hunter: true,
-    hunterPellets: 3,
-    hunterCap: 18,
-    hunterSight: 5,
+    hunterPellets: 2,
+    hunterCap: 16,
+    hunterSight: 4,
     bonusEvery: 6,
-    powerEvery: 5,
+    powerEvery: 6,
   },
 
 };

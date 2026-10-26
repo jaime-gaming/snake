@@ -3,12 +3,14 @@ import { K, DIRS, bfsStep } from './grid.js?v=3';
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const rand = (n) => Math.floor(Math.random() * n);
 
-const POWER = ['ghost', 'slow', 'shrink'];
+const POWER = ['ghost', 'slow', 'shrink', 'shield', 'double'];
 
 export const POWER_INFO = {
   ghost: { label: 'fantasma', ms: 5200 },
   slow: { label: 'lento', ms: 6000 },
   shrink: { label: 'recorte', ms: 0 },
+  shield: { label: 'escudo', ms: 10000 },
+  double: { label: 'doble', ms: 7000 },
 };
 
 export class Game {
@@ -49,7 +51,7 @@ export class Game {
     this.hitStop = 0;
     this.crash = null;
     this.wallTicks = 0;
-    this.fx = { ghost: 0, slow: 0 };
+    this.fx = { ghost: 0, slow: 0, shield: 0, double: 0 };
     this.bonus = null;
     this.power = null;
     this.hunter = null;
@@ -119,6 +121,10 @@ export class Game {
     return this.fx.ghost > 0;
   }
 
+  get scoreFactor() {
+    return this.fx.double > 0 ? 2 : 1;
+  }
+
   interval() {
     const slow = this.fx.slow > 0 ? 1.5 : 1;
     return Math.max(42, this.speed * (this.turbo ? 0.68 : 1) * slow);
@@ -167,7 +173,7 @@ export class Game {
       this.updateFx(dt * 0.25);
       return;
     }
-    for (const k of ['ghost', 'slow']) {
+    for (const k of ['ghost', 'slow', 'shield', 'double']) {
       if (this.fx[k] > 0) this.fx[k] = Math.max(0, this.fx[k] - dt);
     }
     if (this.state === 'running') {
@@ -270,7 +276,7 @@ export class Game {
         this.hunter.body.splice(golpe, 1);
         this.hunter.prev.splice(golpe, 1);
         this.burst(hx + 0.5, hy + 0.5, 10, '#c21414', 5);
-        this.score += 20;
+        this.score += 20 * this.scoreFactor;
         this.shake = Math.max(this.shake, 3);
         this.chomp = 1;
         this.emit('bite', { x: hx, y: hy });
@@ -311,7 +317,7 @@ export class Game {
     const rapido = this.chainTimer > this.chainWindow * 0.62;
     this.chain = Math.min(this.chain + 1, 30);
     this.chainTimer = this.chainWindow;
-    this.score += 10 * this.multiplier + (rapido ? 5 * this.multiplier : 0);
+    this.score += (10 * this.multiplier + (rapido ? 5 * this.multiplier : 0)) * this.scoreFactor;
     this.speed = Math.max(cfg.minSpeed, this.speed - (cfg.accelPerFood || 0));
     this.shake = 2.6;
     this.chomp = 1;
@@ -322,7 +328,7 @@ export class Game {
     }
     this.burst(food.x + 0.5, food.y + 0.5, sube ? 16 : 10, '#ff2b2b', 7);
     // clásico: pasada la mitad de la partida empiezan a salir muros sueltos
-    if (cfg.wallFrom && this.fruits > cfg.wallFrom && cfg.wallEvery &&
+    if (cfg.wallFrom && this.fruits >= cfg.wallFrom && cfg.wallEvery &&
       this.fruits % cfg.wallEvery === 0 && this.walls.length < (cfg.wallMax || 999)) {
       this.raiseWall();
     }
@@ -342,7 +348,7 @@ export class Game {
     if (indice < 0) return;
     this.pellets.splice(indice, 1);
     this.grow += 1;
-    this.score += 15 * this.multiplier;
+    this.score += 15 * this.multiplier * this.scoreFactor;
     this.chain = Math.min(this.chain + 1, 30);
     this.chainTimer = this.chainWindow;
     this.shake = 3;
@@ -358,7 +364,7 @@ export class Game {
     this.grow += 2;
     this.chain = Math.min(this.chain + 2, 30);
     this.chainTimer = this.chainWindow;
-    this.score += 50 * this.multiplier;
+    this.score += 50 * this.multiplier * this.scoreFactor;
     this.shake = 5;
     this.burst(b.x + 0.5, b.y + 0.5, 18, '#ffffff', 9);
     if (this.cfg.hunter) this.placeHunter();
@@ -374,10 +380,14 @@ export class Game {
       this.fx.ghost = POWER_INFO.ghost.ms;
     } else if (p.kind === 'slow') {
       this.fx.slow = POWER_INFO.slow.ms;
+    } else if (p.kind === 'shield') {
+      this.fx.shield = POWER_INFO.shield.ms;
+    } else if (p.kind === 'double') {
+      this.fx.double = POWER_INFO.double.ms;
     } else {
       const cut = Math.min(5, Math.max(0, this.body.length - 3));
       if (cut > 0) this.body.splice(this.body.length - cut, cut);
-      this.score += 30;
+      this.score += 30 * this.scoreFactor;
     }
     this.emit('power', { kind: p.kind, label: POWER_INFO[p.kind].label });
   }
@@ -386,13 +396,22 @@ export class Game {
 
   die(reason, x, y) {
     if (this.state !== 'running') return;
+    const impactox = x ?? this.body[0].x;
+    const impactoY = y ?? this.body[0].y;
+    if (this.fx.shield > 0) {
+      this.fx.shield = 0;
+      this.fx.ghost = Math.max(this.fx.ghost, Math.max(250, this.interval() * 2));
+      this.shake = Math.max(this.shake, 4);
+      this.flash = Math.max(this.flash, 0.65);
+      this.burst(impactox + 0.5, impactoY + 0.5, 16, '#b9f4ff', 7);
+      this.emit('shield', { reason, x: impactox, y: impactoY });
+      return false;
+    }
     this.state = 'dead';
     this.turbo = false;
     this.shake = 11;
     this.flash = 0.8;
     this.hitStop = 90;
-    const impactox = x ?? this.body[0].x;
-    const impactoY = y ?? this.body[0].y;
     this.crash = { x: impactox, y: impactoY, t: 0, reason, popped: 0 };
     this.burst(impactox + 0.5, impactoY + 0.5, 22, '#ffffff', 10);
     this.emit('die', { reason, score: this.score, fruits: this.fruits });
@@ -626,7 +645,7 @@ export class Game {
   matarCazador() {
     const h = this.hunter;
     for (const c of h.body) this.burst(c.x + 0.5, c.y + 0.5, 5, '#c21414', 4);
-    this.score += 100;
+    this.score += 100 * this.scoreFactor;
     this.flash = 0.75;
     this.shake = 6;
     this.hitStop = 90;
@@ -646,7 +665,12 @@ export class Game {
       x >= 0 && y >= 0 && x < this.cols && y < this.rows &&
       !this.wallSet.has(K(x, y)) &&
       !nuevo.body.some((c) => c.x === x && c.y === y) &&
-      !this.body.some((c) => c.x === x && c.y === y);
+      !this.body.some((c) => c.x === x && c.y === y) &&
+      !this.pellets.some((p) => p.x === x && p.y === y) &&
+      (!this.food || this.food.x !== x || this.food.y !== y) &&
+      (!this.bonus || this.bonus.x !== x || this.bonus.y !== y) &&
+      (!this.power || this.power.x !== x || this.power.y !== y) &&
+      !this.pendingWalls.some((w) => w.x === x && w.y === y);
     while (nuevo.body.length < largo) {
       const cola = nuevo.body[nuevo.body.length - 1];
       const antes = nuevo.body[nuevo.body.length - 2];
@@ -670,41 +694,54 @@ export class Game {
     this.flash = 0.3;
   }
 
-  // el cazador es una serpiente: empieza con tres anillos y crece comiendo
+  // el cazador nace fuera del foco, en un tramo libre y con espacio para verse
   placeHunter() {
     const cabeza = this.body[0];
     const libre = (x, y) =>
-      x >= 0 && y >= 0 && x < this.cols && y < this.rows &&
+      x > 0 && y > 0 && x < this.cols - 1 && y < this.rows - 1 &&
       !this.wallSet.has(K(x, y)) &&
       !this.body.some((s) => s.x === x && s.y === y) &&
-      !this.pellets.some((p) => p.x === x && p.y === y);
+      !this.pellets.some((p) => p.x === x && p.y === y) &&
+      (!this.food || this.food.x !== x || this.food.y !== y) &&
+      (!this.bonus || this.bonus.x !== x || this.bonus.y !== y) &&
+      (!this.power || this.power.x !== x || this.power.y !== y) &&
+      !this.pendingWalls.some((w) => w.x === x && w.y === y) &&
+      (!this.hunter || !this.hunter.body.some((p) => p.x === x && p.y === y));
 
-    let origen = null;
+    let mejor = null;
+    let mejorPuntaje = -Infinity;
     for (let i = 0; i < 300; i++) {
-      const c = this.freeCell(1);
-      if (!c) break;
-      if (Math.abs(c.x - cabeza.x) + Math.abs(c.y - cabeza.y) >= 8) {
-        origen = c;
-        break;
+      const origen = this.freeCell(1);
+      if (!origen) break;
+      const distancia = Math.abs(origen.x - cabeza.x) + Math.abs(origen.y - cabeza.y);
+      for (const [dx, dy] of DIRS) {
+        const cuerpo = [origen];
+        for (let n = 1; n <= 2; n++) {
+          const x = origen.x + dx * n;
+          const y = origen.y + dy * n;
+          if (!libre(x, y)) break;
+          cuerpo.push({ x, y });
+        }
+        const puntaje = cuerpo.length * 100 + Math.min(distancia, 20) + (distancia >= 8 ? 30 : 0);
+        if (puntaje > mejorPuntaje) {
+          mejor = { cuerpo, dir: { x: -dx, y: -dy } };
+          mejorPuntaje = puntaje;
+        }
+        if (cuerpo.length === 3 && distancia >= 8) break;
       }
-    }
-    if (!origen) origen = this.freeCell(1) || { x: 0, y: 0 };
-
-    const cuerpo = [origen];
-    for (const [dx, dy] of DIRS) {
-      if (cuerpo.length >= 3) break;
-      for (let n = 1; n <= 2; n++) {
-        const x = origen.x + dx * n;
-        const y = origen.y + dy * n;
-        if (!libre(x, y)) break;
-        cuerpo.push({ x, y });
-      }
+      if (mejor && mejor.cuerpo.length === 3 &&
+        Math.abs(mejor.cuerpo[0].x - cabeza.x) + Math.abs(mejor.cuerpo[0].y - cabeza.y) >= 8) break;
     }
 
+    if (!mejor) {
+      const origen = this.freeCell(1) || { x: 0, y: 0 };
+      mejor = { cuerpo: [origen], dir: { x: 1, y: 0 } };
+    }
+    const cuerpo = mejor.cuerpo;
     this.hunter = {
       body: cuerpo,
       prev: cuerpo.map((p) => ({ ...p })),
-      dir: { x: 0, y: 0 },
+      dir: mejor.dir,
       grow: 0,
       aim: null,
       botSiguienteFallo: 48 + rand(30),
@@ -858,9 +895,12 @@ export class Game {
       this.body.slice(1, -1).map((s) => K(s.x, s.y)),
     );
     // corto va a comer y no te toca: tu cabeza tampoco es paso para él.
-    // a partir de siete anillos ya te caza, y ahí sí puede caer sobre ti
+    // al pasar el umbral de crecimiento ya te caza, y puede caer sobre ti
     const agresivo = this.hunterPelea;
     const bloqueado = new Set([...this.wallSet, ...ocupadoCuerpo]);
+    for (const item of [this.food, this.bonus, this.power]) {
+      if (item) bloqueado.add(K(item.x, item.y));
+    }
     const tuCabeza = K(this.body[0].x, this.body[0].y);
     if (!agresivo) bloqueado.add(tuCabeza);
 
@@ -1151,23 +1191,21 @@ export class Game {
         ctx.moveTo(px + w * 0.28, py + w * 0.5);
         ctx.lineTo(px + w * 0.72, py + w * 0.5);
         ctx.stroke();
+      } else if (kind === 'shield') {
+        ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
+        ctx.strokeRect(px + w * 0.22, py + w * 0.22, w * 0.56, w * 0.56);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(Math.round(px + w * 0.42), Math.round(py + w * 0.42), Math.max(2, Math.round(w * 0.16)), Math.max(2, Math.round(w * 0.16)));
+      } else if (kind === 'double') {
+        ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
+        ctx.fillStyle = '#fff';
+        const side = Math.max(2, Math.round(w * 0.22));
+        ctx.fillRect(Math.round(px + w * 0.25 - side / 2), Math.round(py + w * 0.5 - side / 2), side, side);
+        ctx.fillRect(Math.round(px + w * 0.75 - side / 2), Math.round(py + w * 0.5 - side / 2), side, side);
       } else {
         ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
         ctx.fillStyle = '#fff';
         ctx.fillRect(Math.round(px + w * 0.36), Math.round(py + w * 0.36), Math.max(2, Math.round(w * 0.28)), Math.max(2, Math.round(w * 0.28)));
-      }
-    }
-
-    // el cazador avisa de por dónde va a cortar
-    if (this.hunter && this.hunter.aim) {
-      const aim = this.hunter.aim;
-      const dist = Math.abs(aim.x - this.body[0].x) + Math.abs(aim.y - this.body[0].y);
-      if (dist <= (this.cfg.hunterAimShow || 7) && Math.floor(this.time / 110) % 2 === 0) {
-        const m = Math.round(cell * 0.2);
-        const [px, py, w] = caja(aim.x, aim.y, m, lado - m * 2);
-        ctx.strokeStyle = 'rgba(255,43,43,0.85)';
-        ctx.lineWidth = Math.max(1, Math.round(cell * 0.07));
-        ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
       }
     }
 
@@ -1176,43 +1214,6 @@ export class Game {
       const [px, py, w] = caja(punto.x, punto.y, Math.round(cell * 0.33), lado - Math.round(cell * 0.66));
       ctx.fillStyle = '#3d7bff';
       ctx.fillRect(px, py, w, w);
-    }
-
-    // el cazador: cubos rojos, uno por anillo, con la cabeza marcada
-    if (this.hunter && this.hunter.recarga <= 0) {
-      const avance = this.hunterAvance;
-      const m = Math.max(1, Math.round(cell * 0.07));
-      const ancho = lado - m * 2;
-      const centro = Math.max(2, Math.round(ancho * 0.22));
-      for (let i = this.hunter.body.length - 1; i >= 0; i--) {
-        const actual = this.hunter.body[i];
-        const previo = this.hunter.prev[i] || actual;
-        const salto = Math.abs(actual.x - previo.x) > 1 || Math.abs(actual.y - previo.y) > 1;
-        const px = salto ? actual.x : previo.x + (actual.x - previo.x) * avance;
-        const py = salto ? actual.y : previo.y + (actual.y - previo.y) * avance;
-        const x0 = Math.round(ox + px * cell) + m;
-        const y0 = Math.round(oy + py * cell) + m;
-        ctx.fillStyle = i === 0 ? '#ff2b2b' : '#c21414';
-        ctx.fillRect(x0, y0, ancho, ancho);
-        ctx.strokeStyle = i === 0 ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.3)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x0 + 0.5, y0 + 0.5, ancho - 1, ancho - 1);
-        if (i === 0 && this.hunterPelea) {
-          ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-          ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
-          ctx.strokeRect(x0 - 2.5, y0 - 2.5, ancho + 5, ancho + 5);
-        }
-        if (i === 0) {
-          const dx = this.hunter.dir.x || 0;
-          const dy = this.hunter.dir.y || 0;
-          ctx.fillStyle = '#000';
-          for (const ladoOjo of [-1, 1]) {
-            const ex = x0 + ancho / 2 + dx * ancho * 0.16 + (dy !== 0 ? ladoOjo * ancho * 0.18 : 0);
-            const ey = y0 + ancho / 2 + dy * ancho * 0.16 + (dx !== 0 ? ladoOjo * ancho * 0.18 : 0);
-            ctx.fillRect(Math.round(ex - centro / 2), Math.round(ey - centro / 2), centro, centro);
-          }
-        }
-      }
     }
 
     // ---- luz: todo a bloques, un escalón por casilla ----
@@ -1256,6 +1257,66 @@ export class Game {
           Math.round(r * 2),
           Math.round(r * 2),
         );
+      }
+    }
+
+    // el aviso de corte y el cazador quedan sobre la capa de sombra para no desaparecer
+    if (this.hunter && this.hunter.aim && this.hunter.recarga <= 0) {
+      const aim = this.hunter.aim;
+      const dist = Math.abs(aim.x - this.body[0].x) + Math.abs(aim.y - this.body[0].y);
+      if (dist <= (this.cfg.hunterAimShow || 7) && Math.floor(this.time / 110) % 2 === 0) {
+        const m = Math.round(cell * 0.2);
+        const [px, py, w] = caja(aim.x, aim.y, m, lado - m * 2);
+        ctx.strokeStyle = 'rgba(255,43,43,0.95)';
+        ctx.lineWidth = Math.max(1, Math.round(cell * 0.07));
+        ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
+      }
+    }
+
+    if (this.hunter && this.hunter.recarga > 0 && this.hunter.body[0]) {
+      const cabezaCazador = this.hunter.body[0];
+      const pulso = 0.3 + 0.45 * (0.5 + 0.5 * Math.sin(this.time / 95));
+      const m = Math.max(2, Math.round(cell * 0.2));
+      const [px, py, w] = caja(cabezaCazador.x, cabezaCazador.y, m, lado - m * 2);
+      ctx.strokeStyle = `rgba(255,43,43,${pulso.toFixed(2)})`;
+      ctx.lineWidth = Math.max(1, Math.round(cell * 0.08));
+      ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
+    }
+
+    // el cazador: cubos rojos, uno por anillo, con la cabeza marcada
+    if (this.hunter && this.hunter.recarga <= 0) {
+      const avance = this.hunterAvance;
+      const m = Math.max(1, Math.round(cell * 0.07));
+      const ancho = lado - m * 2;
+      const centro = Math.max(2, Math.round(ancho * 0.22));
+      for (let i = this.hunter.body.length - 1; i >= 0; i--) {
+        const actual = this.hunter.body[i];
+        const previo = this.hunter.prev[i] || actual;
+        const salto = Math.abs(actual.x - previo.x) > 1 || Math.abs(actual.y - previo.y) > 1;
+        const px = salto ? actual.x : previo.x + (actual.x - previo.x) * avance;
+        const py = salto ? actual.y : previo.y + (actual.y - previo.y) * avance;
+        const x0 = Math.round(ox + px * cell) + m;
+        const y0 = Math.round(oy + py * cell) + m;
+        ctx.fillStyle = i === 0 ? '#ff2b2b' : '#c21414';
+        ctx.fillRect(x0, y0, ancho, ancho);
+        ctx.strokeStyle = i === 0 ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x0 + 0.5, y0 + 0.5, ancho - 1, ancho - 1);
+        if (i === 0 && this.hunterPelea) {
+          ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+          ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
+          ctx.strokeRect(x0 - 2.5, y0 - 2.5, ancho + 5, ancho + 5);
+        }
+        if (i === 0) {
+          const dx = this.hunter.dir.x || 0;
+          const dy = this.hunter.dir.y || 0;
+          ctx.fillStyle = '#000';
+          for (const ladoOjo of [-1, 1]) {
+            const ex = x0 + ancho / 2 + dx * ancho * 0.16 + (dy !== 0 ? ladoOjo * ancho * 0.18 : 0);
+            const ey = y0 + ancho / 2 + dy * ancho * 0.16 + (dx !== 0 ? ladoOjo * ancho * 0.18 : 0);
+            ctx.fillRect(Math.round(ex - centro / 2), Math.round(ey - centro / 2), centro, centro);
+          }
+        }
       }
     }
 
