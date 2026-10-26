@@ -528,7 +528,7 @@ process.stdout.write('choque\n');
 }
 
 // el cazador va a por los puntos que tiene cerca
-process.stdout.write('ia del cazador\n');
+process.stdout.write('hunter behavior\n');
 {
   const impulso = new Game({ ...MODES.hunter }, () => {});
   impulso.state = 'running';
@@ -537,7 +537,7 @@ process.stdout.write('ia del cazador\n');
   const lejos = impulso.hunterCadence();
   impulso.pellets = [{ x: 16, y: 16 }];
   const normal = impulso.hunterCadence();
-  comprobar(lejos < normal, 'ia del cazador: no acelera al ir por un punto cercano');
+  comprobar(lejos < normal, 'hunter behavior: no acelera al ir por un punto cercano');
 
   // una duda dura exactamente una oportunidad de movimiento
   impulso.hunterTick = 3;
@@ -553,7 +553,7 @@ process.stdout.write('ia del cazador\n');
     Math.random = randomOriginal;
   }
   comprobar(impulso.hunter.body.every((c, i) => c.x === antes[i].x && c.y === antes[i].y),
-    'ia del cazador: no titubea de vez en cuando');
+    'hunter behavior: no titubea de vez en cuando');
 
   // un mal giro le aparta del camino más corto al punto
   const malGirado = new Game({ ...MODES.hunter }, () => {});
@@ -572,7 +572,7 @@ process.stdout.write('ia del cazador\n');
     Math.random = randomAntesGiro;
   }
   comprobar(malGirado.hunter.body[0].x !== 6 || malGirado.hunter.body[0].y !== 5,
-    'ia del cazador: nunca se equivoca de giro');
+    'hunter behavior: nunca se equivoca de giro');
 
   // si elige un hueco bloqueado puede chocarse y volver más corto
   const choque = new Game({ ...MODES.hunter }, () => {});
@@ -590,7 +590,7 @@ process.stdout.write('ia del cazador\n');
   } finally {
     Math.random = randomAntesChoque;
   }
-  comprobar(choque.hunter.recarga > 0, 'ia del cazador: nunca choca por error');
+  comprobar(choque.hunter.recarga > 0, 'hunter behavior: nunca choca por error');
 }
 {
   const distanciaAPunto = (juego) => {
@@ -614,9 +614,9 @@ process.stdout.write('ia del cazador\n');
     const despues = distanciaAPunto(juego);
     pruebas++;
     if (despues < antes || comidos > 0) acercamientos++;
-    comprobar(juego.hunter.body.length >= 3, 'ia del cazador: se ha quedado sin cuerpo');
+    comprobar(juego.hunter.body.length >= 3, 'hunter behavior: se ha quedado sin cuerpo');
   }
-  comprobar(acercamientos >= pruebas - 2, `ia del cazador: sólo acierta ${acercamientos}/${pruebas} veces`);
+  comprobar(acercamientos >= pruebas - 2, `hunter behavior: sólo acierta ${acercamientos}/${pruebas} veces`);
   process.stdout.write(`  cazador: va a por su punto (o se lo come) en ${acercamientos}/${pruebas} arranques\n`);
 }
 {
@@ -633,18 +633,18 @@ process.stdout.write('ia del cazador\n');
   const comida = juego.hunterTarget();
   comprobar(
     juego.pellets.some((p) => p.x === comida.x && p.y === comida.y),
-    'ia del cazador: con el cuerpo corto no va a comer',
+    'hunter behavior: con el cuerpo corto no va a comer',
   );
   crecer(umbral);
   const objetivo = juego.hunterTarget();
   const cabeza = juego.body[0];
   // apunta a unas casillas por delante del jugador, o a su cabeza si no cabe
   const delante = objetivo.x !== cabeza.x || objetivo.y !== cabeza.y;
-  comprobar(delante, 'ia del cazador: con cuerpo largo no corta el paso al jugador');
+  comprobar(delante, 'hunter behavior: con cuerpo largo no corta el paso al jugador');
   const camino = Math.abs(objetivo.x - cabeza.x) + Math.abs(objetivo.y - cabeza.y);
   comprobar(
     camino <= (MODES.hunter.hunterSight || 4),
-    'ia del cazador: el corte queda demasiado lejos',
+    'hunter behavior: el corte queda demasiado lejos',
   );
 }
 
@@ -1032,7 +1032,8 @@ process.stdout.write('v1.0, idioma y publicación\n');
   const audio = fs.readFileSync(path.join(RAIZ, 'js/audio.js'), 'utf8');
   const css = fs.readFileSync(path.join(RAIZ, 'styles.css'), 'utf8');
   const servidor = fs.readFileSync(path.join(RAIZ, 'serve.mjs'), 'utf8');
-  const workflow = fs.readFileSync(path.join(RAIZ, '.github/workflows/pages.yml'), 'utf8');
+  const workflow = fs.readFileSync(path.join(RAIZ, '.github/workflows/checks.yml'), 'utf8');
+  const readme = fs.readFileSync(path.join(RAIZ, 'README.md'), 'utf8');
   const idiomas = fs.readFileSync(path.join(RAIZ, 'js/i18n.js'), 'utf8');
   const fallback = fs.readFileSync(path.join(RAIZ, '404.html'), 'utf8');
 
@@ -1098,9 +1099,16 @@ process.stdout.write('v1.0, idioma y publicación\n');
   'rutas: falta navegación interna o carga directa bajo /snake/');
   comprobar(servidor.includes("rutaOriginal.startsWith('/snake/')")
     && servidor.includes('(fallback)'), 'servidor local: falta el fallback de rutas');
+  const raizPages = ['.nojekyll', 'index.html', '404.html', 'styles.css', 'snake.js'];
   comprobar(fallback.includes("var base = '/snake/'") && fallback.includes("'?route='")
-    && workflow.includes('cp index.html 404.html styles.css snake.js _site/'),
-  'GitHub Pages: no publica o restaura las subrutas en recarga');
+    && workflow.includes('branches: [main]')
+    && workflow.includes('node tools/build.mjs --check')
+    && workflow.includes('node tools/check.mjs')
+    && !/configure-pages|upload-pages-artifact|deploy-pages/.test(workflow)
+    && !fs.existsSync(path.join(RAIZ, '.github/workflows/pages.yml'))
+    && raizPages.every((archivo) => fs.existsSync(path.join(RAIZ, archivo)))
+    && readme.includes('Deploy from a branch') && readme.includes('`/(root)`'),
+  'GitHub Pages: direct branch publishing, root files, checks, or route recovery are not configured');
 
   const bloque = main.slice(main.indexOf('<ul class="reglas">'), main.indexOf('</ul>', main.indexOf('<ul class="reglas">')));
   const reglas = [...bloque.matchAll(/<li>([^<]+)<\/li>/g)].map((match) => match[1]);

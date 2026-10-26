@@ -1,99 +1,102 @@
 # snake — v1.0
 
-Snake de rejilla, en blanco y negro y sin dependencias ni peticiones de red. Se puede jugar en español o en inglés; el idioma elegido se guarda en el navegador. Compatible con GitHub Pages, teclado, controles táctiles y mando.
+A monochrome grid-based Snake game with no external dependencies or network requests. It supports English and Spanish, remembers the selected language in the browser, and works with GitHub Pages, a keyboard, touch controls, and a gamepad.
 
-## Cómo se juega
+## Controls
 
-| Acción | Teclado | Táctil / mando |
+| Action | Keyboard | Touch / gamepad |
 | --- | --- | --- |
-| Girar | Flechas o WASD | Desliza / cruceta o stick |
-| Turbo | Espacio o mayús | Toca el tablero / botón A; no disponible en cazador |
-| Pausa | P o Esc | Botón de pausa / Start |
-| Reiniciar | R | Botón |
-| Sonido | M | Botón de sonido |
-| Menús | Flechas y Enter | Toca una opción |
+| Turn | Arrow keys or WASD | Swipe / D-pad or stick |
+| Boost | Space or Shift | Tap the board / A button; unavailable in Hunter |
+| Pause | P or Esc | Pause button / Start |
+| Restart | R | Button |
+| Sound | M | Sound button |
+| Menus | Arrow keys and Enter | Select an option |
 
-La navegación de grupos, modos, niveles, ayuda y ajustes funciona con teclado y mantiene un foco visible. En la rejilla de niveles, `↑↓` se mueve por las filas. El botón compacto de configuración está bajo la lista de modos; desde ahí se cambian el sonido y la trama de pantalla, o se borran los récords.
+Group, mode, level, help, and settings navigation all support the keyboard and keep a visible focus indicator. In the level grid, use `↑↓` to move between rows. The compact settings button is below the mode list; use it to change sound and the screen effect, or clear saved records and progress.
 
-## Modos
+## Modes
 
-La portada tiene dos grupos: **progreso** e **infinitos**. Dentro de la pantalla de modos se puede cambiar de grupo con `←→`.
+The home screen has two groups: **progress** and **endless**. Switch groups with `←→` on the mode screen.
 
-- **Campaña** — 20 niveles con muros diseñados a mano. Se desbloquean al superarlos; no tiene puntuación, sólo cuenta las manzanas recogidas y las que faltan.
-- **Clásico** — partida sin fin. Cada fruta acelera la serpiente y, al llegar a 30 frutas, empiezan a aparecer muros.
-- **Frenesí** — los bordes conectan entre sí y la velocidad aumenta gradualmente con el tiempo.
-- **Cazador** — una serpiente roja come puntos azules y después te persigue. Su cabeza es peligrosa; su cuerpo y los puntos son seguros. Si choca contra tu cuerpo, desaparece y vuelve más pequeña. Los puntos azules también los puedes comer tú.
+- **Campaign** — 20 hand-designed levels. Clear each level to unlock the next. There is no score: progress is measured by apples collected and remaining.
+- **Classic** — Endless play. Each fruit speeds up the snake; walls begin to appear after 30 fruits.
+- **Frenzy** — The edges wrap around, and the snake gradually speeds up over time.
+- **Hunter** — A red snake eats blue pellets and then pursues you. Its head is dangerous; its body and pellets are safe. If it collides with your body, it disappears and returns smaller. You can eat the blue pellets too.
 
-Los poderes dependen del modo:
+Power-ups vary by mode:
 
-- **Campaña:** fantasma, lento y recorte.
-- **Clásico:** fantasma, lento, recorte y doble puntuación.
-- **Frenesí:** lento, escudo y doble puntuación.
-- **Cazador:** fantasma, recorte y escudo.
+- **Campaign:** ghost, slow, and shrink.
+- **Classic:** ghost, slow, shrink, and double score.
+- **Frenzy:** slow, shield, and double score.
+- **Hunter:** ghost, shrink, and shield.
 
-Fantasma atraviesa obstáculos; lento reduce el ritmo; recorte acorta la cola; escudo salva un choque y doble multiplica la puntuación.
+Ghost passes through hazards; slow reduces speed; shrink shortens the tail; shield saves you from one collision; double multiplies score.
 
-El modo competitivo se retiró para preparar la versión 1.0: no aparece en el menú, no puede iniciarse y ya no conserva salas, bots, clasificación, reloj, reapariciones ni audio propio.
+Competitive mode was retired for v1.0. It is not shown in the menu and cannot be started.
 
-### `BORRAR-COMPETITIVO` · rastro de retirada
+### `BORRAR-COMPETITIVO` retirement markers
 
-Se mantienen comentarios inocuos con la marca `BORRAR-COMPETITIVO` para identificar el trabajo retirado; no representan código jugable. Se pueden localizar con:
+Harmless `BORRAR-COMPETITIVO` comments remain to mark removed work; they do not represent playable code. Find them with:
 
 ```sh
 grep -rn BORRAR-COMPETITIVO .
 ```
 
-## Portada
+## Home screen
 
-El título `snake.` se dibuja como cinco serpientes independientes, una por letra. Solo la `e` va tras la manzana: avanza muy lentamente, con movimiento continuo, hasta alcanzarla. El diseño conserva los bloques nítidos y la paleta de alto contraste.
+The `snake.` title is drawn as five independent snakes, one per letter. Only the `e` follows the apple, moving slowly and continuously until it reaches it. The design keeps crisp blocks and a high-contrast palette.
 
-## Idioma y rutas
+## Language and routes
 
-El selector **ES / EN** cambia los textos y las rutas, y recuerda la preferencia en el navegador. El sitio usa rutas bajo el directorio del proyecto de GitHub Pages, sin dominios especiales; por ejemplo:
+The **EN / ES** selector changes the text and route names, and remembers the preference in the browser. The site uses project paths under `/snake/`, for example:
 
-- `https://<usuario>.github.io/snake/`
-- `https://<usuario>.github.io/snake/campaña`
-- `https://<usuario>.github.io/snake/clásico`
-- En inglés: `/snake/campaign`, `/snake/classic`
+- `https://<owner>.github.io/snake/`
+- Spanish: `/snake/campaña`, `/snake/clásico`
+- English: `/snake/campaign`, `/snake/classic`
 
-Las rutas admiten acceso directo y recarga. `serve.mjs` hace fallback a `index.html` en local; `404.html` reconstruye las rutas profundas en GitHub Pages.
+Routes support direct access and reloads. `serve.mjs` falls back to `index.html` locally; `404.html` restores deep routes on GitHub Pages.
 
-## Archivos
+## Project files
 
 ```text
-index.html          documento y elementos accesibles de la interfaz
-404.html            recuperación de subrutas en GitHub Pages
-styles.css          diseño de bloques, responsive y accesible
-snake.js            bundle clásico generado que carga la página
+index.html          document and accessible interface elements
+404.html            GitHub Pages deep-route recovery
+.nojekyll           disables Jekyll processing for branch-based Pages
+styles.css          block design, responsive layout, and accessibility
+snake.js            generated classic-script bundle loaded by the page
 js/
-  engine.js         motor de juego, colisiones, poderes y dibujo
-  grid.js           BFS y utilidades de rejilla
-  levels.js         grupos, tres modos y 20 niveles
-  audio.js          sonido sintetizado, sin archivos de audio
-  input.js          teclado, gestos y mando
-  i18n.js           cadenas ES/EN y nombres localizados
-  main.js           pantallas, rutas, progreso, título y bucle
-serve.mjs           servidor local sin caché y fallback de rutas
-tools/build.mjs     empaqueta js/ en snake.js, sin dependencias
-tools/check.mjs     pruebas de niveles, motor, idioma y publicación
+  engine.js         game engine, collisions, powers, and drawing
+  grid.js           BFS and grid utilities
+  levels.js         groups, three modes, and 20 levels
+  audio.js          synthesized audio; no audio files
+  input.js          keyboard, gestures, and gamepad
+  i18n.js           English/Spanish strings and localized names
+  main.js           screens, routes, progress, title, and game loop
+serve.mjs           local server with no-cache headers and route fallback
+tools/build.mjs     bundles js/ into snake.js without dependencies
+tools/check.mjs     level, engine, language, and publishing tests
+.github/workflows/checks.yml   source and game checks; does not deploy the site
 ```
 
-La página carga `snake.js` como script clásico, no como módulo: así también puede abrirse con doble clic en `index.html` (`file://`). Para editar, modifica `js/` y regenera el bundle:
+The page loads `snake.js` as a classic script, not a module, so `index.html` can also be opened directly with `file://`. To edit the game, change `js/` and regenerate the bundle:
 
 ```sh
-node tools/build.mjs          # regenera snake.js
-node tools/check.mjs          # comprueba niveles, motor, idioma y rutas
-node tools/build.mjs --check  # comprueba que snake.js está actualizado
+node tools/build.mjs          # regenerate snake.js
+node tools/check.mjs          # test levels, engine, language, and routes
+node tools/build.mjs --check  # verify that snake.js is current
 ```
 
-## Ejecutar en local
+## Run locally
 
 ```sh
 node serve.mjs 8123
 ```
 
-Abre `http://localhost:8123/snake/`. También se sirven `http://localhost:8123/` y las rutas profundas, por ejemplo `http://localhost:8123/snake/campaña`. El servidor no usa dependencias ni caché.
+Open `http://localhost:8123/snake/`. The server also handles `http://localhost:8123/` and deep routes such as `http://localhost:8123/snake/campaign`.
 
-## Publicar
+## Publish directly from a branch
 
-El workflow `.github/workflows/pages.yml` comprueba el bundle, ejecuta las pruebas y publica `index.html`, `404.html`, `styles.css` y `snake.js`. Activa **Settings → Pages → Source: GitHub Actions** para alojar el juego en `https://<usuario>.github.io/snake/`.
+The site is laid out for GitHub Pages to publish the repository root directly; no Pages deployment workflow or build step is required. After the changes are on `main`, open **Settings → Pages → Build and deployment**, select **Deploy from a branch**, choose **`main`** and **`/(root)`**, then save. GitHub Pages will serve `index.html`, `404.html`, `styles.css`, and `snake.js` from that branch. The Pages URL is `https://<owner>.github.io/snake/`.
+
+The workflow in `.github/workflows/checks.yml` only validates the source and bundle; it does not upload or deploy the site. Regenerate the bundle with `node tools/build.mjs` before publishing source changes.
