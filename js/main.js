@@ -63,7 +63,7 @@ function nuevoRegistro() {
   return {
     best: { classic: 0, frenzy: 0, hunter: 0, timed: 0, competitive: 0 },
     campaign: { unlocked: 1 },
-    competitive: { cups: 0 },
+    competitive: { points: 0 },
     stats: nuevaStats(),
     sound: true,
     crt: true,
@@ -99,7 +99,8 @@ function leerGuardado() {
     Math.max(1, parseInt(camp.unlocked, 10) || 1),
   );
   const comp = bruto.competitive || {};
-  datos.competitive.cups = Math.max(0, parseInt(comp.cups, 10) || 0);
+  // «cups» era el nombre antiguo: se sigue leyendo para no perder el progreso
+  datos.competitive.points = Math.max(0, parseInt(comp.points ?? comp.cups, 10) || 0);
   // las estadísticas del perfil también vuelven al recargar
   const st = bruto.stats || {};
   for (const campo of ['games', 'wins', 'fruits', 'timeMs', 'bestChain']) {
@@ -1398,8 +1399,8 @@ function mostrarPerfil() {
       ${fila('04', t('statsTime'), formatoTiempo(s.timeMs))}
       ${fila('05', t('statsChain'), `×${Math.max(1, s.bestChain)}`)}
       ${fila('06', t('statsBest'), puntos(mejorGlobal()))}
-      ${fila('07', t('statsCups'), puntos(guardado.competitive.cups))}
-      ${fila('08', t('statsRank'), rankName(guardado.competitive.cups))}
+      ${fila('07', t('statsPoints'), puntos(guardado.competitive.points))}
+      ${fila('08', t('statsRank'), rankName(guardado.competitive.points))}
     </div>
   </div>`);
 
@@ -1484,15 +1485,15 @@ function camposMods(datos) {
 // copas de la partida: se suman una vez, al cerrar el resultado
 function copasDePartida(puesto) {
   if (!app.copas) {
-    const antes = guardado.competitive.cups;
+    const antes = guardado.competitive.points;
     const rangoAntes = rankName(antes);
     const ganadas = COPAS_POR_PUESTO[Math.min(3, Math.max(0, (puesto || 4) - 1))] || 0;
-    guardado.competitive.cups = Math.max(0, antes + ganadas);
+    guardado.competitive.points = Math.max(0, antes + ganadas);
     guardar();
-    const rangoAhora = rankName(guardado.competitive.cups);
+    const rangoAhora = rankName(guardado.competitive.points);
     app.copas = {
       ganadas,
-      total: guardado.competitive.cups,
+      total: guardado.competitive.points,
       subio: rangoAhora !== rangoAntes ? rangoAhora : '',
     };
   }
@@ -1504,6 +1505,14 @@ function copasDePartida(puesto) {
    modificador y la misma dificultad para todos. gana quien aguanta más. */
 
 const TOTAL_TABLEROS = 4;
+
+// el icono del rango: una barra más por cada nivel, todo a bloques
+function iconoRango(nivel) {
+  const barras = [1, 2, 3, 4, 5, 6][Math.max(0, Math.min(5, nivel || 0))];
+  let celdas = '';
+  for (let i = 0; i < 6; i++) celdas += `<i${i < barras ? ' class="lleno"' : ''}></i>`;
+  return `<span class="rango-icono" data-rango="${nivel || 0}" aria-hidden="true">${celdas}</span>`;
+}
 
 function nombreTablero(i) {
   return i === 0 ? t('you') : RIVAL_NAMES[i - 1];
@@ -1522,45 +1531,27 @@ function menuCompetitivo() {
   app.arena = null;
   el.arena.hidden = true;
 
-  const copas = guardado.competitive.cups;
-  const info = rankInfo(copas);
-  const fila = (indice, nombre, valor) => `<div class="row stat">
-    <span class="row-idx">${indice}</span>
-    <span class="row-name">${nombre}</span>
-    <span class="row-right">${valor}</span>
-  </div>`;
-  const progreso = info.siguiente
-    ? t('cupsToNext', { count: info.falta, rank: info.siguiente })
-    : t('maxRank');
+  const puntosYa = guardado.competitive.points;
+  const info = rankInfo(puntosYa);
 
-  ponerOverlay(`<div class="panel niveles">
-    <div class="niveles-cabeza">
-      <div>
-        <p class="kicker">${t('groupCompetitiveTag')}</p>
-        <h2>${t('modeCompetitive')}</h2>
+  ponerOverlay(`<div class="panel competitivo">
+    <div class="comp-cabeza">
+      ${iconoRango(info.nivel)}
+      <div class="comp-datos">
+        <p class="comp-rango">${info.nombre}</p>
+        <p class="comp-puntos">${puntos(puntosYa)}</p>
       </div>
-      <button class="ghost" type="button" data-accion="home">${t('back')} <kbd>esc</kbd></button>
     </div>
-    <div class="filas">
-      ${fila('01', t('statsRank'), info.nombre)}
-      ${fila('02', t('statsCups'), puntos(copas))}
-      ${fila('03', t('statsWins'), puntos(guardado.stats.wins))}
-    </div>
-    <p class="nota">${progreso}</p>
-    <ul class="reglas">
-      <li>${t('compRuleBoards')}</li>
-      <li>${t('compRuleDraw')}</li>
-      <li>${t('compRuleSurvive')}</li>
-      <li>${t('compRuleCups')}</li>
-    </ul>
+    <p class="comp-nota">${t('pointsToNext', { count: info.falta, rank: info.siguiente }) }</p>
     <div class="acciones">
       <button class="principal" type="button" data-accion="jugarCompetitivo">${t('play')} <kbd>↵</kbd></button>
+      <button type="button" data-accion="home">${t('back')} <kbd>esc</kbd></button>
     </div>
   </div>`);
 
   el.score.textContent = '—';
   el.meta.textContent = t('modeCompetitive');
-  el.best.textContent = `${info.nombre} · ${puntos(copas)}`;
+  el.best.textContent = info.nombre;
   el.mult.textContent = '';
   el.chain.style.width = '0%';
   el.pause.disabled = true;
@@ -1569,7 +1560,8 @@ function menuCompetitivo() {
   enfocarPrimero('button[data-accion="jugarCompetitivo"]');
 }
 
-// sorteo: mapa y modificador, los mismos para los cuatro tableros
+// sorteo: mapa y modificador, los mismos para los cuatro tableros. se anuncia
+// con una animación corta y la partida arranca sola, sin botones
 function prepararCompetitivo() {
   pararTemporizador();
   app.juego = null;
@@ -1580,28 +1572,24 @@ function prepararCompetitivo() {
   el.arena.hidden = true;
 
   const nivel = LEVELS[app.arena.indice];
-  const mods = app.arena.mods;
-  ponerOverlay(`<div class="panel fin">
-    <div class="fin-cabeza">
-      <p class="kicker">${t('competitiveDraw')}</p>
-      <p class="cifra">${levelName(nivel.name)}</p>
-      <p class="nota">${mods.map((m) => t('mod_' + m)).join(' + ')}</p>
-      <p class="nota">${t('modExplain_' + mods[0])}</p>
-    </div>
-    <div class="acciones">
-      <button class="principal" type="button" data-accion="empezarCompetitivo">${t('startMatch')} <kbd>↵</kbd></button>
-      <button type="button" data-accion="jugarCompetitivo">${t('redraw')} <kbd>R</kbd></button>
-      <button type="button" data-accion="home">${t('menu')} <kbd>esc</kbd></button>
-    </div>
+  const mod = app.arena.mods[0];
+  ponerOverlay(`<div class="panel sorteo">
+    <p class="sorteo-etiqueta">${t('competitiveDraw')}</p>
+    <p class="sorteo-mapa">${levelName(nivel.name)}</p>
+    <p class="sorteo-mod">${t('mod_' + mod)}</p>
   </div>`);
 
   el.meta.textContent = t('modeCompetitive');
-  el.best.textContent = `${levelName(nivel.name)} · ${mods.map((m) => t('mod_' + m)).join(' + ')}`;
+  el.best.textContent = `${levelName(nivel.name)} · ${t('mod_' + mod)}`;
   el.score.textContent = '—';
   el.pause.disabled = true;
   el.prompt.classList.remove('visible');
   pantalla('preview');
-  enfocarPrimero('button[data-accion="empezarCompetitivo"]');
+  // sin botón: tras la animación empieza la cuenta atrás y la partida
+  app.temporizador = setTimeout(() => {
+    app.temporizador = 0;
+    if (app.pantalla === 'preview') empezarCompetitivo();
+  }, 1700);
 }
 
 // cuatro tableros iguales, cada uno con su serpiente
@@ -1682,7 +1670,12 @@ function eventoRival(i, tipo, datos) {
 
 // un paso de los cuatro tableros: los rivales deciden y todos avanzan igual
 function pasoCompetitivo(dt) {
-  if (pasoCuenta(dt)) return;
+  if (pasoCuenta(dt)) {
+    // durante la cuenta atrás ya se ve tu serpiente en su tablero
+    dibujarArena();
+    actualizarTableros();
+    return;
+  }
   if (app.pantalla !== 'playing') return;
   for (const tab of app.tableros) {
     const juego = tab.juego;
@@ -1967,7 +1960,7 @@ function mostrarNivelSuperado() {
   // nivel superado: solo el aviso y los botones, sin resumen de manzanas
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
-      <p class="kicker">${t('levelCleared', { number: dosDigitos(app.nivel + 1) })}</p>
+      <p class="cifra superado">${t('levelCleared', { number: dosDigitos(app.nivel + 1) })}</p>
       ${ultimo ? `<p class="nota">${t('campaignComplete')}</p>` : ''}
     </div>
     <div class="acciones">
@@ -2242,11 +2235,13 @@ function accion(nombre) {
       moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
       return;
     }
-    if (nombre === 'confirm') activarFoco();
-    else if (nombre === 'jugarCompetitivo') prepararCompetitivo();
-    else if (nombre === 'empezarCompetitivo') empezarCompetitivo();
-    else if (nombre === 'restart' && app.pantalla === 'preview') prepararCompetitivo();
-    else if (nombre === 'back' || nombre === 'pause') mostrarInicio();
+    if (app.pantalla === 'compmenu') {
+      if (nombre === 'confirm') activarFoco();
+      else if (nombre === 'jugarCompetitivo') prepararCompetitivo();
+      else if (nombre === 'back' || nombre === 'pause') mostrarInicio();
+      return;
+    }
+    // sorteo en marcha: no se puede cambiar, se espera a la cuenta atrás
     return;
   }
 
@@ -2363,7 +2358,7 @@ function borrarRecords() {
   if (!window.confirm(t('eraseConfirm'))) return;
   guardado.best = { classic: 0, frenzy: 0, hunter: 0, timed: 0, competitive: 0 };
   guardado.campaign = { unlocked: 1 };
-  guardado.competitive = { cups: 0 };
+  guardado.competitive = { points: 0 };
   guardar();
   audio.play('ui');
   if (app.pantalla === 'settings') mostrarAjustes(app.settingsReturn, 'button[data-accion="wipe"]');

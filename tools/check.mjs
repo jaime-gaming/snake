@@ -1105,8 +1105,8 @@ process.stdout.write('v2.0, idioma y publicación\n');
     && main.includes('El cuerpo se extiende de forma continua y lenta'),
   'marca: la e no se aproxima despacio y de forma continua a la manzana');
 
-  comprobar(pagina.includes('snake.js?v=20') && pagina.includes('styles.css?v=20') && pagina.includes('Snake — v2.0'),
-    'caché: falta la versión v2.0 (v20) en la página');
+  comprobar(pagina.includes('snake.js?v=21') && pagina.includes('styles.css?v=21') && pagina.includes('Snake — v2.0'),
+    'caché: falta la versión v2.0 (v21) en la página');
   comprobar(pagina.includes('id="lang-switch"') && idiomas.includes("en: {")
     && idiomas.includes('export function setLanguage'), 'idioma: falta el selector ES/EN o su traducción');
   setLanguage('en');
@@ -1213,13 +1213,32 @@ process.stdout.write('v2.0: cuatro tableros, sorteo y cuenta atrás\n');
   comprobar(css.includes('#arena {') && css.includes('grid-template-columns: repeat(2')
     && css.includes('.tablero.mio') && css.includes('#cuenta'),
   'competitivo: falta la rejilla de los tableros o la cuenta atrás en el estilo');
-  comprobar(main.includes('rankInfo(copas)') && idiomas.includes('export function rankInfo')
-    && idiomas.includes("cupsToNext"),
-  'competitivo: el menú previo no enseña el rango y lo que falta para el siguiente');
+  comprobar(main.includes('rankInfo(puntosYa)') && idiomas.includes('export function rankInfo')
+    && idiomas.includes('pointsToNext') && main.includes('iconoRango(info.nivel)'),
+  'competitivo: el menú previo no enseña el rango con su icono y lo que falta');
+  comprobar(main.includes('class="panel competitivo"') && main.includes('comp-puntos')
+    && !main.includes('fila(\'01\', t(\'statsRank\')'),
+  'competitivo: el menú sigue cargado de filas de texto en vez de rango y puntos');
+  comprobar(main.includes('app.temporizador = setTimeout(() => {') && main.includes('}, 1700)')
+    && !main.includes('data-accion="empezarCompetitivo"'),
+  'sorteo: debe animarse y arrancar solo, sin botón de empezar ni de sortear otra');
+  comprobar(main.includes('class="panel sorteo"') && css.includes('@keyframes sorteo-sube')
+    && main.includes('sorteo-mapa'),
+  'sorteo: falta la animación del anuncio del mapa y el modificador');
+  comprobar(main.includes('// durante la cuenta atrás ya se ve tu serpiente en su tablero'),
+    'cuenta atrás: no se dibuja tu serpiente mientras corre el 3·2·1');
+  comprobar(main.includes('cifra superado') && css.includes('.cifra.superado'),
+    'campaña: el aviso de nivel superado no sale en grande');
+  comprobar(MODES.timed.veneno.chance > 0 && MODES.timed.veneno.chance < 0.7
+    && motor.includes('Math.random() < (this.cfg.veneno.chance'),
+  'contrarreloj: la envenenada sale siempre en vez de de vez en cuando');
+  comprobar(motor.includes('px + Math.round(w * 0.26)') && !motor.includes('muesca'),
+    'contrarreloj: la marca de la manzana envenenada sigue siendo evidente');
   comprobar(main.includes('const MODS_COMPETITIVO') && main.includes("['muros', 'reloj', 'cazador', 'turbo']"),
     'competitivo: el modificador no se sortea entre muros, reloj, cazador y sin turbo');
-  comprobar(main.includes('const COPAS_POR_PUESTO = [25, 10, 5, 0]') && main.includes('guardado.competitive.cups'),
-    'competitivo: faltan las copas por puesto o su guardado');
+  comprobar(main.includes('const COPAS_POR_PUESTO = [25, 10, 5, 0]')
+    && main.includes('guardado.competitive.points') && main.includes('comp.points ?? comp.cups'),
+  'competitivo: faltan los puntos por puesto o su guardado');
   // el patrón se arma por partes: la propia búsqueda no debe dejar rastro
   const sobra = new RegExp(['rivals', 'cfg\\.bots', 'botTurn', ['piloto', 'automático'].join(' ')].join('|'));
   comprobar(!sobra.test(main + motor + niveles),
@@ -1323,8 +1342,9 @@ process.stdout.write('v2.0: cuatro tableros, sorteo y cuenta atrás\n');
   comprobar(motor.includes('comerVeneno()') && motor.includes('this.chain = 0')
     && motor.includes('this.veneno = null'),
   'contrarreloj: la manzana envenenada no resta tiempo ni corta la cadena');
-  comprobar(pagina.indexOf('id="cuenta"') > 0 && idiomas.includes('modExplain_reloj'),
-    'interfaz: falta la cuenta atrás o la explicación del modificador');
+  comprobar(pagina.indexOf('id="cuenta"') > 0 && idiomas.includes('sorteoEtiqueta') === false
+    && main.includes('sorteo-mod'),
+  'interfaz: falta la cuenta atrás o el anuncio del modificador');
 
   // el veneno resta segundos y corta la racha
   {
@@ -1366,17 +1386,17 @@ process.stdout.write('v2.0: cuatro tableros, sorteo y cuenta atrás\n');
     && rankInfo(120).falta === 130 && rankInfo(1500).siguiente === null,
   'idioma: el rango actual o lo que falta para el siguiente no cuadran');
   comprobar(t('you') === 'tú' && t('play') === 'jugar'
-    && t('cupsWon', { count: 10 }) === '+10 copas'
+    && t('pointsWon', { count: 10 }) === '+10 puntos'
     && t('competitiveRank', { rank: 3, total: 4 }) === 'quedaste 3º de 4'
-    && t('statsCups') === 'copas' && t('statsRank') === 'rango'
-    && t('compRuleBoards').includes('cuatro tableros')
-    && t('modExplain_muros').length > 10 && t('placedShort', { rank: 2 }) === '2º',
+    && t('statsPoints') === 'puntos' && t('statsRank') === 'rango'
+    && t('pointsToNext', { count: 80, rank: 'plata' }) === '80 para plata'
+    && t('placedShort', { rank: 2 }) === '2º' && rankInfo(620).nivel === 3,
   'idioma: faltan las cadenas españolas del competitivo de cuatro tableros');
   setLanguage('en');
   comprobar(rankInfo(260).nombre === 'gold' && t('you') === 'you' && t('play') === 'play'
-    && t('cupsToNext', { count: 3, rank: 'gold' }) === '3 cups to gold'
+    && t('pointsToNext', { count: 3, rank: 'gold' }) === '3 to gold'
     && t('competitiveAlive', { alive: 4, total: 4 }) === '4 alive of 4'
-    && t('compRuleBoards').includes('four'), 'idioma: faltan las cadenas inglesas del competitivo');
+    && t('statsPoints') === 'points', 'idioma: faltan las cadenas inglesas del competitivo');
   setLanguage('es');
 
   // copas por puesto: la tabla baja con el puesto y nunca resta

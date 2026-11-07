@@ -746,10 +746,12 @@ export class Game {
       const celda = this.freeCell(0);
       if (celda) this.food = celda;
     }
-    if (this.cfg.veneno) this.spawnVeneno();
+    // la pareja envenenada no sale siempre: sólo de vez en cuando
+    if (this.cfg.veneno && Math.random() < (this.cfg.veneno.chance || 0.4)) this.spawnVeneno();
+    else this.veneno = null;
   }
 
-  // segunda manzana casi idéntica: lleva una muesca minima en una esquina
+  // segunda manzana casi idéntica: sólo un punto diminuto fuera de centro
   spawnVeneno() {
     this.veneno = null;
     if (!this.food) return;
@@ -1358,15 +1360,21 @@ export class Game {
       ctx.setLineDash([]);
     }
 
-    // la manzana envenenada es idéntica salvo una muesca mínima en una esquina
+    // la envenenada es idéntica salvo un punto diminuto casi invisible
     if (this.veneno) {
       const m = Math.round(cell * 0.16);
       const [px, py, w] = caja(this.veneno.x, this.veneno.y, m, lado - m * 2);
       ctx.fillStyle = '#ff2b2b';
       ctx.fillRect(px, py, w, w);
-      const muesca = Math.max(1, Math.round(w * 0.17));
-      ctx.fillStyle = 'rgba(120,0,0,0.9)';
-      ctx.fillRect(px + w - muesca, py, muesca, muesca);
+      // la única diferencia: un punto de un par de píxeles, descentrado
+      const punto = Math.max(1, Math.round(w * 0.13));
+      ctx.fillStyle = 'rgba(150,0,0,0.92)';
+      ctx.fillRect(
+        px + Math.round(w * 0.26),
+        py + Math.round(w * 0.62),
+        punto,
+        punto,
+      );
     }
 
     // comida: cubo rojo que respira. la que cierra el nivel va en amarillo

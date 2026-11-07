@@ -2,7 +2,7 @@
 
 A monochrome grid-based Snake game with no external dependencies or network requests. It supports English and Spanish, remembers the selected language in the browser, and works with a keyboard, touch controls, and a gamepad. It is served from its own domain, **https://snake.jaime-gaming.com**, via **Cloudflare Workers**.
 
-Competitive is a quick match on **four separate boards**: one per snake, all with the same map, the same modifier and the same difficulty. Before playing, a menu shows your **rank and cups**, then the **draw** (map + modifier) is announced, a **3-second countdown** starts the match, and whoever survives longest wins. Placing earns **cups** that climb **ranks**. Frenzy throws **waves of extra fruit** and **speed pulses**, time attack shows a **big clock** that **keeps accelerating** (and a **poisoned apple** hidden among the fruit), and the site is served from its own domain via **Cloudflare Workers**.
+Competitive is a quick match on **four separate boards**: one per snake, all with the same map, the same modifier and the same difficulty. Before playing, a menu shows your **rank and cups**, then the **draw** (map + modifier) is announced, a **3-second countdown** starts the match, and whoever survives longest wins. Placing earns **points** that climb **ranks**. Frenzy throws **waves of extra fruit** and **speed pulses**, time attack shows a **big clock** that **keeps accelerating** (and a **poisoned apple** hidden among the fruit), and the site is served from its own domain via **Cloudflare Workers**.
 
 ## Controls
 
@@ -27,12 +27,12 @@ The home screen has three groups: **progress**, **endless**, and **competitive**
 - **Hunter** — A red snake eats blue pellets and then pursues you. Its head is dangerous; its body and pellets are safe. If it collides with your body, it disappears and returns smaller. You can eat the blue pellets too.
 - **Time attack** — You start with **30 seconds**, shown as a **big clock** over the board. Every fruit adds 3 seconds (up to a cap), but the clock **keeps speeding up** (up to twice as fast after 60 seconds); the *slow* power-up now **halves the clock** instead of the snake, **boost is disabled**, and under 10 seconds the clock turns red and blinks.
 
-  Two apples always appear together and one of them is **poisoned**: it looks identical except for a tiny notch in one corner. Eating it **costs 5 seconds** and **resets the chain**.
-- **Competitive** — Four **separate boards**, one per snake (you and three rivals). They never share cells or fruit: each board is a full 20×20 grid, and your board is marked in the corner of the screen along with each rival's name and score. Every match **draws a map** (the walls of a campaign map) and **one modifier** — *walls that appear*, a *clock* (45 s, extended by fruit), the *hunter*, or *no boost* — and all four boards play exactly the same draw.
+  Now and then a second apple appears next to the fruit and it is **poisoned**: it looks identical except for a tiny off-centre dot of a couple of pixels. Eating it **costs 5 seconds** and **resets the chain**.
+- **Competitive** — Four **separate boards**, one per snake (you and three rivals). They never share cells or fruit: each board is a full 20×20 grid, and your own board is marked with a white frame plus the name and score of every snake. Every match **draws a map** (the walls of a campaign map) and **one modifier** — *walls that appear*, a *clock* (45 s, extended by fruit), the *hunter*, or *no boost* — and all four boards play exactly the same draw.
 
-  The flow is: **menu** (rank, cups, wins, rules) → **draw** (map and modifier announced) → **3-second countdown** → match. **Whoever survives longest wins**; walls, your own body, the clock and the hunter are what end a run.
+  The flow is **menu → draw → countdown → match**: the menu is just your **rank icon, your points and how many are left for the next rank**; the draw slides in with the map and modifier and **starts on its own** (no buttons); then a **3-second countdown** runs while your snake is already visible on its board, and the match begins. **Whoever survives longest wins**.
 
-  Placing awards **cups**: 1st +25, 2nd +10, 3rd +5, 4th +0. Cups climb six **ranks** — bronze (0), silver (100), gold (250), platinum (500), diamond (750), master (1000) — shown on the menu, the result screen and the profile, with the remaining cups to the next rank. Rivals steer towards the power-ups that help them (shield, ghost, slow) and the golden apple.
+  Placing awards **points**: 1st +25, 2nd +10, 3rd +5, 4th +0. Points climb six **ranks** — bronze (0), silver (100), gold (250), platinum (500), diamond (750), master (1000) — with a six-block icon that fills up as you rank. Rivals steer towards the power-ups that help them (shield, ghost, slow) and the golden apple.
 
 Power-ups vary by mode:
 

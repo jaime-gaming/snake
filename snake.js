@@ -1,4 +1,4 @@
-/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-11-07 · v20).
+/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-11-07 · v21).
    no lo edites a mano: cambia js/*.js y vuelve a ejecutar node tools/build.mjs */
 (function () {
 'use strict';
@@ -197,7 +197,7 @@ const MODES = {
     minSpeed: 82,
     accelPerFood: 1.4,
     timeAttack: { start: 30000, perFruit: 3200, max: 150000, rampMs: 60000 },
-    veneno: { ms: 5000 },
+    veneno: { ms: 5000, chance: 0.4 },
     bonusEvery: 5,
     powerEvery: 7,
     powerPool: POWER_POOLS.timed,
@@ -1681,10 +1681,12 @@ class Game {
       const celda = this.freeCell(0);
       if (celda) this.food = celda;
     }
-    if (this.cfg.veneno) this.spawnVeneno();
+    // la pareja envenenada no sale siempre: sólo de vez en cuando
+    if (this.cfg.veneno && Math.random() < (this.cfg.veneno.chance || 0.4)) this.spawnVeneno();
+    else this.veneno = null;
   }
 
-  // segunda manzana casi idéntica: lleva una muesca minima en una esquina
+  // segunda manzana casi idéntica: sólo un punto diminuto fuera de centro
   spawnVeneno() {
     this.veneno = null;
     if (!this.food) return;
@@ -2293,15 +2295,21 @@ class Game {
       ctx.setLineDash([]);
     }
 
-    // la manzana envenenada es idéntica salvo una muesca mínima en una esquina
+    // la envenenada es idéntica salvo un punto diminuto casi invisible
     if (this.veneno) {
       const m = Math.round(cell * 0.16);
       const [px, py, w] = caja(this.veneno.x, this.veneno.y, m, lado - m * 2);
       ctx.fillStyle = '#ff2b2b';
       ctx.fillRect(px, py, w, w);
-      const muesca = Math.max(1, Math.round(w * 0.17));
-      ctx.fillStyle = 'rgba(120,0,0,0.9)';
-      ctx.fillRect(px + w - muesca, py, muesca, muesca);
+      // la única diferencia: un punto de un par de píxeles, descentrado
+      const punto = Math.max(1, Math.round(w * 0.13));
+      ctx.fillStyle = 'rgba(150,0,0,0.92)';
+      ctx.fillRect(
+        px + Math.round(w * 0.26),
+        py + Math.round(w * 0.62),
+        punto,
+        punto,
+      );
     }
 
     // comida: cubo rojo que respira. la que cierra el nivel va en amarillo
@@ -2622,7 +2630,7 @@ const KEY = 'snake.language';
 const STRINGS = {
   es: {
     documentTitle: 'Snake — v2.0',
-    description: 'Snake v2.0: campaña de 30 niveles con modificadores, contrarreloj, competitivo con cuatro tableros y copas, y perfil.',
+    description: 'Snake v2.0: campaña de 30 niveles con modificadores, contrarreloj, competitivo de cuatro tableros y perfil.',
     language: 'Idioma',
     sound: 'sonido',
     soundTitleOn: 'sonido activo (M)',
@@ -2645,7 +2653,7 @@ const STRINGS = {
     groupEndless: 'infinitos',
     groupEndlessTag: 'puntuación sin final',
     groupCompetitive: 'competitivo',
-    groupCompetitiveTag: 'cuatro tableros · copas y rangos',
+    groupCompetitiveTag: 'cuatro tableros · puntos y rangos',
     modeClassic: 'clásico',
     modeClassicTag: 'cada fruta acelera · muros al llegar a 30 frutas',
     modeFrenzy: 'frenesí',
@@ -2655,7 +2663,7 @@ const STRINGS = {
     modeTimed: 'contrarreloj',
     modeTimedTag: '30 segundos · cada fruta suma 3',
     modeCompetitive: 'competitivo',
-    modeCompetitiveTag: 'cuatro tableros · mapa y modificador al azar · copas',
+    modeCompetitiveTag: 'cuatro tableros · mapa y modificador al azar',
     levelNames: {
       LLANO: 'llano', CRUZ: 'cruz', PILARES: 'pilares', ANILLO: 'anillo', ZIGZAG: 'zigzag',
       COLUMNAS: 'columnas', 'DOBLE ANILLO': 'doble anillo', REJILLA: 'rejilla', JAULA: 'jaula',
@@ -2719,7 +2727,7 @@ const STRINGS = {
     ruleModes: 'frenesí: bordes abiertos, olas de fruta y picos de velocidad.',
     ruleHunter: 'cazador: su cabeza te mata; su cuerpo y los puntos son seguros.',
     ruleTimed: 'contrarreloj: 30 s y cada fruta suma 3 s; el tiempo no perdona.',
-    ruleCompetitive: 'competitivo: cuatro tableros; gana quien aguanta más y el puesto da copas.',
+    ruleCompetitive: 'competitivo: cuatro tableros; aguanta más que los demás.',
     ruleMods: 'algunos niveles llevan modificador: muros, reloj, cazador o sin turbo.',
     powerBasics: 'fantasma atraviesa obstáculos; lento baja el ritmo; recorte acorta la cola.',
     powerAdvanced: 'los poderes dependen del modo; el escudo salva un choque y doble dura 7 s.',
@@ -2772,30 +2780,21 @@ const STRINGS = {
     mod_cazador: 'cazador',
     mod_turbo: 'sin turbo',
     mod_ninguno: 'sin modificador',
-    cups: '{count} copas',
-    cupsWon: '+{count} copas',
+    pointsWon: '+{count} puntos',
     newRank: '¡nuevo rango: {name}!',
     rankBronze: 'bronce', rankSilver: 'plata', rankGold: 'oro',
     rankPlatinum: 'platino', rankDiamond: 'diamante', rankMaster: 'maestro',
-    statsCups: 'copas',
+    statsPoints: 'puntos',
     statsRank: 'rango',
     you: 'tú',
     play: 'jugar',
-    cupsToNext: 'faltan {count} copas para {rank}',
-    maxRank: 'rango máximo · sigue sumando copas',
+    pointsToNext: '{count} para {rank}',
+    maxRank: 'rango máximo',
     competitiveDraw: 'sorteo de la partida',
     startMatch: 'empezar',
     redraw: 'sortear otra',
     placedShort: '{rank}º',
     out: 'fuera',
-    compRuleBoards: 'cuatro tableros separados: uno por serpiente',
-    compRuleDraw: 'mapa y modificador sorteados en cada partida',
-    compRuleSurvive: 'gana quien aguanta más tiempo',
-    compRuleCups: 'el puesto da copas: 1º +25 · 2º +10 · 3º +5 · 4º +0',
-    modExplain_muros: 'cada pocos segundos aparece un muro nuevo',
-    modExplain_reloj: 'el reloj corre: si llega a cero te quedas fuera',
-    modExplain_cazador: 'una serpiente roja te persigue',
-    modExplain_turbo: 'sin turbo: no hay acelerón',
     win: '¡has ganado!',
     profile: 'perfil',
     profileTitle: 'tu perfil',
@@ -2827,7 +2826,7 @@ const STRINGS = {
   },
   en: {
     documentTitle: 'Snake — v2.0',
-    description: 'Snake v2.0: 30-level campaign with modifiers, time attack, competitive with four boards and cups, and a profile.',
+    description: 'Snake v2.0: 30-level campaign with modifiers, time attack, four-board competitive mode, and a profile.',
     language: 'Language',
     sound: 'sound',
     soundTitleOn: 'sound on (M)',
@@ -2850,7 +2849,7 @@ const STRINGS = {
     groupEndless: 'endless',
     groupEndlessTag: 'chase a high score',
     groupCompetitive: 'competitive',
-    groupCompetitiveTag: 'four boards · cups and ranks',
+    groupCompetitiveTag: 'four boards · points and ranks',
     modeClassic: 'classic',
     modeClassicTag: 'each fruit speeds you up · walls begin at 30 fruits',
     modeFrenzy: 'frenzy',
@@ -2860,7 +2859,7 @@ const STRINGS = {
     modeTimed: 'time attack',
     modeTimedTag: '30 seconds · each fruit adds 3',
     modeCompetitive: 'competitive',
-    modeCompetitiveTag: 'four boards · random map and modifier · cups',
+    modeCompetitiveTag: 'four boards · random map and modifier',
     levelNames: {
       LLANO: 'open field', CRUZ: 'cross', PILARES: 'pillars', ANILLO: 'ring', ZIGZAG: 'zigzag',
       COLUMNAS: 'columns', 'DOBLE ANILLO': 'double ring', REJILLA: 'grid', JAULA: 'cage',
@@ -2924,7 +2923,7 @@ const STRINGS = {
     ruleModes: 'frenzy: open edges, fruit waves, and speed pulses.',
     ruleHunter: 'hunter: its head is deadly; its body and pellets are safe.',
     ruleTimed: 'time attack: 30 s and each fruit adds 3 s; time shows no mercy.',
-    ruleCompetitive: 'competitive: four boards, longest survivor wins, placing earns cups.',
+    ruleCompetitive: 'competitive: four boards; outlast the rest.',
     ruleMods: 'some levels add a modifier: walls, clock, hunter, or no boost.',
     powerBasics: 'ghost passes hazards; slow eases the pace; shrink trims your tail.',
     powerAdvanced: 'available powers depend on the mode; shield saves one crash and double lasts 7 s.',
@@ -2977,30 +2976,21 @@ const STRINGS = {
     mod_cazador: 'hunter',
     mod_turbo: 'no boost',
     mod_ninguno: 'no modifier',
-    cups: '{count} cups',
-    cupsWon: '+{count} cups',
+    pointsWon: '+{count} points',
     newRank: 'new rank: {name}!',
     rankBronze: 'bronze', rankSilver: 'silver', rankGold: 'gold',
     rankPlatinum: 'platinum', rankDiamond: 'diamond', rankMaster: 'master',
-    statsCups: 'cups',
+    statsPoints: 'points',
     statsRank: 'rank',
     you: 'you',
     play: 'play',
-    cupsToNext: '{count} cups to {rank}',
-    maxRank: 'top rank · keep earning cups',
+    pointsToNext: '{count} to {rank}',
+    maxRank: 'top rank',
     competitiveDraw: 'match draw',
     startMatch: 'start',
     redraw: 'draw again',
     placedShort: '{rank}th',
     out: 'out',
-    compRuleBoards: 'four separate boards, one per snake',
-    compRuleDraw: 'map and modifier drawn every match',
-    compRuleSurvive: 'whoever survives longest wins',
-    compRuleCups: 'placing earns cups: 1st +25 · 2nd +10 · 3rd +5 · 4th +0',
-    modExplain_muros: 'a new wall appears every few seconds',
-    modExplain_reloj: 'the clock runs: at zero you are out',
-    modExplain_cazador: 'a red snake hunts you',
-    modExplain_turbo: 'no boost: the speed burst is gone',
     win: 'you won!',
     profile: 'profile',
     profileTitle: 'your profile',
@@ -3115,10 +3105,13 @@ function rankName(cups) {
 function rankInfo(cups) {
   const n = Math.max(0, Number(cups) || 0);
   const idx = UMBRALES_RANGO.findIndex((u) => n >= u);
-  const nombre = t(CLAVES_RANGO[idx < 0 ? CLAVES_RANGO.length - 1 : idx]);
-  if (idx <= 0) return { nombre, copas: n, siguiente: null, falta: 0 };
+  const pos = idx < 0 ? CLAVES_RANGO.length - 1 : idx;
+  const nombre = t(CLAVES_RANGO[pos]);
+  const nivel = CLAVES_RANGO.length - 1 - pos; // 0 bronce … 5 maestro
+  if (idx <= 0) return { nombre, nivel, copas: n, siguiente: null, falta: 0 };
   return {
     nombre,
+    nivel,
     copas: n,
     siguiente: t(CLAVES_RANGO[idx - 1]),
     falta: UMBRALES_RANGO[idx - 1] - n,
@@ -3230,7 +3223,7 @@ function nuevoRegistro() {
   return {
     best: { classic: 0, frenzy: 0, hunter: 0, timed: 0, competitive: 0 },
     campaign: { unlocked: 1 },
-    competitive: { cups: 0 },
+    competitive: { points: 0 },
     stats: nuevaStats(),
     sound: true,
     crt: true,
@@ -3266,7 +3259,8 @@ function leerGuardado() {
     Math.max(1, parseInt(camp.unlocked, 10) || 1),
   );
   const comp = bruto.competitive || {};
-  datos.competitive.cups = Math.max(0, parseInt(comp.cups, 10) || 0);
+  // «cups» era el nombre antiguo: se sigue leyendo para no perder el progreso
+  datos.competitive.points = Math.max(0, parseInt(comp.points ?? comp.cups, 10) || 0);
   // las estadísticas del perfil también vuelven al recargar
   const st = bruto.stats || {};
   for (const campo of ['games', 'wins', 'fruits', 'timeMs', 'bestChain']) {
@@ -4565,8 +4559,8 @@ function mostrarPerfil() {
       ${fila('04', t('statsTime'), formatoTiempo(s.timeMs))}
       ${fila('05', t('statsChain'), `×${Math.max(1, s.bestChain)}`)}
       ${fila('06', t('statsBest'), puntos(mejorGlobal()))}
-      ${fila('07', t('statsCups'), puntos(guardado.competitive.cups))}
-      ${fila('08', t('statsRank'), rankName(guardado.competitive.cups))}
+      ${fila('07', t('statsPoints'), puntos(guardado.competitive.points))}
+      ${fila('08', t('statsRank'), rankName(guardado.competitive.points))}
     </div>
   </div>`);
 
@@ -4651,15 +4645,15 @@ function camposMods(datos) {
 // copas de la partida: se suman una vez, al cerrar el resultado
 function copasDePartida(puesto) {
   if (!app.copas) {
-    const antes = guardado.competitive.cups;
+    const antes = guardado.competitive.points;
     const rangoAntes = rankName(antes);
     const ganadas = COPAS_POR_PUESTO[Math.min(3, Math.max(0, (puesto || 4) - 1))] || 0;
-    guardado.competitive.cups = Math.max(0, antes + ganadas);
+    guardado.competitive.points = Math.max(0, antes + ganadas);
     guardar();
-    const rangoAhora = rankName(guardado.competitive.cups);
+    const rangoAhora = rankName(guardado.competitive.points);
     app.copas = {
       ganadas,
-      total: guardado.competitive.cups,
+      total: guardado.competitive.points,
       subio: rangoAhora !== rangoAntes ? rangoAhora : '',
     };
   }
@@ -4671,6 +4665,14 @@ function copasDePartida(puesto) {
    modificador y la misma dificultad para todos. gana quien aguanta más. */
 
 const TOTAL_TABLEROS = 4;
+
+// el icono del rango: una barra más por cada nivel, todo a bloques
+function iconoRango(nivel) {
+  const barras = [1, 2, 3, 4, 5, 6][Math.max(0, Math.min(5, nivel || 0))];
+  let celdas = '';
+  for (let i = 0; i < 6; i++) celdas += `<i${i < barras ? ' class="lleno"' : ''}></i>`;
+  return `<span class="rango-icono" data-rango="${nivel || 0}" aria-hidden="true">${celdas}</span>`;
+}
 
 function nombreTablero(i) {
   return i === 0 ? t('you') : RIVAL_NAMES[i - 1];
@@ -4689,45 +4691,27 @@ function menuCompetitivo() {
   app.arena = null;
   el.arena.hidden = true;
 
-  const copas = guardado.competitive.cups;
-  const info = rankInfo(copas);
-  const fila = (indice, nombre, valor) => `<div class="row stat">
-    <span class="row-idx">${indice}</span>
-    <span class="row-name">${nombre}</span>
-    <span class="row-right">${valor}</span>
-  </div>`;
-  const progreso = info.siguiente
-    ? t('cupsToNext', { count: info.falta, rank: info.siguiente })
-    : t('maxRank');
+  const puntosYa = guardado.competitive.points;
+  const info = rankInfo(puntosYa);
 
-  ponerOverlay(`<div class="panel niveles">
-    <div class="niveles-cabeza">
-      <div>
-        <p class="kicker">${t('groupCompetitiveTag')}</p>
-        <h2>${t('modeCompetitive')}</h2>
+  ponerOverlay(`<div class="panel competitivo">
+    <div class="comp-cabeza">
+      ${iconoRango(info.nivel)}
+      <div class="comp-datos">
+        <p class="comp-rango">${info.nombre}</p>
+        <p class="comp-puntos">${puntos(puntosYa)}</p>
       </div>
-      <button class="ghost" type="button" data-accion="home">${t('back')} <kbd>esc</kbd></button>
     </div>
-    <div class="filas">
-      ${fila('01', t('statsRank'), info.nombre)}
-      ${fila('02', t('statsCups'), puntos(copas))}
-      ${fila('03', t('statsWins'), puntos(guardado.stats.wins))}
-    </div>
-    <p class="nota">${progreso}</p>
-    <ul class="reglas">
-      <li>${t('compRuleBoards')}</li>
-      <li>${t('compRuleDraw')}</li>
-      <li>${t('compRuleSurvive')}</li>
-      <li>${t('compRuleCups')}</li>
-    </ul>
+    <p class="comp-nota">${t('pointsToNext', { count: info.falta, rank: info.siguiente }) }</p>
     <div class="acciones">
       <button class="principal" type="button" data-accion="jugarCompetitivo">${t('play')} <kbd>↵</kbd></button>
+      <button type="button" data-accion="home">${t('back')} <kbd>esc</kbd></button>
     </div>
   </div>`);
 
   el.score.textContent = '—';
   el.meta.textContent = t('modeCompetitive');
-  el.best.textContent = `${info.nombre} · ${puntos(copas)}`;
+  el.best.textContent = info.nombre;
   el.mult.textContent = '';
   el.chain.style.width = '0%';
   el.pause.disabled = true;
@@ -4736,7 +4720,8 @@ function menuCompetitivo() {
   enfocarPrimero('button[data-accion="jugarCompetitivo"]');
 }
 
-// sorteo: mapa y modificador, los mismos para los cuatro tableros
+// sorteo: mapa y modificador, los mismos para los cuatro tableros. se anuncia
+// con una animación corta y la partida arranca sola, sin botones
 function prepararCompetitivo() {
   pararTemporizador();
   app.juego = null;
@@ -4747,28 +4732,24 @@ function prepararCompetitivo() {
   el.arena.hidden = true;
 
   const nivel = LEVELS[app.arena.indice];
-  const mods = app.arena.mods;
-  ponerOverlay(`<div class="panel fin">
-    <div class="fin-cabeza">
-      <p class="kicker">${t('competitiveDraw')}</p>
-      <p class="cifra">${levelName(nivel.name)}</p>
-      <p class="nota">${mods.map((m) => t('mod_' + m)).join(' + ')}</p>
-      <p class="nota">${t('modExplain_' + mods[0])}</p>
-    </div>
-    <div class="acciones">
-      <button class="principal" type="button" data-accion="empezarCompetitivo">${t('startMatch')} <kbd>↵</kbd></button>
-      <button type="button" data-accion="jugarCompetitivo">${t('redraw')} <kbd>R</kbd></button>
-      <button type="button" data-accion="home">${t('menu')} <kbd>esc</kbd></button>
-    </div>
+  const mod = app.arena.mods[0];
+  ponerOverlay(`<div class="panel sorteo">
+    <p class="sorteo-etiqueta">${t('competitiveDraw')}</p>
+    <p class="sorteo-mapa">${levelName(nivel.name)}</p>
+    <p class="sorteo-mod">${t('mod_' + mod)}</p>
   </div>`);
 
   el.meta.textContent = t('modeCompetitive');
-  el.best.textContent = `${levelName(nivel.name)} · ${mods.map((m) => t('mod_' + m)).join(' + ')}`;
+  el.best.textContent = `${levelName(nivel.name)} · ${t('mod_' + mod)}`;
   el.score.textContent = '—';
   el.pause.disabled = true;
   el.prompt.classList.remove('visible');
   pantalla('preview');
-  enfocarPrimero('button[data-accion="empezarCompetitivo"]');
+  // sin botón: tras la animación empieza la cuenta atrás y la partida
+  app.temporizador = setTimeout(() => {
+    app.temporizador = 0;
+    if (app.pantalla === 'preview') empezarCompetitivo();
+  }, 1700);
 }
 
 // cuatro tableros iguales, cada uno con su serpiente
@@ -4849,7 +4830,12 @@ function eventoRival(i, tipo, datos) {
 
 // un paso de los cuatro tableros: los rivales deciden y todos avanzan igual
 function pasoCompetitivo(dt) {
-  if (pasoCuenta(dt)) return;
+  if (pasoCuenta(dt)) {
+    // durante la cuenta atrás ya se ve tu serpiente en su tablero
+    dibujarArena();
+    actualizarTableros();
+    return;
+  }
   if (app.pantalla !== 'playing') return;
   for (const tab of app.tableros) {
     const juego = tab.juego;
@@ -5134,7 +5120,7 @@ function mostrarNivelSuperado() {
   // nivel superado: solo el aviso y los botones, sin resumen de manzanas
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
-      <p class="kicker">${t('levelCleared', { number: dosDigitos(app.nivel + 1) })}</p>
+      <p class="cifra superado">${t('levelCleared', { number: dosDigitos(app.nivel + 1) })}</p>
       ${ultimo ? `<p class="nota">${t('campaignComplete')}</p>` : ''}
     </div>
     <div class="acciones">
@@ -5409,11 +5395,13 @@ function accion(nombre) {
       moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
       return;
     }
-    if (nombre === 'confirm') activarFoco();
-    else if (nombre === 'jugarCompetitivo') prepararCompetitivo();
-    else if (nombre === 'empezarCompetitivo') empezarCompetitivo();
-    else if (nombre === 'restart' && app.pantalla === 'preview') prepararCompetitivo();
-    else if (nombre === 'back' || nombre === 'pause') mostrarInicio();
+    if (app.pantalla === 'compmenu') {
+      if (nombre === 'confirm') activarFoco();
+      else if (nombre === 'jugarCompetitivo') prepararCompetitivo();
+      else if (nombre === 'back' || nombre === 'pause') mostrarInicio();
+      return;
+    }
+    // sorteo en marcha: no se puede cambiar, se espera a la cuenta atrás
     return;
   }
 
@@ -5530,7 +5518,7 @@ function borrarRecords() {
   if (!window.confirm(t('eraseConfirm'))) return;
   guardado.best = { classic: 0, frenzy: 0, hunter: 0, timed: 0, competitive: 0 };
   guardado.campaign = { unlocked: 1 };
-  guardado.competitive = { cups: 0 };
+  guardado.competitive = { points: 0 };
   guardar();
   audio.play('ui');
   if (app.pantalla === 'settings') mostrarAjustes(app.settingsReturn, 'button[data-accion="wipe"]');

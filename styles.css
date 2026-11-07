@@ -296,6 +296,138 @@ button:disabled {
   opacity: 1;
 }
 
+/* menú del competitivo: rango con icono, puntos y poco más */
+.panel.competitivo {
+  max-width: 380px;
+  gap: 16px;
+}
+
+.comp-cabeza {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.comp-datos {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.comp-rango {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.comp-puntos {
+  margin: 0;
+  font-size: clamp(34px, 7vmin, 54px);
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.comp-nota {
+  margin: 0;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.rango-icono {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+  width: 54px;
+  height: 54px;
+  flex: none;
+}
+
+.rango-icono i {
+  display: block;
+  background: #191919;
+}
+
+.rango-icono i.lleno {
+  background: var(--fg);
+}
+
+.rango-icono[data-rango="5"] i.lleno {
+  background: var(--accent);
+}
+
+/* sorteo: entra con una animación corta y arranca solo */
+.panel.sorteo {
+  gap: 8px;
+  text-align: center;
+  animation: sorteo-entra 0.26s ease-out both;
+}
+
+.sorteo-etiqueta {
+  margin: 0;
+  font-size: 9px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--muted);
+  animation: sorteo-sube 0.3s 0.04s ease-out both;
+}
+
+.sorteo-mapa {
+  margin: 0;
+  font-size: clamp(26px, 6.2vmin, 48px);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1.05;
+  animation: sorteo-sube 0.34s 0.14s ease-out both;
+}
+
+.sorteo-mod {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  animation: sorteo-sube 0.34s 0.3s ease-out both;
+}
+
+@keyframes sorteo-entra {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes sorteo-sube {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel.sorteo,
+  .sorteo-etiqueta,
+  .sorteo-mapa,
+  .sorteo-mod {
+    animation: none;
+  }
+}
+
+/* nivel superado: el aviso, en grande */
+.fin-cabeza .cifra.superado {
+  font-size: clamp(26px, 6.4vmin, 54px);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
 /* competitivo: cuatro tableros separados, cada uno con su serpiente */
 #arena {
   display: grid;

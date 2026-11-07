@@ -122,7 +122,7 @@ export const MODES = {
     minSpeed: 82,
     accelPerFood: 1.4,
     timeAttack: { start: 30000, perFruit: 3200, max: 150000, rampMs: 60000 },
-    veneno: { ms: 5000 },
+    veneno: { ms: 5000, chance: 0.4 },
     bonusEvery: 5,
     powerEvery: 7,
     powerPool: POWER_POOLS.timed,
