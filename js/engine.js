@@ -65,6 +65,7 @@ export class Game {
     this.veneno = null;
     // competitivo: unos instantes de protección al volver tras una caída
     this.gracia = 0;
+    this.graciaTotal = 0;
     // frenesí: olas de fruta extra y picos de velocidad
     this.extraFoods = [];
     this.waveTimer = 0;
@@ -197,6 +198,7 @@ export class Game {
     this.dir = { ...start.dir };
     this.state = 'running';
     this.gracia = Math.max(0, Number(this.cfg.graciaMs) || 0);
+    this.graciaTotal = this.gracia;
     this.spawnFood();
     this.emit('revive');
     return true;
@@ -214,18 +216,45 @@ export class Game {
     return true;
   }
 
-  // si la protección termina encima de un muro, la serpiente vuelve a un hueco libre
+  // si la protección termina encima de un muro, la serpiente busca el hueco
+  // libre más cercano (no salta al otro extremo del tablero)
   recolocar() {
-    const start = this.findStart();
-    this.body = [];
-    for (let i = 0; i < 4; i++) {
-      this.body.push({ x: start.x - start.dir.x * i, y: start.y - start.dir.y * i });
+    const cabeza = this.body[0];
+    let destino = null;
+    for (let radio = 0; radio <= 8 && !destino; radio++) {
+      for (let dy = -radio; dy <= radio && !destino; dy++) {
+        for (let dx = -radio; dx <= radio && !destino; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== radio) continue;
+          const x = cabeza.x + dx;
+          const y = cabeza.y + dy;
+          if (!this.casillaSegura({ x, y })) continue;
+          const cuerpo = [];
+          for (let i = 0; i < 4; i++) {
+            const celda = { x: x - this.dir.x * i, y: y - this.dir.y * i };
+            if (!this.casillaSegura(celda)) break;
+            cuerpo.push(celda);
+          }
+          if (cuerpo.length === 4) destino = { x, y, cuerpo };
+        }
+      }
+    }
+    const cuerpo = destino ? destino.cuerpo : null;
+    if (cuerpo) {
+      this.body = cuerpo.map((p) => ({ ...p }));
+    } else {
+      const start = this.findStart();
+      this.body = [];
+      for (let i = 0; i < 4; i++) {
+        this.body.push({ x: start.x - start.dir.x * i, y: start.y - start.dir.y * i });
+      }
+      this.dir = { ...start.dir };
     }
     this.prevBody = this.body.map((p) => ({ ...p }));
-    this.dir = { ...start.dir };
     this.queue = [];
     this.acc = 0;
-    this.gracia = Math.max(this.gracia, 400);
+    this.gracia = Math.max(this.gracia, 700);
+    this.graciaTotal = Math.max(this.graciaTotal, this.gracia);
+    this.flash = Math.max(this.flash, 0.3);
   }
 
   // salir a la vez en los cuatro tableros, sin esperar a la primera tecla
@@ -852,13 +881,14 @@ export class Game {
     } else if (puntos > 0) {
       this.score = Math.max(0, this.score - puntos);
     }
-    this.chain = Math.floor(this.chain / 2);
+    this.chain = 0;
     this.chainTimer = 0;
-    this.flash = Math.max(this.flash, 0.5);
-    this.shake = Math.max(this.shake, 6);
+    this.flash = Math.max(this.flash, 0.58);
+    this.shake = Math.max(this.shake, 7);
     this.burst(x + 0.5, y + 0.5, 18, '#7a0d0d', 8);
     this.emit('veneno', { segundos: Math.round(castigo / 1000), puntos });
-    // la siguiente envenenada sale con la próxima fruta, no de golpe
+    // vuelve a salir otra lejos de la buena, como la pareja original
+    this.spawnVeneno();
   }
 
   spawnBonus() {
@@ -917,7 +947,6 @@ export class Game {
     this.hitStop = 90;
     h.recarga = 1100;
     h.reaparece = Math.max(3, Math.ceil(h.body.length / 2));
-    h.aim = null;
     h.cazando = false;
     this.emit('hunterDies', { x: h.body[0].x, y: h.body[0].y });
   }
@@ -1009,10 +1038,16 @@ export class Game {
       prev: cuerpo.map((p) => ({ ...p })),
       dir: mejor.dir,
       grow: 0,
-      aim: null,
+      recarga: 0,
+      reaparece: 0,
+      cazando: false,
+      movido: this.time,
+      paso: 1,
       botSiguienteFallo: 48 + rand(30),
     };
     this.hunterTick = 0;
+    // el premio recoloca al cazador, así que también debe quedar listo para moverse
+    this.hunter.paso = Math.max(1, this.hunterCadence() * this.interval());
   }
 
   spawnPellet() {
@@ -1243,9 +1278,6 @@ export class Game {
       return;
     }
 
-    // marca a dónde va: el aviso se ve antes de que llegue
-    h.aim = { x: objetivo.x, y: objetivo.y };
-
     h.dir = { x: elegido.x - cabeza.x, y: elegido.y - cabeza.y };
     h.body.unshift(elegido);
     if (h.grow > 0) h.grow--;
@@ -1445,12 +1477,16 @@ export class Game {
       const [px, py, w] = caja(this.veneno.x, this.veneno.y, m, lado - m * 2);
       ctx.fillStyle = '#ff2b2b';
       ctx.fillRect(px, py, w, w);
-      // la única diferencia: un punto de un par de píxeles, descentrado
-      const punto = Math.max(1, Math.round(w * 0.13));
-      ctx.fillStyle = 'rgba(150,0,0,0.92)';
+      // se distingue de un vistazo: una muesca negra en la esquina superior derecha
+      const muesca = Math.max(2, Math.round(w * 0.36));
+      ctx.fillStyle = '#000';
+      ctx.fillRect(px + w - muesca, py, muesca, muesca);
+      // y un segundo punto oscuro dentro, para que no parezca un fallo de dibujo
+      const punto = Math.max(2, Math.round(w * 0.2));
+      ctx.fillStyle = 'rgba(0,0,0,0.85)';
       ctx.fillRect(
-        px + Math.round(w * 0.26),
-        py + Math.round(w * 0.62),
+        px + Math.round(w * 0.22),
+        py + Math.round(w * 0.52),
         punto,
         punto,
       );
@@ -1569,19 +1605,7 @@ export class Game {
       }
     }
 
-    // el aviso de corte y el cazador quedan sobre la capa de sombra para no desaparecer
-    if (this.hunter && this.hunter.aim && this.hunter.recarga <= 0) {
-      const aim = this.hunter.aim;
-      const dist = Math.abs(aim.x - this.body[0].x) + Math.abs(aim.y - this.body[0].y);
-      if (dist <= (this.cfg.hunterAimShow || 7) && Math.floor(this.time / 110) % 2 === 0) {
-        const m = Math.round(cell * 0.2);
-        const [px, py, w] = caja(aim.x, aim.y, m, lado - m * 2);
-        ctx.strokeStyle = 'rgba(255,43,43,0.95)';
-        ctx.lineWidth = Math.max(1, Math.round(cell * 0.07));
-        ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
-      }
-    }
-
+    // el cazador queda sobre la capa de sombra para no desaparecer
     if (this.hunter && this.hunter.recarga > 0 && this.hunter.body[0]) {
       const cabezaCazador = this.hunter.body[0];
       const pulso = 0.3 + 0.45 * (0.5 + 0.5 * Math.sin(this.time / 95));
@@ -1704,6 +1728,19 @@ export class Game {
           tamanoCabeza + margen * 2 - 1,
         );
         ctx.setLineDash([]);
+        // cuatro bloques que se apagan: cuánta protección queda
+        const restante = clamp(this.gracia / Math.max(1, this.graciaTotal || this.gracia), 0, 1);
+        const bloques = Math.ceil(restante * 4);
+        const cuadro = Math.max(2, Math.round(cell * 0.16));
+        const huecoBloque = Math.max(1, Math.round(cell * 0.06));
+        const anchoBarra = cuadro * 4 + huecoBloque * 3;
+        const bx = Math.round(x0 + tamanoCabeza / 2 - anchoBarra / 2);
+        let by = Math.round(y0 - cuadro - huecoBloque * 2);
+        if (by < oy + 1) by = Math.round(y0 + tamanoCabeza + huecoBloque * 2);
+        for (let i = 0; i < 4; i++) {
+          ctx.fillStyle = i < bloques ? '#ffffff' : 'rgba(255,255,255,0.18)';
+          ctx.fillRect(bx + i * (cuadro + huecoBloque), by, cuadro, cuadro);
+        }
       }
       if (this.fx.shield > 0) {
         const pulso = 0.38 + 0.38 * (0.5 + 0.5 * Math.sin(this.time / 110));

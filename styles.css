@@ -533,68 +533,23 @@ button:disabled {
   color: var(--dim);
 }
 
-/* los rivales de la partida y su fuerza, según tu rango */
+/* los tres rivales de la partida, en una línea */
 .comp-rivales {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
   padding-top: 9px;
   border-top: 1px solid var(--line);
-}
-
-.comp-sub {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 0;
   font-size: 7px;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--dim);
-}
-
-.comp-sub span:last-child {
-  color: #333;
-}
-
-.comp-rivales ul {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.comp-rivales li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 8px;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--muted);
 }
 
-.comp-rival {
+.comp-rivales span:last-child {
   color: var(--fg);
-}
-
-.comp-fuerza {
-  display: flex;
-  gap: 2px;
-}
-
-.comp-fuerza i {
-  display: block;
-  width: 14px;
-  height: 4px;
-  background: #1b1b1b;
-}
-
-.comp-fuerza i.lleno {
-  background: var(--fg);
+  letter-spacing: 0.12em;
 }
 
 .comp-reglas {
@@ -654,6 +609,15 @@ button:disabled {
   animation: sorteo-sube 0.3s 0.04s ease-out both;
 }
 
+.sorteo-caja {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: clamp(84px, 18vmin, 140px);
+}
+
 .sorteo-mapa {
   margin: 0;
   font-size: clamp(26px, 6.2vmin, 48px);
@@ -664,6 +628,14 @@ button:disabled {
   animation: sorteo-sube 0.34s 0.14s ease-out both;
 }
 
+.sorteo-mapa.girando {
+  color: #8d8d8d;
+}
+
+.sorteo-mapa.fija {
+  animation: sorteo-fija 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
 .sorteo-mod {
   margin: 0;
   font-size: 12px;
@@ -671,6 +643,39 @@ button:disabled {
   text-transform: uppercase;
   color: var(--accent);
   animation: sorteo-sube 0.34s 0.3s ease-out both;
+}
+
+.sorteo-mod.girando {
+  color: var(--dim);
+}
+
+.sorteo-mod.fija {
+  animation: sorteo-fija 0.38s 0.06s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* línea que se llena mientras corre la ruleta del sorteo */
+.sorteo-linea {
+  width: 100%;
+  height: 2px;
+  overflow: hidden;
+  background: #161616;
+}
+
+.sorteo-linea i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--fg);
+  transform-origin: left center;
+  animation: sorteo-carga 1.85s linear both;
+}
+
+.sorteo-pie {
+  margin: 0;
+  font-size: 7px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
 }
 
 @keyframes sorteo-entra {
@@ -687,11 +692,34 @@ button:disabled {
   }
 }
 
+@keyframes sorteo-carga {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes sorteo-fija {
+  0% {
+    opacity: 0.3;
+    transform: translateY(7px) scale(0.94);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(0) scale(1.035);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .panel.sorteo,
   .sorteo-etiqueta,
   .sorteo-mapa,
-  .sorteo-mod {
+  .sorteo-mapa.fija,
+  .sorteo-mod,
+  .sorteo-mod.fija,
+  .sorteo-linea i {
     animation: none;
   }
 }
@@ -741,6 +769,8 @@ button:disabled {
 
 .tablero figcaption {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 6px;
   font-size: 8px;
   letter-spacing: 0.14em;
@@ -780,6 +810,16 @@ button:disabled {
 
 .tablero.protegido figcaption {
   color: var(--fg);
+}
+
+.tablero-estado {
+  color: var(--accent);
+  font-size: 7px;
+  letter-spacing: 0.14em;
+}
+
+.tablero-estado:empty {
+  display: none;
 }
 
 @keyframes tablero-protegido {
@@ -891,7 +931,27 @@ button:disabled {
   visibility: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  scroll-padding-block: 64px 24px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line2) transparent;
   transition: opacity 0.12s ease, visibility 0.12s;
+}
+
+#overlay::-webkit-scrollbar {
+  width: 8px;
+}
+
+#overlay::-webkit-scrollbar-track {
+  background: #050505;
+}
+
+#overlay::-webkit-scrollbar-thumb {
+  background: var(--line2);
+}
+
+#overlay::-webkit-scrollbar-thumb:hover {
+  background: var(--fg);
 }
 
 #overlay.abierto {

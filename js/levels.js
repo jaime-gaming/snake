@@ -125,7 +125,7 @@ export const MODES = {
     minSpeed: 82,
     accelPerFood: 1.4,
     timeAttack: { start: 30000, perFruit: 3200, max: 150000, rampMs: 60000 },
-    veneno: { ms: 3000, chance: 0.28 },
+    veneno: { ms: 5000, chance: 0.4 },
     bonusEvery: 5,
     powerEvery: 7,
     powerPool: POWER_POOLS.timed,
@@ -162,22 +162,25 @@ const level = (name, goal, speed, walls, extra = {}) => {
     goal,
     speed,
     walls: limpios,
-    minSpeed: Math.max(72, speed - 32),
-    accelPerFood: 1.2,
+    minSpeed: Math.max(120, speed - 16),
+    accelPerFood: 1.1,
     bonusEvery: 4,
     powerEvery: 6,
     powerPool: POWER_POOLS.campaign,
-    chainWindow: 3400,
+    chainWindow: 3600,
     ...resto,
   };
 };
 
-const nivel = (i, name, goal, walls, extra = {}) =>
-  level(name, goal, Math.round(155 - i * 2.6), walls, {
-    accelPerFood: Number((1.2 + i * 0.055).toFixed(2)),
-    chainWindow: Math.max(2600, 3400 - i * 32),
+const nivel = (i, name, goal, walls, extra = {}) => {
+  // la meta crece despacio al final: menos tiempo expuesto en los mapas cerrados
+  const objetivo = i <= 15 ? goal : Math.min(goal, 13 + Math.floor((i - 16) / 6));
+  return level(name, objetivo, Math.round(155 - i * 0.72), walls, {
+    accelPerFood: Number((1.1 + i * 0.02).toFixed(2)),
+    chainWindow: Math.max(2900, 3600 - i * 24),
     ...extra,
   });
+};
 
 export const LEVELS = [
   nivel(0, 'LLANO', 4, []),
@@ -406,10 +409,11 @@ export const LEVELS = [
   ]),
 
   nivel(23, 'CUATRO CAJAS', 16, [
-    ...holes(rect(3, 3, 4, 4), [[3, 4], [6, 4], [4, 3]]),
-    ...holes(rect(13, 3, 4, 4), [[13, 4], [16, 4], [15, 3]]),
-    ...holes(rect(3, 13, 4, 4), [[3, 14], [6, 14], [5, 16]]),
-    ...holes(rect(13, 13, 4, 4), [[13, 14], [16, 14], [14, 16]]),
+    // cajas huecas con cuatro bocas: se cruzan por dentro, sin callejones de una casilla
+    ...holes(ring(3, 3, 4, 4), [[3, 4], [6, 4], [4, 3], [4, 6]]),
+    ...holes(ring(13, 3, 4, 4), [[13, 4], [16, 4], [15, 3], [15, 6]]),
+    ...holes(ring(3, 13, 4, 4), [[3, 14], [6, 14], [5, 16], [4, 13]]),
+    ...holes(ring(13, 13, 4, 4), [[13, 14], [16, 14], [14, 16], [15, 13]]),
   ]),
 
   nivel(24, 'DIENTES DOBLES', 16, [
@@ -431,8 +435,8 @@ export const LEVELS = [
     mods: ['cazador'],
     hunter: true,
     hunterPellets: 2,
-    hunterCap: 14,
-    hunterSight: 4,
+    hunterCap: 12,
+    hunterSight: 3,
   }),
 
   nivel(26, 'ANILLO CUADRADO', 17, [

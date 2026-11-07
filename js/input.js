@@ -15,6 +15,10 @@ const TECLAS = {
   ShiftLeft: 'turbo',
   ShiftRight: 'turbo',
   Escape: 'back',
+  PageUp: 'scrollUp',
+  PageDown: 'scrollDown',
+  Home: 'scrollTop',
+  End: 'scrollBottom',
   KeyP: 'pause',
   KeyR: 'restart',
   KeyM: 'mute',
@@ -32,7 +36,8 @@ export function attachInput({ stage, actions, canTurbo = () => true }) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const accion = TECLAS[e.code];
     if (!accion) return;
-    if (e.code === 'Space' || e.code === 'Enter' || e.code.startsWith('Arrow')) e.preventDefault();
+    if (e.code === 'Space' || e.code === 'Enter' || e.code.startsWith('Arrow')
+      || e.code === 'PageUp' || e.code === 'PageDown' || e.code === 'Home' || e.code === 'End') e.preventDefault();
     if (e.repeat) return;
     if (accion === 'turbo' && !turboActivo()) return;
     fire(accion === 'turbo' ? 'turboOn' : accion);

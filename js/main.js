@@ -1,8 +1,8 @@
-import { Game, POWER_INFO } from './engine.js?v=4';
-import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS, RIVAL_NAMES } from './levels.js?v=4';
+import { Game, POWER_INFO } from './engine.js?v=5';
+import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS, RIVAL_NAMES } from './levels.js?v=5';
 import { audio } from './audio.js?v=3';
-import { attachInput } from './input.js?v=3';
-import { t, getLanguage, setLanguage, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, appleUnit, routeSlug, routeWords, rankName, rankInfo, rankList } from './i18n.js?v=19';
+import { attachInput } from './input.js?v=4';
+import { t, getLanguage, setLanguage, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, appleUnit, routeSlug, routeWords, rankName, rankInfo, rankList } from './i18n.js?v=20';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -139,6 +139,7 @@ const app = {
   marca: 0,
   reloj: 0,
   temporizador: 0,
+  sorteoRuleta: 0,
   record: false,
   statsAcum: 0,
   chips: new Map(),
@@ -181,6 +182,10 @@ function pararTemporizador() {
   if (app.temporizador) {
     clearTimeout(app.temporizador);
     app.temporizador = 0;
+  }
+  if (app.sorteoRuleta) {
+    clearInterval(app.sorteoRuleta);
+    app.sorteoRuleta = 0;
   }
 }
 
@@ -875,6 +880,39 @@ function marcar(boton) {
   }
 }
 
+// desplaza la capa abierta: las flechas también mueven la UI en zonas de scroll
+function desplazarUI(paso) {
+  const caja = el.overlay;
+  if (!caja || !caja.classList.contains('abierto')) return false;
+  const salto = Math.max(60, Math.round((caja.clientHeight || 480) * 0.32));
+  const antes = caja.scrollTop;
+  const tope = Math.max(0, caja.scrollHeight - caja.clientHeight);
+  caja.scrollTop = Math.max(0, Math.min(tope, antes + paso * salto));
+  return caja.scrollTop !== antes;
+}
+
+function llevarALaVista(nodo) {
+  const caja = el.overlay;
+  if (!caja || !caja.classList.contains('abierto') || typeof nodo.getBoundingClientRect !== 'function') {
+    if (nodo && typeof nodo.scrollIntoView === 'function') {
+      try {
+        nodo.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      } catch (err) {
+        /* sin scroll, no pasa nada */
+      }
+    }
+    return;
+  }
+  const cajaRect = caja.getBoundingClientRect();
+  const nodoRect = nodo.getBoundingClientRect();
+  const margen = Math.min(84, Math.max(24, (cajaRect.height || 480) * 0.12));
+  if (nodoRect.top < cajaRect.top + margen) {
+    caja.scrollTop -= cajaRect.top + margen - nodoRect.top;
+  } else if (nodoRect.bottom > cajaRect.bottom - margen) {
+    caja.scrollTop += nodoRect.bottom - (cajaRect.bottom - margen);
+  }
+}
+
 function enfocarUI(indice) {
   const lista = botonesUI();
   if (!lista.length) {
@@ -884,14 +922,7 @@ function enfocarUI(indice) {
   foco.indice = ((indice % lista.length) + lista.length) % lista.length;
   pintarFoco();
   marcar(lista[foco.indice]);
-  const activo = lista[foco.indice];
-  if (activo && typeof activo.scrollIntoView === 'function') {
-    try {
-      activo.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    } catch (err) {
-      /* sin scroll, no pasa nada */
-    }
-  }
+  llevarALaVista(lista[foco.indice]);
 }
 
 function enfocarPrimero(selector) {
@@ -932,19 +963,15 @@ function fijarFoco(boton) {
   foco.indice = indice;
   pintarFoco();
   marcar(boton);
-  if (typeof boton.scrollIntoView === 'function') {
-    try {
-      boton.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    } catch (err) {
-      /* sin scroll, no pasa nada */
-    }
-  }
+  llevarALaVista(boton);
 }
 
 // flechas: recorren el anillo de la pantalla; en la rejilla, ↑↓ saltan de fila
 function moverFoco(dx, dy) {
   const anillo = anilloFoco();
   if (!anillo.length) return;
+  // con un solo botón (ayuda, perfil) las flechas mueven la propia capa
+  if (anillo.length === 1 && desplazarUI(dy || dx)) return;
   const actual = botonesUI()[foco.indice];
   let i = anillo.indexOf(actual);
   if (i < 0) {
@@ -1465,15 +1492,6 @@ function configuracionArena() {
   return cfg;
 }
 
-// el mismo mapa para todos, pero cada rival con su velocidad según el rango
-function configuracionRival(ritmo = 1) {
-  const cfg = configuracionArena();
-  return {
-    ...cfg,
-    startSpeed: Math.round(cfg.startSpeed * ritmo),
-    minSpeed: Math.round(cfg.minSpeed * ritmo),
-  };
-}
 
 function configuracionSuelta(modo) {
   return { ...MODES[modo] };
@@ -1523,45 +1541,22 @@ function copasDePartida(puesto) {
 const TOTAL_TABLEROS = 4;
 const DURACION_RONDA = 60000; // 60 s por partida
 const CASTIGO_CAIDA = 10; // puntos que se pierden al chocar
-const GRACIA_MS = 1300; // protección al volver de una caída
+const GRACIA_MS = 1800; // protección al volver de una caída
 
-// los rivales aprietan más según tu rango: reaccionan antes, fallan menos y van
-// más rápidos. en bronce dan tiempo; en maestro casi no perdonan.
+// variable interna: con el rango suben la reacción y la puntería, pero la
+// velocidad es exactamente la misma que la tuya. no se enseña en el menú.
 const DIFICULTAD_RIVALES = [
-  { cada: 210, fallo: 0.3, ritmo: 1.14 }, // bronce
-  { cada: 180, fallo: 0.24, ritmo: 1.1 }, // plata
-  { cada: 150, fallo: 0.17, ritmo: 1.05 }, // oro
-  { cada: 120, fallo: 0.11, ritmo: 1 }, // platino
-  { cada: 90, fallo: 0.06, ritmo: 0.96 }, // diamante
-  { cada: 62, fallo: 0.02, ritmo: 0.92 }, // maestro
-];
-// kobra es el más fuerte de los tres; mamba, el más tranquilo
-const TONO_RIVAL = [
-  { cada: 0.86, fallo: 0.7, ritmo: 0.97 },
-  { cada: 0.97, fallo: 1, ritmo: 1 },
-  { cada: 1.12, fallo: 1.3, ritmo: 1.03 },
+  { cada: 190, fallo: 0.26 }, // bronce
+  { cada: 175, fallo: 0.22 }, // plata
+  { cada: 160, fallo: 0.18 }, // oro
+  { cada: 145, fallo: 0.14 }, // platino
+  { cada: 130, fallo: 0.1 }, // diamante
+  { cada: 115, fallo: 0.06 }, // maestro
 ];
 
 function dificultadRivales(nivel) {
   const i = Math.max(0, Math.min(DIFICULTAD_RIVALES.length - 1, Number(nivel) || 0));
   return DIFICULTAD_RIVALES[i];
-}
-
-function ajusteRival(nivel, posicion) {
-  const base = dificultadRivales(nivel);
-  const tono = TONO_RIVAL[Math.max(0, Math.min(TONO_RIVAL.length - 1, posicion))] || TONO_RIVAL[1];
-  return {
-    cada: Math.max(45, Math.round(base.cada * tono.cada)),
-    fallo: Math.min(0.45, base.fallo * tono.fallo),
-    ritmo: base.ritmo * tono.ritmo,
-  };
-}
-
-// cinco bloques para enseñar la fuerza de cada rival en el menú
-function fuerzaRival(nivel, posicion) {
-  const k = Math.max(0, Math.min(5, Number(nivel) || 0));
-  const tono = [1, 0, -1][Math.max(0, Math.min(2, posicion))] || 0;
-  return Math.max(1, Math.min(5, 1 + Math.round(k * 0.8) + tono));
 }
 
 // el icono del rango: una barra más por cada nivel, todo a bloques
@@ -1605,15 +1600,6 @@ function menuCompetitivo() {
     return `<span class="escalon${clase}" title="${r.nombre}"${actual}>${iconoRango(r.nivel)}<em>${r.nombre}</em></span>`;
   }).join('');
 
-  // los tres rivales, con su fuerza de hoy: sube contigo de rango
-  const rivales = RIVAL_NAMES.map((nombre, i) => {
-    const fuerza = fuerzaRival(info.nivel, i);
-    const bloques = [1, 2, 3, 4, 5]
-      .map((n) => `<i${n <= fuerza ? ' class="lleno"' : ''}></i>`)
-      .join('');
-    return `<li><span class="comp-rival">${nombre}</span><span class="comp-fuerza" aria-label="${t('compStrength')} ${fuerza}/5">${bloques}</span></li>`;
-  }).join('');
-
   ponerOverlay(`<div class="panel competitivo">
     <div class="comp-top">
       <span>${t('modeCompetitive')}</span>
@@ -1634,10 +1620,7 @@ function menuCompetitivo() {
       ${dato(puntos(guardado.stats.wins), t('labelWins'))}
       ${dato('60<small>s</small>', t('labelRound'))}
     </div>
-    <div class="comp-rivales">
-      <p class="comp-sub"><span>${t('compRivals')}</span><span>${t('compStrength')}</span></p>
-      <ul>${rivales}</ul>
-    </div>
+    <p class="comp-rivales"><span>${t('compRivals')}</span><span>${RIVAL_NAMES.join(' · ')}</span></p>
     <p class="comp-reglas"><span>60 s</span><span>${t('compDrop')}</span><span>${t('compProtected')}</span></p>
     <div class="acciones">
       <button class="principal" type="button" data-accion="jugarCompetitivo">${t('play')} <kbd>↵</kbd></button>
@@ -1656,8 +1639,8 @@ function menuCompetitivo() {
   enfocarPrimero('button[data-accion="jugarCompetitivo"]');
 }
 
-// sorteo: mapa y modificador, los mismos para los cuatro tableros. se anuncia
-// con una animación corta y la partida arranca sola, sin botones
+// sorteo: mapa y modificador, los mismos para los cuatro tableros. los nombres
+// giran unos instantes, se fijan con un golpe de bloque y la partida arranca sola
 function prepararCompetitivo() {
   pararTemporizador();
   app.juego = null;
@@ -1669,23 +1652,75 @@ function prepararCompetitivo() {
 
   const nivel = LEVELS[app.arena.indice];
   const mod = app.arena.mods[0];
+  const nombres = LEVELS.map((n) => levelName(n.name));
+  const azar = (lista) => lista[Math.floor(Math.random() * lista.length)];
+
   ponerOverlay(`<div class="panel sorteo">
     <p class="sorteo-etiqueta">${t('competitiveDraw')}</p>
-    <p class="sorteo-mapa">${levelName(nivel.name)}</p>
-    <p class="sorteo-mod">${t('mod_' + mod)}</p>
+    <div class="sorteo-caja">
+      <p class="sorteo-mapa girando" id="sorteo-mapa">${azar(nombres)}</p>
+      <p class="sorteo-mod girando" id="sorteo-mod">${t('mod_' + azar(MODS_COMPETITIVO))}</p>
+    </div>
+    <div class="sorteo-linea" aria-hidden="true"><i></i></div>
+    <p class="sorteo-pie">${t('compBoards')} · 60 s</p>
   </div>`);
 
   el.meta.textContent = t('modeCompetitive');
-  el.best.textContent = `${levelName(nivel.name)} · ${t('mod_' + mod)}`;
+  el.best.textContent = '';
   el.score.textContent = '—';
   el.pause.disabled = true;
   el.prompt.classList.remove('visible');
   pantalla('preview');
-  // sin botón: tras la animación empieza la cuenta atrás y la partida
+
+  const mapa = document.getElementById('sorteo-mapa');
+  const modo = document.getElementById('sorteo-mod');
+  const fijar = () => {
+    if (mapa) {
+      mapa.textContent = levelName(nivel.name);
+      mapa.classList.remove('girando');
+      mapa.classList.add('fija');
+    }
+    if (modo) {
+      modo.textContent = t('mod_' + mod);
+      modo.classList.remove('girando');
+      modo.classList.add('fija');
+    }
+    el.best.textContent = `${levelName(nivel.name)} · ${t('mod_' + mod)}`;
+    audio.play('tick');
+  };
+
+  if (sinMovimiento()) {
+    fijar();
+    app.temporizador = setTimeout(() => {
+      app.temporizador = 0;
+      if (app.pantalla === 'preview') empezarCompetitivo();
+    }, 1100);
+    return;
+  }
+
+  // ruleta corta: cambia de nombre sin saltos y luego se queda el sorteado
+  let vueltas = 0;
+  app.sorteoRuleta = setInterval(() => {
+    vueltas++;
+    if (vueltas >= 11) {
+      clearInterval(app.sorteoRuleta);
+      app.sorteoRuleta = 0;
+      fijar();
+      return;
+    }
+    if (mapa) mapa.textContent = azar(nombres);
+    if (modo) modo.textContent = t('mod_' + azar(MODS_COMPETITIVO));
+  }, 85);
+
+  // sin botón: la ruleta se fija y empieza la cuenta atrás
   app.temporizador = setTimeout(() => {
     app.temporizador = 0;
+    if (app.sorteoRuleta) {
+      clearInterval(app.sorteoRuleta);
+      app.sorteoRuleta = 0;
+    }
     if (app.pantalla === 'preview') empezarCompetitivo();
-  }, 1700);
+  }, 2050);
 }
 
 // cuatro tableros iguales, cada uno con su serpiente
@@ -1702,11 +1737,10 @@ function empezarCompetitivo() {
   ponerOverlay(null);
 
   const nivelRivales = rankInfo(guardado.competitive.points).nivel;
+  const dificultad = dificultadRivales(nivelRivales);
   for (let i = 0; i < TOTAL_TABLEROS; i++) {
-    const ajuste = i === 0 ? null : ajusteRival(nivelRivales, i - 1);
-    const cfg = i === 0
-      ? { ...configuracionArena(), graciaMs: GRACIA_MS }
-      : { ...configuracionRival(ajuste.ritmo), graciaMs: GRACIA_MS };
+    // misma velocidad, mismo mapa y mismo modificador para los cuatro
+    const cfg = { ...configuracionArena(), graciaMs: GRACIA_MS };
     const juego = new Game(
       cfg,
       i === 0 ? eventosJuego : (tipo, datos) => eventoRival(i, tipo, datos),
@@ -1719,8 +1753,8 @@ function empezarCompetitivo() {
       vivo: true,
       puesto: 0,
       acum: 0,
-      cada: ajuste ? ajuste.cada : 0,
-      fallo: ajuste ? ajuste.fallo : 0,
+      cada: i === 0 ? 0 : dificultad.cada,
+      fallo: i === 0 ? 0 : dificultad.fallo,
     });
   }
   app.juego = app.tableros[0].juego;
@@ -1841,7 +1875,13 @@ function actualizarTableros() {
     const texto = String(Math.round(tab.juego.score));
     if (datos.textContent !== texto) datos.textContent = texto;
     fig.classList.toggle('revive', tab.juego.state === 'dead');
-    fig.classList.toggle('protegido', tab.juego.gracia > 0);
+    const protegido = tab.juego.gracia > 0;
+    fig.classList.toggle('protegido', protegido);
+    const estado = fig.querySelector('.tablero-estado');
+    if (estado) {
+      const texto = protegido ? t('compProtected') : '';
+      if (estado.textContent !== texto) estado.textContent = texto;
+    }
   });
 }
 
@@ -2284,6 +2324,15 @@ function accion(nombre) {
   }
   if (nombre === 'padConectado') {
     el.hint.textContent = t('gamepadConnected');
+    return;
+  }
+
+  if (nombre === 'scrollUp' || nombre === 'scrollDown' || nombre === 'scrollTop' || nombre === 'scrollBottom') {
+    const caja = el.overlay;
+    if (!caja || !caja.classList.contains('abierto')) return;
+    if (nombre === 'scrollTop') caja.scrollTop = 0;
+    else if (nombre === 'scrollBottom') caja.scrollTop = caja.scrollHeight;
+    else caja.scrollTop += (nombre === 'scrollUp' ? -1 : 1) * Math.max(120, Math.round(caja.clientHeight * 0.8));
     return;
   }
 

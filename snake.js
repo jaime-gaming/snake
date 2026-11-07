@@ -1,4 +1,4 @@
-/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-11-07 · v23).
+/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-11-07 · v24).
    no lo edites a mano: cambia js/*.js y vuelve a ejecutar node tools/build.mjs */
 (function () {
 'use strict';
@@ -200,7 +200,7 @@ const MODES = {
     minSpeed: 82,
     accelPerFood: 1.4,
     timeAttack: { start: 30000, perFruit: 3200, max: 150000, rampMs: 60000 },
-    veneno: { ms: 3000, chance: 0.28 },
+    veneno: { ms: 5000, chance: 0.4 },
     bonusEvery: 5,
     powerEvery: 7,
     powerPool: POWER_POOLS.timed,
@@ -237,22 +237,25 @@ const level = (name, goal, speed, walls, extra = {}) => {
     goal,
     speed,
     walls: limpios,
-    minSpeed: Math.max(72, speed - 32),
-    accelPerFood: 1.2,
+    minSpeed: Math.max(120, speed - 16),
+    accelPerFood: 1.1,
     bonusEvery: 4,
     powerEvery: 6,
     powerPool: POWER_POOLS.campaign,
-    chainWindow: 3400,
+    chainWindow: 3600,
     ...resto,
   };
 };
 
-const nivel = (i, name, goal, walls, extra = {}) =>
-  level(name, goal, Math.round(155 - i * 2.6), walls, {
-    accelPerFood: Number((1.2 + i * 0.055).toFixed(2)),
-    chainWindow: Math.max(2600, 3400 - i * 32),
+const nivel = (i, name, goal, walls, extra = {}) => {
+  // la meta crece despacio al final: menos tiempo expuesto en los mapas cerrados
+  const objetivo = i <= 15 ? goal : Math.min(goal, 13 + Math.floor((i - 16) / 6));
+  return level(name, objetivo, Math.round(155 - i * 0.72), walls, {
+    accelPerFood: Number((1.1 + i * 0.02).toFixed(2)),
+    chainWindow: Math.max(2900, 3600 - i * 24),
     ...extra,
   });
+};
 
 const LEVELS = [
   nivel(0, 'LLANO', 4, []),
@@ -481,10 +484,11 @@ const LEVELS = [
   ]),
 
   nivel(23, 'CUATRO CAJAS', 16, [
-    ...holes(rect(3, 3, 4, 4), [[3, 4], [6, 4], [4, 3]]),
-    ...holes(rect(13, 3, 4, 4), [[13, 4], [16, 4], [15, 3]]),
-    ...holes(rect(3, 13, 4, 4), [[3, 14], [6, 14], [5, 16]]),
-    ...holes(rect(13, 13, 4, 4), [[13, 14], [16, 14], [14, 16]]),
+    // cajas huecas con cuatro bocas: se cruzan por dentro, sin callejones de una casilla
+    ...holes(ring(3, 3, 4, 4), [[3, 4], [6, 4], [4, 3], [4, 6]]),
+    ...holes(ring(13, 3, 4, 4), [[13, 4], [16, 4], [15, 3], [15, 6]]),
+    ...holes(ring(3, 13, 4, 4), [[3, 14], [6, 14], [5, 16], [4, 13]]),
+    ...holes(ring(13, 13, 4, 4), [[13, 14], [16, 14], [14, 16], [15, 13]]),
   ]),
 
   nivel(24, 'DIENTES DOBLES', 16, [
@@ -506,8 +510,8 @@ const LEVELS = [
     mods: ['cazador'],
     hunter: true,
     hunterPellets: 2,
-    hunterCap: 14,
-    hunterSight: 4,
+    hunterCap: 12,
+    hunterSight: 3,
   }),
 
   nivel(26, 'ANILLO CUADRADO', 17, [
@@ -819,6 +823,10 @@ const TECLAS = {
   ShiftLeft: 'turbo',
   ShiftRight: 'turbo',
   Escape: 'back',
+  PageUp: 'scrollUp',
+  PageDown: 'scrollDown',
+  Home: 'scrollTop',
+  End: 'scrollBottom',
   KeyP: 'pause',
   KeyR: 'restart',
   KeyM: 'mute',
@@ -836,7 +844,8 @@ function attachInput({ stage, actions, canTurbo = () => true }) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const accion = TECLAS[e.code];
     if (!accion) return;
-    if (e.code === 'Space' || e.code === 'Enter' || e.code.startsWith('Arrow')) e.preventDefault();
+    if (e.code === 'Space' || e.code === 'Enter' || e.code.startsWith('Arrow')
+      || e.code === 'PageUp' || e.code === 'PageDown' || e.code === 'Home' || e.code === 'End') e.preventDefault();
     if (e.repeat) return;
     if (accion === 'turbo' && !turboActivo()) return;
     fire(accion === 'turbo' ? 'turboOn' : accion);
@@ -1004,6 +1013,7 @@ class Game {
     this.veneno = null;
     // competitivo: unos instantes de protección al volver tras una caída
     this.gracia = 0;
+    this.graciaTotal = 0;
     // frenesí: olas de fruta extra y picos de velocidad
     this.extraFoods = [];
     this.waveTimer = 0;
@@ -1136,6 +1146,7 @@ class Game {
     this.dir = { ...start.dir };
     this.state = 'running';
     this.gracia = Math.max(0, Number(this.cfg.graciaMs) || 0);
+    this.graciaTotal = this.gracia;
     this.spawnFood();
     this.emit('revive');
     return true;
@@ -1153,18 +1164,45 @@ class Game {
     return true;
   }
 
-  // si la protección termina encima de un muro, la serpiente vuelve a un hueco libre
+  // si la protección termina encima de un muro, la serpiente busca el hueco
+  // libre más cercano (no salta al otro extremo del tablero)
   recolocar() {
-    const start = this.findStart();
-    this.body = [];
-    for (let i = 0; i < 4; i++) {
-      this.body.push({ x: start.x - start.dir.x * i, y: start.y - start.dir.y * i });
+    const cabeza = this.body[0];
+    let destino = null;
+    for (let radio = 0; radio <= 8 && !destino; radio++) {
+      for (let dy = -radio; dy <= radio && !destino; dy++) {
+        for (let dx = -radio; dx <= radio && !destino; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== radio) continue;
+          const x = cabeza.x + dx;
+          const y = cabeza.y + dy;
+          if (!this.casillaSegura({ x, y })) continue;
+          const cuerpo = [];
+          for (let i = 0; i < 4; i++) {
+            const celda = { x: x - this.dir.x * i, y: y - this.dir.y * i };
+            if (!this.casillaSegura(celda)) break;
+            cuerpo.push(celda);
+          }
+          if (cuerpo.length === 4) destino = { x, y, cuerpo };
+        }
+      }
+    }
+    const cuerpo = destino ? destino.cuerpo : null;
+    if (cuerpo) {
+      this.body = cuerpo.map((p) => ({ ...p }));
+    } else {
+      const start = this.findStart();
+      this.body = [];
+      for (let i = 0; i < 4; i++) {
+        this.body.push({ x: start.x - start.dir.x * i, y: start.y - start.dir.y * i });
+      }
+      this.dir = { ...start.dir };
     }
     this.prevBody = this.body.map((p) => ({ ...p }));
-    this.dir = { ...start.dir };
     this.queue = [];
     this.acc = 0;
-    this.gracia = Math.max(this.gracia, 400);
+    this.gracia = Math.max(this.gracia, 700);
+    this.graciaTotal = Math.max(this.graciaTotal, this.gracia);
+    this.flash = Math.max(this.flash, 0.3);
   }
 
   // salir a la vez en los cuatro tableros, sin esperar a la primera tecla
@@ -1791,13 +1829,14 @@ class Game {
     } else if (puntos > 0) {
       this.score = Math.max(0, this.score - puntos);
     }
-    this.chain = Math.floor(this.chain / 2);
+    this.chain = 0;
     this.chainTimer = 0;
-    this.flash = Math.max(this.flash, 0.5);
-    this.shake = Math.max(this.shake, 6);
+    this.flash = Math.max(this.flash, 0.58);
+    this.shake = Math.max(this.shake, 7);
     this.burst(x + 0.5, y + 0.5, 18, '#7a0d0d', 8);
     this.emit('veneno', { segundos: Math.round(castigo / 1000), puntos });
-    // la siguiente envenenada sale con la próxima fruta, no de golpe
+    // vuelve a salir otra lejos de la buena, como la pareja original
+    this.spawnVeneno();
   }
 
   spawnBonus() {
@@ -1856,7 +1895,6 @@ class Game {
     this.hitStop = 90;
     h.recarga = 1100;
     h.reaparece = Math.max(3, Math.ceil(h.body.length / 2));
-    h.aim = null;
     h.cazando = false;
     this.emit('hunterDies', { x: h.body[0].x, y: h.body[0].y });
   }
@@ -1948,10 +1986,16 @@ class Game {
       prev: cuerpo.map((p) => ({ ...p })),
       dir: mejor.dir,
       grow: 0,
-      aim: null,
+      recarga: 0,
+      reaparece: 0,
+      cazando: false,
+      movido: this.time,
+      paso: 1,
       botSiguienteFallo: 48 + rand(30),
     };
     this.hunterTick = 0;
+    // el premio recoloca al cazador, así que también debe quedar listo para moverse
+    this.hunter.paso = Math.max(1, this.hunterCadence() * this.interval());
   }
 
   spawnPellet() {
@@ -2182,9 +2226,6 @@ class Game {
       return;
     }
 
-    // marca a dónde va: el aviso se ve antes de que llegue
-    h.aim = { x: objetivo.x, y: objetivo.y };
-
     h.dir = { x: elegido.x - cabeza.x, y: elegido.y - cabeza.y };
     h.body.unshift(elegido);
     if (h.grow > 0) h.grow--;
@@ -2384,12 +2425,16 @@ class Game {
       const [px, py, w] = caja(this.veneno.x, this.veneno.y, m, lado - m * 2);
       ctx.fillStyle = '#ff2b2b';
       ctx.fillRect(px, py, w, w);
-      // la única diferencia: un punto de un par de píxeles, descentrado
-      const punto = Math.max(1, Math.round(w * 0.13));
-      ctx.fillStyle = 'rgba(150,0,0,0.92)';
+      // se distingue de un vistazo: una muesca negra en la esquina superior derecha
+      const muesca = Math.max(2, Math.round(w * 0.36));
+      ctx.fillStyle = '#000';
+      ctx.fillRect(px + w - muesca, py, muesca, muesca);
+      // y un segundo punto oscuro dentro, para que no parezca un fallo de dibujo
+      const punto = Math.max(2, Math.round(w * 0.2));
+      ctx.fillStyle = 'rgba(0,0,0,0.85)';
       ctx.fillRect(
-        px + Math.round(w * 0.26),
-        py + Math.round(w * 0.62),
+        px + Math.round(w * 0.22),
+        py + Math.round(w * 0.52),
         punto,
         punto,
       );
@@ -2508,19 +2553,7 @@ class Game {
       }
     }
 
-    // el aviso de corte y el cazador quedan sobre la capa de sombra para no desaparecer
-    if (this.hunter && this.hunter.aim && this.hunter.recarga <= 0) {
-      const aim = this.hunter.aim;
-      const dist = Math.abs(aim.x - this.body[0].x) + Math.abs(aim.y - this.body[0].y);
-      if (dist <= (this.cfg.hunterAimShow || 7) && Math.floor(this.time / 110) % 2 === 0) {
-        const m = Math.round(cell * 0.2);
-        const [px, py, w] = caja(aim.x, aim.y, m, lado - m * 2);
-        ctx.strokeStyle = 'rgba(255,43,43,0.95)';
-        ctx.lineWidth = Math.max(1, Math.round(cell * 0.07));
-        ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
-      }
-    }
-
+    // el cazador queda sobre la capa de sombra para no desaparecer
     if (this.hunter && this.hunter.recarga > 0 && this.hunter.body[0]) {
       const cabezaCazador = this.hunter.body[0];
       const pulso = 0.3 + 0.45 * (0.5 + 0.5 * Math.sin(this.time / 95));
@@ -2643,6 +2676,19 @@ class Game {
           tamanoCabeza + margen * 2 - 1,
         );
         ctx.setLineDash([]);
+        // cuatro bloques que se apagan: cuánta protección queda
+        const restante = clamp(this.gracia / Math.max(1, this.graciaTotal || this.gracia), 0, 1);
+        const bloques = Math.ceil(restante * 4);
+        const cuadro = Math.max(2, Math.round(cell * 0.16));
+        const huecoBloque = Math.max(1, Math.round(cell * 0.06));
+        const anchoBarra = cuadro * 4 + huecoBloque * 3;
+        const bx = Math.round(x0 + tamanoCabeza / 2 - anchoBarra / 2);
+        let by = Math.round(y0 - cuadro - huecoBloque * 2);
+        if (by < oy + 1) by = Math.round(y0 + tamanoCabeza + huecoBloque * 2);
+        for (let i = 0; i < 4; i++) {
+          ctx.fillStyle = i < bloques ? '#ffffff' : 'rgba(255,255,255,0.18)';
+          ctx.fillRect(bx + i * (cuadro + huecoBloque), by, cuadro, cuadro);
+        }
       }
       if (this.fx.shield > 0) {
         const pulso = 0.38 + 0.38 * (0.5 + 0.5 * Math.sin(this.time / 110));
@@ -2894,11 +2940,10 @@ const STRINGS = {
     labelRound: 'ronda',
     compYourRank: 'tu rango',
     compRivals: 'rivales',
-    compStrength: 'fuerza',
     compBoards: '4 tableros',
     compDrop: '−10 al caer',
     compProtected: 'protegido',
-    rulePoison: 'manzana envenenada: parece igual, pero resta tiempo o puntos.',
+    rulePoison: 'manzana envenenada: la muesca negra de la esquina la delata.',
     statsRank: 'rango',
     you: 'tú',
     play: 'jugar',
@@ -3100,11 +3145,10 @@ const STRINGS = {
     labelRound: 'round',
     compYourRank: 'your rank',
     compRivals: 'rivals',
-    compStrength: 'strength',
     compBoards: '4 boards',
     compDrop: '−10 on crash',
     compProtected: 'protected',
-    rulePoison: 'poisoned apple: it looks the same, but costs time or points.',
+    rulePoison: 'poisoned apple: the black corner notch gives it away.',
     statsRank: 'rank',
     you: 'you',
     play: 'play',
@@ -3431,6 +3475,7 @@ const app = {
   marca: 0,
   reloj: 0,
   temporizador: 0,
+  sorteoRuleta: 0,
   record: false,
   statsAcum: 0,
   chips: new Map(),
@@ -3473,6 +3518,10 @@ function pararTemporizador() {
   if (app.temporizador) {
     clearTimeout(app.temporizador);
     app.temporizador = 0;
+  }
+  if (app.sorteoRuleta) {
+    clearInterval(app.sorteoRuleta);
+    app.sorteoRuleta = 0;
   }
 }
 
@@ -4167,6 +4216,39 @@ function marcar(boton) {
   }
 }
 
+// desplaza la capa abierta: las flechas también mueven la UI en zonas de scroll
+function desplazarUI(paso) {
+  const caja = el.overlay;
+  if (!caja || !caja.classList.contains('abierto')) return false;
+  const salto = Math.max(60, Math.round((caja.clientHeight || 480) * 0.32));
+  const antes = caja.scrollTop;
+  const tope = Math.max(0, caja.scrollHeight - caja.clientHeight);
+  caja.scrollTop = Math.max(0, Math.min(tope, antes + paso * salto));
+  return caja.scrollTop !== antes;
+}
+
+function llevarALaVista(nodo) {
+  const caja = el.overlay;
+  if (!caja || !caja.classList.contains('abierto') || typeof nodo.getBoundingClientRect !== 'function') {
+    if (nodo && typeof nodo.scrollIntoView === 'function') {
+      try {
+        nodo.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      } catch (err) {
+        /* sin scroll, no pasa nada */
+      }
+    }
+    return;
+  }
+  const cajaRect = caja.getBoundingClientRect();
+  const nodoRect = nodo.getBoundingClientRect();
+  const margen = Math.min(84, Math.max(24, (cajaRect.height || 480) * 0.12));
+  if (nodoRect.top < cajaRect.top + margen) {
+    caja.scrollTop -= cajaRect.top + margen - nodoRect.top;
+  } else if (nodoRect.bottom > cajaRect.bottom - margen) {
+    caja.scrollTop += nodoRect.bottom - (cajaRect.bottom - margen);
+  }
+}
+
 function enfocarUI(indice) {
   const lista = botonesUI();
   if (!lista.length) {
@@ -4176,14 +4258,7 @@ function enfocarUI(indice) {
   foco.indice = ((indice % lista.length) + lista.length) % lista.length;
   pintarFoco();
   marcar(lista[foco.indice]);
-  const activo = lista[foco.indice];
-  if (activo && typeof activo.scrollIntoView === 'function') {
-    try {
-      activo.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    } catch (err) {
-      /* sin scroll, no pasa nada */
-    }
-  }
+  llevarALaVista(lista[foco.indice]);
 }
 
 function enfocarPrimero(selector) {
@@ -4224,19 +4299,15 @@ function fijarFoco(boton) {
   foco.indice = indice;
   pintarFoco();
   marcar(boton);
-  if (typeof boton.scrollIntoView === 'function') {
-    try {
-      boton.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    } catch (err) {
-      /* sin scroll, no pasa nada */
-    }
-  }
+  llevarALaVista(boton);
 }
 
 // flechas: recorren el anillo de la pantalla; en la rejilla, ↑↓ saltan de fila
 function moverFoco(dx, dy) {
   const anillo = anilloFoco();
   if (!anillo.length) return;
+  // con un solo botón (ayuda, perfil) las flechas mueven la propia capa
+  if (anillo.length === 1 && desplazarUI(dy || dx)) return;
   const actual = botonesUI()[foco.indice];
   let i = anillo.indexOf(actual);
   if (i < 0) {
@@ -4757,15 +4828,6 @@ function configuracionArena() {
   return cfg;
 }
 
-// el mismo mapa para todos, pero cada rival con su velocidad según el rango
-function configuracionRival(ritmo = 1) {
-  const cfg = configuracionArena();
-  return {
-    ...cfg,
-    startSpeed: Math.round(cfg.startSpeed * ritmo),
-    minSpeed: Math.round(cfg.minSpeed * ritmo),
-  };
-}
 
 function configuracionSuelta(modo) {
   return { ...MODES[modo] };
@@ -4815,45 +4877,22 @@ function copasDePartida(puesto) {
 const TOTAL_TABLEROS = 4;
 const DURACION_RONDA = 60000; // 60 s por partida
 const CASTIGO_CAIDA = 10; // puntos que se pierden al chocar
-const GRACIA_MS = 1300; // protección al volver de una caída
+const GRACIA_MS = 1800; // protección al volver de una caída
 
-// los rivales aprietan más según tu rango: reaccionan antes, fallan menos y van
-// más rápidos. en bronce dan tiempo; en maestro casi no perdonan.
+// variable interna: con el rango suben la reacción y la puntería, pero la
+// velocidad es exactamente la misma que la tuya. no se enseña en el menú.
 const DIFICULTAD_RIVALES = [
-  { cada: 210, fallo: 0.3, ritmo: 1.14 }, // bronce
-  { cada: 180, fallo: 0.24, ritmo: 1.1 }, // plata
-  { cada: 150, fallo: 0.17, ritmo: 1.05 }, // oro
-  { cada: 120, fallo: 0.11, ritmo: 1 }, // platino
-  { cada: 90, fallo: 0.06, ritmo: 0.96 }, // diamante
-  { cada: 62, fallo: 0.02, ritmo: 0.92 }, // maestro
-];
-// kobra es el más fuerte de los tres; mamba, el más tranquilo
-const TONO_RIVAL = [
-  { cada: 0.86, fallo: 0.7, ritmo: 0.97 },
-  { cada: 0.97, fallo: 1, ritmo: 1 },
-  { cada: 1.12, fallo: 1.3, ritmo: 1.03 },
+  { cada: 190, fallo: 0.26 }, // bronce
+  { cada: 175, fallo: 0.22 }, // plata
+  { cada: 160, fallo: 0.18 }, // oro
+  { cada: 145, fallo: 0.14 }, // platino
+  { cada: 130, fallo: 0.1 }, // diamante
+  { cada: 115, fallo: 0.06 }, // maestro
 ];
 
 function dificultadRivales(nivel) {
   const i = Math.max(0, Math.min(DIFICULTAD_RIVALES.length - 1, Number(nivel) || 0));
   return DIFICULTAD_RIVALES[i];
-}
-
-function ajusteRival(nivel, posicion) {
-  const base = dificultadRivales(nivel);
-  const tono = TONO_RIVAL[Math.max(0, Math.min(TONO_RIVAL.length - 1, posicion))] || TONO_RIVAL[1];
-  return {
-    cada: Math.max(45, Math.round(base.cada * tono.cada)),
-    fallo: Math.min(0.45, base.fallo * tono.fallo),
-    ritmo: base.ritmo * tono.ritmo,
-  };
-}
-
-// cinco bloques para enseñar la fuerza de cada rival en el menú
-function fuerzaRival(nivel, posicion) {
-  const k = Math.max(0, Math.min(5, Number(nivel) || 0));
-  const tono = [1, 0, -1][Math.max(0, Math.min(2, posicion))] || 0;
-  return Math.max(1, Math.min(5, 1 + Math.round(k * 0.8) + tono));
 }
 
 // el icono del rango: una barra más por cada nivel, todo a bloques
@@ -4897,15 +4936,6 @@ function menuCompetitivo() {
     return `<span class="escalon${clase}" title="${r.nombre}"${actual}>${iconoRango(r.nivel)}<em>${r.nombre}</em></span>`;
   }).join('');
 
-  // los tres rivales, con su fuerza de hoy: sube contigo de rango
-  const rivales = RIVAL_NAMES.map((nombre, i) => {
-    const fuerza = fuerzaRival(info.nivel, i);
-    const bloques = [1, 2, 3, 4, 5]
-      .map((n) => `<i${n <= fuerza ? ' class="lleno"' : ''}></i>`)
-      .join('');
-    return `<li><span class="comp-rival">${nombre}</span><span class="comp-fuerza" aria-label="${t('compStrength')} ${fuerza}/5">${bloques}</span></li>`;
-  }).join('');
-
   ponerOverlay(`<div class="panel competitivo">
     <div class="comp-top">
       <span>${t('modeCompetitive')}</span>
@@ -4926,10 +4956,7 @@ function menuCompetitivo() {
       ${dato(puntos(guardado.stats.wins), t('labelWins'))}
       ${dato('60<small>s</small>', t('labelRound'))}
     </div>
-    <div class="comp-rivales">
-      <p class="comp-sub"><span>${t('compRivals')}</span><span>${t('compStrength')}</span></p>
-      <ul>${rivales}</ul>
-    </div>
+    <p class="comp-rivales"><span>${t('compRivals')}</span><span>${RIVAL_NAMES.join(' · ')}</span></p>
     <p class="comp-reglas"><span>60 s</span><span>${t('compDrop')}</span><span>${t('compProtected')}</span></p>
     <div class="acciones">
       <button class="principal" type="button" data-accion="jugarCompetitivo">${t('play')} <kbd>↵</kbd></button>
@@ -4948,8 +4975,8 @@ function menuCompetitivo() {
   enfocarPrimero('button[data-accion="jugarCompetitivo"]');
 }
 
-// sorteo: mapa y modificador, los mismos para los cuatro tableros. se anuncia
-// con una animación corta y la partida arranca sola, sin botones
+// sorteo: mapa y modificador, los mismos para los cuatro tableros. los nombres
+// giran unos instantes, se fijan con un golpe de bloque y la partida arranca sola
 function prepararCompetitivo() {
   pararTemporizador();
   app.juego = null;
@@ -4961,23 +4988,75 @@ function prepararCompetitivo() {
 
   const nivel = LEVELS[app.arena.indice];
   const mod = app.arena.mods[0];
+  const nombres = LEVELS.map((n) => levelName(n.name));
+  const azar = (lista) => lista[Math.floor(Math.random() * lista.length)];
+
   ponerOverlay(`<div class="panel sorteo">
     <p class="sorteo-etiqueta">${t('competitiveDraw')}</p>
-    <p class="sorteo-mapa">${levelName(nivel.name)}</p>
-    <p class="sorteo-mod">${t('mod_' + mod)}</p>
+    <div class="sorteo-caja">
+      <p class="sorteo-mapa girando" id="sorteo-mapa">${azar(nombres)}</p>
+      <p class="sorteo-mod girando" id="sorteo-mod">${t('mod_' + azar(MODS_COMPETITIVO))}</p>
+    </div>
+    <div class="sorteo-linea" aria-hidden="true"><i></i></div>
+    <p class="sorteo-pie">${t('compBoards')} · 60 s</p>
   </div>`);
 
   el.meta.textContent = t('modeCompetitive');
-  el.best.textContent = `${levelName(nivel.name)} · ${t('mod_' + mod)}`;
+  el.best.textContent = '';
   el.score.textContent = '—';
   el.pause.disabled = true;
   el.prompt.classList.remove('visible');
   pantalla('preview');
-  // sin botón: tras la animación empieza la cuenta atrás y la partida
+
+  const mapa = document.getElementById('sorteo-mapa');
+  const modo = document.getElementById('sorteo-mod');
+  const fijar = () => {
+    if (mapa) {
+      mapa.textContent = levelName(nivel.name);
+      mapa.classList.remove('girando');
+      mapa.classList.add('fija');
+    }
+    if (modo) {
+      modo.textContent = t('mod_' + mod);
+      modo.classList.remove('girando');
+      modo.classList.add('fija');
+    }
+    el.best.textContent = `${levelName(nivel.name)} · ${t('mod_' + mod)}`;
+    audio.play('tick');
+  };
+
+  if (sinMovimiento()) {
+    fijar();
+    app.temporizador = setTimeout(() => {
+      app.temporizador = 0;
+      if (app.pantalla === 'preview') empezarCompetitivo();
+    }, 1100);
+    return;
+  }
+
+  // ruleta corta: cambia de nombre sin saltos y luego se queda el sorteado
+  let vueltas = 0;
+  app.sorteoRuleta = setInterval(() => {
+    vueltas++;
+    if (vueltas >= 11) {
+      clearInterval(app.sorteoRuleta);
+      app.sorteoRuleta = 0;
+      fijar();
+      return;
+    }
+    if (mapa) mapa.textContent = azar(nombres);
+    if (modo) modo.textContent = t('mod_' + azar(MODS_COMPETITIVO));
+  }, 85);
+
+  // sin botón: la ruleta se fija y empieza la cuenta atrás
   app.temporizador = setTimeout(() => {
     app.temporizador = 0;
+    if (app.sorteoRuleta) {
+      clearInterval(app.sorteoRuleta);
+      app.sorteoRuleta = 0;
+    }
     if (app.pantalla === 'preview') empezarCompetitivo();
-  }, 1700);
+  }, 2050);
 }
 
 // cuatro tableros iguales, cada uno con su serpiente
@@ -4994,11 +5073,10 @@ function empezarCompetitivo() {
   ponerOverlay(null);
 
   const nivelRivales = rankInfo(guardado.competitive.points).nivel;
+  const dificultad = dificultadRivales(nivelRivales);
   for (let i = 0; i < TOTAL_TABLEROS; i++) {
-    const ajuste = i === 0 ? null : ajusteRival(nivelRivales, i - 1);
-    const cfg = i === 0
-      ? { ...configuracionArena(), graciaMs: GRACIA_MS }
-      : { ...configuracionRival(ajuste.ritmo), graciaMs: GRACIA_MS };
+    // misma velocidad, mismo mapa y mismo modificador para los cuatro
+    const cfg = { ...configuracionArena(), graciaMs: GRACIA_MS };
     const juego = new Game(
       cfg,
       i === 0 ? eventosJuego : (tipo, datos) => eventoRival(i, tipo, datos),
@@ -5011,8 +5089,8 @@ function empezarCompetitivo() {
       vivo: true,
       puesto: 0,
       acum: 0,
-      cada: ajuste ? ajuste.cada : 0,
-      fallo: ajuste ? ajuste.fallo : 0,
+      cada: i === 0 ? 0 : dificultad.cada,
+      fallo: i === 0 ? 0 : dificultad.fallo,
     });
   }
   app.juego = app.tableros[0].juego;
@@ -5133,7 +5211,13 @@ function actualizarTableros() {
     const texto = String(Math.round(tab.juego.score));
     if (datos.textContent !== texto) datos.textContent = texto;
     fig.classList.toggle('revive', tab.juego.state === 'dead');
-    fig.classList.toggle('protegido', tab.juego.gracia > 0);
+    const protegido = tab.juego.gracia > 0;
+    fig.classList.toggle('protegido', protegido);
+    const estado = fig.querySelector('.tablero-estado');
+    if (estado) {
+      const texto = protegido ? t('compProtected') : '';
+      if (estado.textContent !== texto) estado.textContent = texto;
+    }
   });
 }
 
@@ -5576,6 +5660,15 @@ function accion(nombre) {
   }
   if (nombre === 'padConectado') {
     el.hint.textContent = t('gamepadConnected');
+    return;
+  }
+
+  if (nombre === 'scrollUp' || nombre === 'scrollDown' || nombre === 'scrollTop' || nombre === 'scrollBottom') {
+    const caja = el.overlay;
+    if (!caja || !caja.classList.contains('abierto')) return;
+    if (nombre === 'scrollTop') caja.scrollTop = 0;
+    else if (nombre === 'scrollBottom') caja.scrollTop = caja.scrollHeight;
+    else caja.scrollTop += (nombre === 'scrollUp' ? -1 : 1) * Math.max(120, Math.round(caja.clientHeight * 0.8));
     return;
   }
 
