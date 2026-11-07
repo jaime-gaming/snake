@@ -1,8 +1,8 @@
-# snake — v2.0
+# snake — v2.1
 
 A monochrome grid-based Snake game with no external dependencies or network requests. It supports English and Spanish, remembers the selected language in the browser, and works with a keyboard, touch controls, and a gamepad. It is served from its own domain, **https://snake.jaime-gaming.com**, via **Cloudflare Workers**.
 
-v2.0 adds a **time attack** mode, a **competitive** mode against three bots, ten more campaign levels (30 total, some of them with rule modifiers), and a **profile** screen with lifetime stats.
+v2.1 turns the competitive mode into a quick-match arena: every match draws a **random map and modifier** (the same for everyone), each snake starts in **its own quadrant**, and placing earns **cups** that climb **ranks**. Frenzy now throws **waves of extra fruit** and short **speed pulses**, time attack shows a **big clock** over the board, and clearing a campaign level just says so. The site moved from GitHub Pages to **Cloudflare Workers** on its own domain.
 
 ## Controls
 
@@ -23,10 +23,12 @@ The home screen has three groups: **progress**, **endless**, and **competitive**
 
 - **Campaign** — 30 hand-designed levels. Clear each level to unlock the next. There is no score: progress is measured by apples collected and remaining. Some levels carry a **modifier** that changes the rules instead of (or besides) the map: level 8 and 21 get *walls that appear*, level 12 is *no boost*, level 16 and 30 have a *clock*, and level 26 brings the *hunter* into the campaign. The HUD shows the active modifier next to the level name.
 - **Classic** — Endless play. Each fruit speeds up the snake; walls begin to appear after 30 fruits.
-- **Frenzy** — The edges wrap around, and the snake gradually speeds up over time.
+- **Frenzy** — The edges wrap around and the snake gradually speeds up. Every 16 seconds a **wave of three extra fruits** lands (they blink before vanishing) and every 11 seconds a **speed pulse** pushes everyone faster for a moment.
 - **Hunter** — A red snake eats blue pellets and then pursues you. Its head is dangerous; its body and pellets are safe. If it collides with your body, it disappears and returns smaller. You can eat the blue pellets too.
-- **Time attack** — You start with **30 seconds**. Every fruit adds 3 seconds (up to a cap), the HUD clock flashes red under 10 seconds, and when time runs out the run ends.
-- **Competitive** — Three bot snakes share the arena with you. Walls, your own body, and any rival's body are deadly; head-on collisions knock out both snakes. The last one standing wins, and if you fall you see your placing (e.g. "3rd of 4").
+- **Time attack** — You start with **30 seconds**, shown as a **big clock** over the board. Every fruit adds 3 seconds (up to a cap); under 10 seconds the clock turns red and blinks, and when time runs out the run ends.
+- **Competitive** — Quick match against three bots on a board split into **four quadrants**, one per snake. Each match **draws an arena** (the walls of a campaign map) and **one modifier** — *walls that appear*, a *clock* (45 s, extended by fruit), the *hunter*, or *no boost* — and everyone plays the same draw; the HUD shows both. Walls, your own body, and any rival's body are deadly; head-on collisions knock out both snakes. The last one standing wins.
+
+  Placing awards **cups**: 1st +25, 2nd +10, 3rd +5, 4th +0. Cups climb six **ranks** — bronze (0), silver (100), gold (250), platinum (500), diamond (750), master (1000) — and both cups and rank appear on the result screen and in the profile. The draw is new on every match, so the result screen is a one-minute loop: retry and you get another arena.
 
 Power-ups vary by mode:
 
@@ -41,7 +43,7 @@ Ghost passes through hazards; slow reduces speed; shrink shortens the tail; shie
 
 ## Profile
 
-The home screen has a **profile** link (route `/perfil`, `/profile`). It shows lifetime stats saved in the browser: games played, competitive wins, fruits collected, time played, best chain, and best score. Clearing records in settings wipes them too.
+The home screen has a **profile** link (route `/perfil`, `/profile`). It shows lifetime stats saved in the browser: games played, competitive wins, fruits collected, time played, best chain, best score, plus competitive **cups** and the current **rank**. Clearing records in settings wipes them too.
 
 ## Home screen
 

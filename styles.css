@@ -210,6 +210,10 @@ button:disabled {
   letter-spacing: 0.12em;
   color: var(--dim);
   white-space: nowrap;
+  /* en competitivo aquí va «arena · modificador»: si no cabe, se recorta */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .tools {
@@ -290,6 +294,72 @@ button:disabled {
 
 #prompt.visible {
   opacity: 1;
+}
+
+/* contrarreloj: el tiempo en grande encima del tablero, sin tapar el juego */
+#stage.con-reloj {
+  /* el hueco del reloj lo pone main.js según su altura real */
+  justify-content: center;
+}
+
+#reloj {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 12px 4px;
+  border: 1px solid var(--line2);
+  background: rgba(0, 0, 0, 0.72);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--fg);
+  pointer-events: none;
+  z-index: 20;
+}
+
+#reloj b {
+  font-size: clamp(38px, 9vmin, 86px);
+  font-weight: 600;
+  line-height: 1;
+  transition: color 0.16s ease;
+}
+
+#reloj span {
+  font-size: clamp(11px, 2.4vmin, 18px);
+  color: var(--muted);
+}
+
+#reloj.urgente {
+  border-color: var(--accent);
+}
+
+#reloj.urgente b {
+  color: var(--accent);
+  animation: reloj-late 0.9s steps(1, end) infinite;
+}
+
+#reloj.parado {
+  border-color: var(--line);
+}
+
+#reloj.parado b {
+  color: var(--muted);
+  animation: none;
+}
+
+@keyframes reloj-late {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #reloj.urgente b {
+    animation: none;
+  }
 }
 
 /* capa de menús */

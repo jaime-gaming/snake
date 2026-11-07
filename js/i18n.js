@@ -3,8 +3,8 @@
 const KEY = 'snake.language';
 const STRINGS = {
   es: {
-    documentTitle: 'Snake — v2.0',
-    description: 'Snake v2.0: campaña de 30 niveles con modificadores, contrarreloj, competitivo contra bots y perfil.',
+    documentTitle: 'Snake — v2.1',
+    description: 'Snake v2.1: campaña de 30 niveles con modificadores, competitivo con arena al azar y copas, contrarreloj con reloj grande y perfil.',
     language: 'Idioma',
     sound: 'sonido',
     soundTitleOn: 'sonido activo (M)',
@@ -27,17 +27,17 @@ const STRINGS = {
     groupEndless: 'infinitos',
     groupEndlessTag: 'puntuación sin final',
     groupCompetitive: 'competitivo',
-    groupCompetitiveTag: 'contra bots en la misma arena',
+    groupCompetitiveTag: 'arena y modificador al azar · copas y rangos',
     modeClassic: 'clásico',
     modeClassicTag: 'cada fruta acelera · muros al llegar a 30 frutas',
     modeFrenzy: 'frenesí',
-    modeFrenzyTag: 'bordes abiertos y la velocidad sube sola',
+    modeFrenzyTag: 'bordes abiertos · olas de fruta y picos de velocidad',
     modeHunter: 'cazador',
     modeHunterTag: 'una serpiente roja come puntos azules y crece',
     modeTimed: 'contrarreloj',
     modeTimedTag: '30 segundos · cada fruta suma 3',
     modeCompetitive: 'competitivo',
-    modeCompetitiveTag: 'tres bots · gana el último en pie',
+    modeCompetitiveTag: 'mapa y modificador al azar · tres bots · copas en juego',
     levelNames: {
       LLANO: 'llano', CRUZ: 'cruz', PILARES: 'pilares', ANILLO: 'anillo', ZIGZAG: 'zigzag',
       COLUMNAS: 'columnas', 'DOBLE ANILLO': 'doble anillo', REJILLA: 'rejilla', JAULA: 'jaula',
@@ -98,16 +98,15 @@ const STRINGS = {
     gameRules: 'reglas de juego',
     ruleChain: 'sólo en modos infinitos: cadena hasta ×5; cubos dan premios o poderes.',
     ruleCampaign: 'campaña: manzanas, no puntos; la última fruta es dorada.',
-    ruleModes: 'frenesí: los bordes dan la vuelta. cazador: come puntos y después te persigue.',
+    ruleModes: 'frenesí: bordes abiertos, olas de fruta y picos de velocidad.',
     ruleHunter: 'cazador: su cabeza te mata; su cuerpo y los puntos son seguros.',
     ruleTimed: 'contrarreloj: 30 s y cada fruta suma 3 s; el tiempo no perdona.',
-    ruleCompetitive: 'competitivo: choca contra un rival y caes; gana el último en pie.',
+    ruleCompetitive: 'competitivo: arena y modificador al azar; ganas copas; último en pie.',
     ruleMods: 'algunos niveles llevan modificador: muros, reloj, cazador o sin turbo.',
     powerBasics: 'fantasma atraviesa obstáculos; lento baja el ritmo; recorte acorta la cola.',
     powerAdvanced: 'los poderes dependen del modo; el escudo salva un choque y doble dura 7 s.',
     gridMode: 'rejilla',
     levelNumberName: 'nivel {number} {name}',
-    nextLevelMeta: 'siguiente · {name} · {goal} {unit}',
     recordFruitMeta: 'récord {record} · {fruits} {unit}',
     recordNew: 'récord nuevo',
     end: 'fin',
@@ -154,6 +153,14 @@ const STRINGS = {
     mod_reloj: 'reloj',
     mod_cazador: 'cazador',
     mod_turbo: 'sin turbo',
+    mod_ninguno: 'sin modificador',
+    cups: '{count} copas',
+    cupsWon: '+{count} copas',
+    newRank: '¡nuevo rango: {name}!',
+    rankBronze: 'bronce', rankSilver: 'plata', rankGold: 'oro',
+    rankPlatinum: 'platino', rankDiamond: 'diamante', rankMaster: 'maestro',
+    statsCups: 'copas',
+    statsRank: 'rango',
     win: '¡has ganado!',
     profile: 'perfil',
     profileTitle: 'tu perfil',
@@ -185,7 +192,7 @@ const STRINGS = {
   },
   en: {
     documentTitle: 'Snake — v2.0',
-    description: 'Snake v2.0: 30-level campaign with modifiers, time attack, bot competitive mode, and profile.',
+    description: 'Snake v2.1: 30-level campaign with modifiers, competitive with random arenas and cups, time attack with a big clock, and a profile.',
     language: 'Language',
     sound: 'sound',
     soundTitleOn: 'sound on (M)',
@@ -208,17 +215,17 @@ const STRINGS = {
     groupEndless: 'endless',
     groupEndlessTag: 'chase a high score',
     groupCompetitive: 'competitive',
-    groupCompetitiveTag: 'against bots in the same arena',
+    groupCompetitiveTag: 'random arena and modifier · cups and ranks',
     modeClassic: 'classic',
     modeClassicTag: 'each fruit speeds you up · walls begin at 30 fruits',
     modeFrenzy: 'frenzy',
-    modeFrenzyTag: 'open edges · your speed keeps rising',
+    modeFrenzyTag: 'open edges · fruit waves and speed pulses',
     modeHunter: 'hunter',
     modeHunterTag: 'a red snake eats blue pellets and grows',
     modeTimed: 'time attack',
     modeTimedTag: '30 seconds · each fruit adds 3',
     modeCompetitive: 'competitive',
-    modeCompetitiveTag: 'three bots · last one standing wins',
+    modeCompetitiveTag: 'random map and modifier · three bots · cups at stake',
     levelNames: {
       LLANO: 'open field', CRUZ: 'cross', PILARES: 'pillars', ANILLO: 'ring', ZIGZAG: 'zigzag',
       COLUMNAS: 'columns', 'DOBLE ANILLO': 'double ring', REJILLA: 'grid', JAULA: 'cage',
@@ -279,16 +286,15 @@ const STRINGS = {
     gameRules: 'game rules',
     ruleChain: 'endless modes only: chain up to ×5; blocks drop bonuses or power-ups.',
     ruleCampaign: 'campaign: apples, not points; the final fruit is golden.',
-    ruleModes: 'frenzy: wrap around the edges. hunter: eat pellets, then stay ahead.',
+    ruleModes: 'frenzy: open edges, fruit waves, and speed pulses.',
     ruleHunter: 'hunter: its head is deadly; its body and pellets are safe.',
     ruleTimed: 'time attack: 30 s and each fruit adds 3 s; time shows no mercy.',
-    ruleCompetitive: 'competitive: crash into a rival and you fall; last one standing wins.',
+    ruleCompetitive: 'competitive: random arena and modifier, cups by placing; last one standing.',
     ruleMods: 'some levels add a modifier: walls, clock, hunter, or no boost.',
     powerBasics: 'ghost passes hazards; slow eases the pace; shrink trims your tail.',
     powerAdvanced: 'available powers depend on the mode; shield saves one crash and double lasts 7 s.',
     gridMode: 'grid',
     levelNumberName: 'level {number} {name}',
-    nextLevelMeta: 'next · {name} · {goal} {unit}',
     recordFruitMeta: 'best {record} · {fruits} {unit}',
     recordNew: 'new record',
     end: 'game over',
@@ -335,6 +341,14 @@ const STRINGS = {
     mod_reloj: 'clock',
     mod_cazador: 'hunter',
     mod_turbo: 'no boost',
+    mod_ninguno: 'no modifier',
+    cups: '{count} cups',
+    cupsWon: '+{count} cups',
+    newRank: 'new rank: {name}!',
+    rankBronze: 'bronze', rankSilver: 'silver', rankGold: 'gold',
+    rankPlatinum: 'platinum', rankDiamond: 'diamond', rankMaster: 'master',
+    statsCups: 'cups',
+    statsRank: 'rank',
     win: 'you won!',
     profile: 'profile',
     profileTitle: 'your profile',
@@ -433,6 +447,17 @@ export function groupTag(index) {
 export function levelName(name) {
   const names = STRINGS[language].levelNames || STRINGS.es.levelNames;
   return names[name] || String(name).toLowerCase();
+}
+
+const UMBRALES_RANGO = [1000, 750, 500, 250, 100, 0];
+const CLAVES_RANGO = ['rankMaster', 'rankDiamond', 'rankPlatinum', 'rankGold', 'rankSilver', 'rankBronze'];
+
+export function rankName(cups) {
+  const n = Math.max(0, Number(cups) || 0);
+  for (let i = 0; i < UMBRALES_RANGO.length; i++) {
+    if (n >= UMBRALES_RANGO[i]) return t(CLAVES_RANGO[i]);
+  }
+  return t('rankBronze');
 }
 
 export function fruitUnit(count) {

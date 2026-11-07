@@ -59,12 +59,17 @@ export class Game {
     this.timeLeft = cfg.timeAttack ? cfg.timeAttack.start : 0;
     this.ultimoSegundo = -1;
     this.rank = 0;
+    // frenesí: olas de fruta extra y picos de velocidad
+    this.extraFoods = [];
+    this.waveTimer = 0;
+    this.pulseTimer = 0;
+    this.pulseLeft = 0;
+    this.pendingWalls = [];
     if (cfg.bots) {
       for (let i = 0; i < cfg.bots; i++) this.rivals.push(this.nacerRival(i));
     }
     this.reveal = 0;
     this.chomp = 0;
-    this.pendingWalls = [];
     this.turbo = false;
     this.time = 0;
     this.shake = 0;
@@ -82,7 +87,60 @@ export class Game {
     }
   }
 
+  // competitivo: el tablero se parte en 4 parcelas; cada serpiente nace en la suya
+  cuadranteStart(i) {
+    const libre = (x, y) =>
+      x >= 0 && y >= 0 && x < this.cols && y < this.rows && !this.wallSet.has(K(x, y));
+    const esquinas = [
+      { x: 2, y: 3, dir: { x: 0, y: 1 } },
+      { x: this.cols - 3, y: 3, dir: { x: 0, y: 1 } },
+      { x: 2, y: this.rows - 4, dir: { x: 0, y: -1 } },
+      { x: this.cols - 3, y: this.rows - 4, dir: { x: 0, y: -1 } },
+    ];
+    const vale = (b, largo = 4) => {
+      for (let n = 0; n < largo; n++) {
+        if (!libre(b.x - b.dir.x * n, b.y - b.dir.y * n)) return false;
+      }
+      return true;
+    };
+    const cu = i % 4;
+    if (vale(esquinas[cu])) return esquinas[cu];
+
+    // la esquina está tapada: se busca dentro de la parcela, de dentro afuera
+    const w = Math.floor(this.cols / 2);
+    const h = Math.floor(this.rows / 2);
+    const mx = (cu % 2) * w;
+    const my = (cu < 2 ? 0 : h);
+    const celdas = [];
+    for (let y = my; y < Math.min(this.rows, my + h); y++) {
+      for (let x = mx; x < Math.min(this.cols, mx + w); x++) celdas.push({ x, y });
+    }
+    const esquina = esquinas[cu];
+    celdas.sort((a, b) =>
+      (Math.abs(a.x - esquina.x) + Math.abs(a.y - esquina.y)) -
+      (Math.abs(b.x - esquina.x) + Math.abs(b.y - esquina.y)));
+    const rumbos = DIRS.map(([dx, dy]) => ({ x: dx, y: dy }));
+    for (const c of celdas) {
+      for (const dir of rumbos) {
+        const b = { x: c.x, y: c.y, dir };
+        if (vale(b)) return b;
+      }
+    }
+    // parcela muy cerrada: al menos una casilla libre dentro de ella
+    for (const c of celdas) {
+      for (const dir of rumbos) {
+        const b = { x: c.x, y: c.y, dir };
+        if (vale(b, 1)) return b;
+      }
+    }
+    return null;
+  }
+
   findStart() {
+    if (this.cfg.bots) {
+      const c = this.cuadranteStart(0);
+      if (c) return c;
+    }
     const free = (x, y) =>
       x >= 0 && y >= 0 && x < this.cols && y < this.rows && !this.wallSet.has(K(x, y));
     const ring = (n, c) => {
@@ -133,7 +191,8 @@ export class Game {
 
   interval() {
     const slow = this.fx.slow > 0 ? 1.5 : 1;
-    return Math.max(42, this.speed * (this.turbo ? 0.68 : 1) * slow);
+    const pulso = this.pulseLeft > 0 ? 0.82 : 1;
+    return Math.max(42, this.speed * (this.turbo ? 0.68 : 1) * slow * pulso);
   }
 
   setDirection(dx, dy) {
@@ -186,6 +245,31 @@ export class Game {
       const cfg = this.cfg;
       if (cfg.rampPerSec) {
         this.speed = Math.max(cfg.minSpeed, this.speed - (cfg.rampPerSec * dt) / 1000);
+      }
+      // frenesí: cada X segundos una ola de frutas extra, y picos de velocidad
+      if (cfg.waveEvery) {
+        this.waveTimer += dt;
+        if (this.waveTimer >= cfg.waveEvery) {
+          this.waveTimer = 0;
+          this.spawnWave();
+        }
+      }
+      for (let i = this.extraFoods.length - 1; i >= 0; i--) {
+        this.extraFoods[i].ttl -= dt;
+        if (this.extraFoods[i].ttl <= 0) this.extraFoods.splice(i, 1);
+      }
+      if (cfg.pulseEvery) {
+        if (this.pulseLeft > 0) {
+          this.pulseLeft -= dt;
+        } else {
+          this.pulseTimer += dt;
+          if (this.pulseTimer >= cfg.pulseEvery) {
+            this.pulseTimer = 0;
+            this.pulseLeft = cfg.pulseMs || 1500;
+            this.flash = Math.max(this.flash, 0.1);
+            this.emit('pulse');
+          }
+        }
       }
       // contrarreloj: el tiempo corre y cada segundo bajo aviso hace tick
       if (cfg.timeAttack) {
@@ -333,6 +417,7 @@ export class Game {
     }
 
     const eats = this.food && hx === this.food.x && hy === this.food.y;
+    const extraIdx = this.extraFoods.findIndex((f) => f.x === hx && f.y === hy);
     const takesBonus = this.bonus && hx === this.bonus.x && hy === this.bonus.y;
     const takesPower = this.power && hx === this.power.x && hy === this.power.y;
     const willGrow = this.grow > 0 || eats || takesBonus;
@@ -349,6 +434,7 @@ export class Game {
     if (this.grow > 0) this.grow--;
     else this.body.pop();
 
+    if (extraIdx >= 0) this.eatExtra(extraIdx);
     if (eats) this.eatFood();
     if (takesBonus) this.eatBonus();
     if (takesPower) this.takePower();
@@ -393,6 +479,67 @@ export class Game {
       this.state = 'cleared';
       this.emit('clear', { fruits: this.fruits, score: this.score });
     }
+  }
+
+  // ola de frenesí: frutas extra temporales repartidas por el tablero
+  spawnWave() {
+    const cuantas = Math.min(this.cfg.waveFruits || 3, 6 - this.extraFoods.length);
+    const ttl = this.cfg.waveTtl || 9000;
+    for (let i = 0; i < cuantas; i++) {
+      const c = this.freeCell(1);
+      if (!c) break;
+      this.extraFoods.push({ ...c, ttl });
+    }
+    if (cuantas > 0) {
+      this.flash = Math.max(this.flash, 0.2);
+      this.emit('wave', { cuantas });
+    }
+  }
+
+  eatExtra(idx) {
+    const cfg = this.cfg;
+    const f = this.extraFoods.splice(idx, 1)[0];
+    this.fruits++;
+    this.grow += 1;
+    this.chain = Math.min(this.chain + 1, 30);
+    this.chainTimer = this.chainWindow;
+    this.score += 15 * this.multiplier * this.scoreFactor;
+    // la fruta de la ola también aprieta, pero la mitad que la de siempre
+    this.speed = Math.max(cfg.minSpeed, this.speed - (cfg.accelPerFood || 0) * 0.5);
+    this.shake = 2.2;
+    this.chomp = 1;
+    this.burst(f.x + 0.5, f.y + 0.5, 8, '#ffd21e', 6);
+    this.emit('eat', { chain: this.chain, multiplier: this.multiplier });
+    if (cfg.bonusEvery && this.fruits % cfg.bonusEvery === 0) this.spawnBonus();
+    if (cfg.powerEvery && this.fruits % cfg.powerEvery === 0) this.spawnPower();
+  }
+
+  // ola de frenesí: frutas extra temporales repartidas por el tablero
+  spawnWave() {
+    const cuantas = Math.min(this.cfg.waveFruits || 3, 6 - this.extraFoods.length);
+    const ttl = this.cfg.waveTtl || 9000;
+    for (let i = 0; i < cuantas; i++) {
+      const c = this.freeCell(1);
+      if (!c) break;
+      this.extraFoods.push({ ...c, ttl });
+    }
+    if (cuantas > 0) {
+      this.flash = Math.max(this.flash, 0.2);
+      this.emit('wave', { cuantas });
+    }
+  }
+
+  eatExtra(idx) {
+    const f = this.extraFoods.splice(idx, 1)[0];
+    this.fruits++;
+    this.grow += 1;
+    this.chain = Math.min(this.chain + 1, 30);
+    this.chainTimer = this.chainWindow;
+    this.score += 15 * this.multiplier * this.scoreFactor;
+    this.shake = 2.2;
+    this.chomp = 1;
+    this.burst(f.x + 0.5, f.y + 0.5, 8, '#ffd21e', 6);
+    this.emit('eat', { chain: this.chain, multiplier: this.multiplier });
   }
 
   // los puntos azules también son para ti: quitaselo y el cazador no crece
@@ -451,20 +598,15 @@ export class Game {
      los rivales son serpientes bot en la misma arena: cada uno con su cuerpo,
      su cola de giros y sus propios efectos. el último en pie gana. */
 
-  // nace en una esquina, con cuatro anillos mirando al centro y lejos de ti
+  // nace en su propia parcela (cuadrante i+1), con cuatro anillos
   nacerRival(i) {
     const cabezaJugador = this.body[0];
-    const esquinas = [
-      { x: 2, y: 3, dir: { x: 0, y: 1 } },
-      { x: this.cols - 3, y: 3, dir: { x: 0, y: 1 } },
-      { x: 2, y: this.rows - 4, dir: { x: 0, y: -1 } },
-      { x: this.cols - 3, y: this.rows - 4, dir: { x: 0, y: -1 } },
-    ];
+    const base0 = this.cuadranteStart((i + 1) % 4);
     const libre = (x, y) =>
       x >= 0 && y >= 0 && x < this.cols && y < this.rows &&
       !this.wallSet.has(K(x, y)) &&
       !this.body.some((s) => s.x === x && s.y === y);
-    let base = esquinas[i % esquinas.length];
+    let base = base0 || { x: this.cols - 3, y: 3, dir: { x: 0, y: 1 } };
     const vale = (b) => {
       const cuerpo = [];
       for (let n = 0; n < 4; n++) {
@@ -476,7 +618,12 @@ export class Game {
       return cuerpo;
     };
     let cuerpo = vale(base);
-    if (!cuerpo || Math.abs(base.x - cabezaJugador.x) + Math.abs(base.y - cabezaJugador.y) < 8) {
+    if (this.cfg.bots) {
+      // cada uno nace en su parcela: nunca se busca fuera de ella
+      if (!cuerpo) {
+        cuerpo = [{ ...base }];
+      }
+    } else if (!cuerpo || Math.abs(base.x - cabezaJugador.x) + Math.abs(base.y - cabezaJugador.y) < 8) {
       // si la esquina no vale, busca un tramo libre lejos de ti
       for (let intento = 0; intento < 200 && !cuerpo; intento++) {
         const origen = this.freeCell(1);
@@ -836,6 +983,7 @@ export class Game {
     if (this.power && this.power.x === x && this.power.y === y) return true;
     if (this.hunter && this.hunter.body.some((p) => p.x === x && p.y === y)) return true;
     if (this.pellets.some((p) => p.x === x && p.y === y)) return true;
+    if (this.extraFoods.some((f) => f.x === x && f.y === y)) return true;
     for (const r of this.rivals) {
       if (r.alive && r.body.some((p) => p.x === x && p.y === y)) return true;
     }
@@ -852,6 +1000,10 @@ export class Game {
       if (this.hunter && this.hunter.body.some((p) => p.x === x && p.y === y)) return true;
       if (this.pellets.some((p) => p.x === x && p.y === y)) return true;
       if (this.pendingWalls.some((w) => w.x === x && w.y === y)) return true;
+      if (this.extraFoods.some((f) => f.x === x && f.y === y)) return true;
+      for (const r of this.rivals) {
+        if (r.alive && r.body.some((p) => p.x === x && p.y === y)) return true;
+      }
       return false;
     };
     for (let i = 0; i < 600; i++) {
@@ -866,7 +1018,13 @@ export class Game {
   }
 
   spawnFood() {
-    const libres = this.reachableFree().filter((c) => !this.ocupada(c.x, c.y));
+    let libres = this.reachableFree().filter((c) => !this.ocupada(c.x, c.y));
+    // competitivo: la comida cae en el centro, así las cuatro parcelas se cruzan
+    if (this.cfg.bots && libres.length) {
+      const centro = libres.filter((c) =>
+        c.x >= 4 && c.y >= 4 && c.x <= this.cols - 5 && c.y <= this.rows - 5);
+      if (centro.length) libres = centro;
+    }
     if (libres.length) {
       this.food = libres[rand(libres.length)];
       return;
@@ -1396,6 +1554,25 @@ export class Game {
       tramoBorde(ox + W - grosor, oy + j * cell, grosor, cell, this.cols - 1, j, 'der');
     }
 
+    // competitivo: las cuatro parcelas se marcan con una cruz tenue
+    if (this.cfg && this.cfg.bots) {
+      ctx.fillStyle = 'rgba(255,255,255,0.1)';
+      const mx = Math.round(ox + (this.cols / 2) * cell);
+      const my = Math.round(oy + (this.rows / 2) * cell);
+      ctx.fillRect(mx, oy, 1, H);
+      ctx.fillRect(ox, my, W, 1);
+      // esquinas de cada parcela: un punto que ayuda a leer tu zona
+      ctx.fillStyle = 'rgba(255,255,255,0.16)';
+      const marcar = (x, y) => {
+        const [px, py] = caja(x, y, Math.round(cell * 0.35), Math.round(cell * 0.3));
+        ctx.fillRect(px, py, Math.max(2, Math.round(cell * 0.28)), Math.max(2, Math.round(cell * 0.28)));
+      };
+      marcar(1, 1);
+      marcar(this.cols - 2, 1);
+      marcar(1, this.rows - 2);
+      marcar(this.cols - 2, this.rows - 2);
+    }
+
     // muros: cubo hueco
     const inset = Math.max(1, Math.round(cell * 0.08));
     for (const [x, y] of this.walls) {
@@ -1425,6 +1602,30 @@ export class Game {
           punto,
         );
       }
+    }
+
+    // frutas extra de la ola: contorno rojo punteado, parpadean al expirar
+    for (const f of this.extraFoods) {
+      if (f.ttl < 2200 && Math.floor(this.time / 140) % 2 === 0) continue;
+      const m = Math.round(cell * 0.18);
+      const [px, py, w] = caja(f.x, f.y, m, lado - m * 2);
+      ctx.strokeStyle = '#ff2b2b';
+      ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
+      ctx.setLineDash([Math.max(2, Math.round(cell * 0.14)), Math.max(2, Math.round(cell * 0.14))]);
+      ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
+      ctx.setLineDash([]);
+    }
+
+    // frutas extra de la ola: contorno rojo punteado, parpadean al expirar
+    for (const f of this.extraFoods) {
+      if (f.ttl < 2200 && Math.floor(this.time / 140) % 2 === 0) continue;
+      const m = Math.round(cell * 0.18);
+      const [px, py, w] = caja(f.x, f.y, m, lado - m * 2);
+      ctx.strokeStyle = '#ff2b2b';
+      ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
+      ctx.setLineDash([Math.max(2, Math.round(cell * 0.14)), Math.max(2, Math.round(cell * 0.14))]);
+      ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
+      ctx.setLineDash([]);
     }
 
     // comida: cubo rojo que respira. la que cierra el nivel va en amarillo

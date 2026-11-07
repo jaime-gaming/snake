@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 import { Game, POWER_INFO } from '../js/engine.js';
 import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS, POWER_POOLS } from '../js/levels.js';
-import { setLanguage, t, routeSlug, routeWords, levelName, fruitUnit, appleUnit } from '../js/i18n.js';
+import { setLanguage, t, routeSlug, routeWords, levelName, fruitUnit, appleUnit, rankName } from '../js/i18n.js';
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -187,32 +187,42 @@ LEVELS.forEach((nivel, i) => {
   comprobar(!!juego.food, `${etiqueta}: sin comida`);
   comprobar(!juego.food || !juego.wallSet.has(K(juego.food.x, juego.food.y)), `${etiqueta}: comida dentro de un muro`);
 
-  // el piloto automático debe poder terminarlo (la fruta sale al azar: hasta 3 intentos)
-  let intento = 0;
-  let ms = 0;
-  let frutas = 0;
-  while (intento < 3) {
-    intento++;
-    const partida = new Game(cfg, () => {});
-    ms = 0;
-    while (partida.state !== 'cleared' && partida.state !== 'dead' && ms < 120000) {
-      partida.botTurn();
-      partida.update(30);
-      ms += 30;
+  // el piloto automático debe poder terminarlo. la fruta sale al azar, así que
+  // se juega con una semilla fija por nivel: la batería no depende de la suerte
+  let semilla = 7000 + i * 37;
+  const azarOriginal = Math.random;
+  Math.random = () => {
+    semilla = (semilla * 1664525 + 1013904223) >>> 0;
+    return semilla / 4294967296;
+  };
+  try {
+    let intento = 0;
+    let ms = 0;
+    let frutas = 0;
+    while (intento < 4) {
+      intento++;
+      const partida = new Game(cfg, () => {});
+      ms = 0;
+      while (partida.state !== 'cleared' && partida.state !== 'dead' && ms < 120000) {
+        partida.botTurn();
+        partida.update(30);
+        ms += 30;
+      }
+      frutas = partida.fruits;
+      if (partida.state === 'cleared') {
+        process.stdout.write(
+          `  ${etiqueta}: cleared en ${Math.round(ms / 1000)} s, ${frutas}/${nivel.goal} frutas`
+          + `${intento > 1 ? ` (intento ${intento})` : ''}\n`,
+        );
+        break;
+      }
+      if (intento === 4) {
+        comprobar(false, `${etiqueta}: el piloto automático no lo termina (${partida.state})`);
+        process.stdout.write(`  ${etiqueta}: ${partida.state} en ${Math.round(ms / 1000)} s, ${frutas}/${nivel.goal} frutas\n`);
+      }
     }
-    frutas = partida.fruits;
-    if (partida.state === 'cleared') {
-      process.stdout.write(
-        `  ${etiqueta}: cleared en ${Math.round(ms / 1000)} s, ${frutas}/${nivel.goal} frutas`
-        + `${intento > 1 ? ` (intento ${intento})` : ''}\n`,
-      );
-      break;
-    }
-    frutas = partida.fruits;
-    if (intento === 3) {
-      comprobar(false, `${etiqueta}: el piloto automático no lo termina (${partida.state})`);
-      process.stdout.write(`  ${etiqueta}: ${partida.state} en ${Math.round(ms / 1000)} s, ${frutas}/${nivel.goal} frutas\n`);
-    }
+  } finally {
+    Math.random = azarOriginal;
   }
 });
 
@@ -274,7 +284,9 @@ for (const id of ['classic', 'frenzy', 'hunter', 'timed', 'competitive']) {
   } finally {
     Math.random = randomOriginal;
   }
-  comprobar(supervivientes >= 6, `${id}: sólo ${supervivientes}/8 simulaciones pasan de 30 s`);
+  // el competitivo es una arena de cuatro: morir antes de 30 s entra en el juego
+  const MINIMO = { competitive: 3 };
+  comprobar(supervivientes >= (MINIMO[id] || 6), `${id}: sólo ${supervivientes}/8 simulaciones pasan de 30 s`);
   process.stdout.write(
     `  ${id}: ${supervivientes}/8 a 30 s · ${Math.round(frutasTotales / 8)} frutas · ${Math.round(puntosTotales / 8)} puntos de media\n`,
   );
@@ -1092,8 +1104,8 @@ process.stdout.write('v2.0, idioma y publicación\n');
     && main.includes('El cuerpo se extiende de forma continua y lenta'),
   'marca: la e no se aproxima despacio y de forma continua a la manzana');
 
-  comprobar(pagina.includes('snake.js?v=18') && pagina.includes('styles.css?v=18') && pagina.includes('Snake — v2.0'),
-    'caché: falta la versión v2.0 (v18) en la página');
+  comprobar(pagina.includes('snake.js?v=19') && pagina.includes('styles.css?v=19') && pagina.includes('Snake — v2.1'),
+    'caché: falta la versión v2.1 (v19) en la página');
   comprobar(pagina.includes('id="lang-switch"') && idiomas.includes("en: {")
     && idiomas.includes('export function setLanguage'), 'idioma: falta el selector ES/EN o su traducción');
   setLanguage('en');
@@ -1167,6 +1179,152 @@ process.stdout.write('v2.0, idioma y publicación\n');
   comprobar(readme.includes('wrangler deploy') && readme.includes('snake.jaime-gaming.com')
     && readme.includes('not_found_handling'),
     'README: falta la guía de despliegue en Cloudflare Workers con el dominio');
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   v2.1: competitivo con arena sorteada, parcelas, copas y rangos; frenesí con
+   olas; reloj grande en contrarreloj; nivel superado sin resumen
+   ═══════════════════════════════════════════════════════════════════════════ */
+process.stdout.write('v2.1: arena al azar, parcelas, copas y frenesí\n');
+{
+  comprobar(main.includes('const MODS_COMPETITIVO') && main.includes("['muros', 'reloj', 'cazador', 'turbo']"),
+    'competitivo: el modificador no se sortea entre muros, reloj, cazador y sin turbo');
+  comprobar(main.includes('function sortearArena()') && main.includes('function elegir(lista)')
+    && main.includes('ARENAS_COMPETITIVO'),
+    'competitivo: falta el sorteo del mapa');
+  comprobar(main.includes('function datosArena(arena)') && main.includes('walls: datos.walls')
+    && main.includes('startSpeed: datos.startSpeed'),
+    'competitivo: la arena no toma los muros y el ritmo del mapa sorteado');
+  comprobar(main.includes("app.arena = modo === 'competitive' ? sortearArena() : null"),
+    'competitivo: la arena no se sortea al empezar la partida');
+  comprobar(main.includes('const COPAS_POR_PUESTO = [25, 10, 5, 0]') && main.includes('function copasDePartida(puesto)')
+    && main.includes('guardado.competitive.cups') && main.includes("fila('07', t('statsCups')"),
+    'competitivo: faltan las copas por puesto, su guardado o su fila en el perfil');
+  comprobar(main.includes("import { t,") && main.includes('rankName') && main.includes('rankName(copas.total)'),
+    'competitivo: el resultado no muestra el rango');
+  comprobar(idiomas.includes('rankMaster') && idiomas.includes('rankPlatinum')
+    && idiomas.includes('const UMBRALES_RANGO = [1000, 750, 500, 250, 100, 0]'),
+  'rangos: faltan los nombres de rango o sus umbrales');
+
+  comprobar(motor.includes('cuadranteStart(i)') && motor.includes('if (this.cfg.bots) {')
+    && motor.includes('this.rivals.push(this.nacerRival(i))'),
+    'parcelas: el motor no reparte los nacimientos por cuadrante');
+  comprobar(motor.includes('if (this.cfg && this.cfg.bots) {') && motor.includes('las cuatro parcelas'),
+    'parcelas: falta la cruz que separa las zonas en el dibujo');
+
+  comprobar(MODES.frenzy.waveEvery >= 8000 && MODES.frenzy.pulseEvery >= 6000
+    && motor.includes('spawnWave()') && motor.includes('eatExtra(idx)') && motor.includes('pulseLeft'),
+    'frenesí: faltan las olas de fruta o los picos de velocidad');
+
+  comprobar(pagina.includes('id="reloj"') && css.includes('#reloj b') && css.includes('#reloj.urgente')
+    && main.includes('function actualizarReloj(juego)') && main.includes("modo === 'timed'"),
+    'contrarreloj: falta el reloj grande sobre el tablero');
+
+  const superado = main.slice(main.indexOf('function mostrarNivelSuperado()'), main.indexOf('function mostrarVictoria()'));
+  comprobar(superado.length > 100 && !superado.includes('resumenManzanas')
+    && !superado.includes('nextLevelMeta') && !superado.includes('data-cifra'),
+    'campaña: el nivel superado sigue mostrando manzanas y el nivel siguiente');
+  comprobar(!idiomas.includes('nextLevelMeta'), 'campaña: queda la cadena del resumen del nivel siguiente');
+
+  comprobar(audio.length > 0, 'audio: fichero vacío');
+
+  // el motor reparte los nacimientos: una serpiente por parcela en varias arenas
+  let parcelasOk = 0;
+  const arenas = LEVELS.map((_, i) => i).filter((i) => i >= 2);
+  for (const indice of [arenas[0], arenas[6], arenas[14], arenas[arenas.length - 1]]) {
+    const nivel = LEVELS[indice];
+    const cfg = {
+      ...MODES.competitive,
+      walls: nivel.walls,
+      startSpeed: 140,
+      mods: ['muros'],
+      wallFrom: 4,
+      wallEvery: 5,
+      wallMax: 12,
+    };
+    const juego = new Game(cfg, () => {});
+    const cabezas = [juego.body[0], ...juego.rivals.map((r) => r.body[0])];
+    const zonas = new Set(cabezas.map((h) => `${h.x < 10 ? 0 : 1}${h.y < 10 ? 0 : 1}`));
+    const dentro = cabezas.every((h) => h.x >= 0 && h.y >= 0 && h.x < 20 && h.y < 20);
+    if (zonas.size === 4 && dentro && juego.rivals.length === 3) parcelasOk++;
+  }
+  comprobar(parcelasOk === 4, `parcelas: sólo ${parcelasOk}/4 arenas colocan a cada serpiente en su zona`);
+
+  // cada modificador de arena aguanta una partida con bots
+  const resultadosMods = [];
+  const randomArena = Math.random;
+  try {
+    for (const mod of ['muros', 'reloj', 'cazador', 'turbo']) {
+      let semilla = 900 + mod.length * 7;
+      Math.random = () => {
+        semilla = (semilla * 1664525 + 1013904223) >>> 0;
+        return semilla / 4294967296;
+      };
+      const cfg = { ...MODES.competitive, walls: LEVELS[3].walls, startSpeed: 140, mods: [mod] };
+      if (mod === 'muros') Object.assign(cfg, { wallFrom: 4, wallEvery: 5, wallMax: 12 });
+      if (mod === 'reloj') cfg.timeAttack = { start: 45000, perFruit: 3200, max: 120000 };
+      if (mod === 'cazador') Object.assign(cfg, { hunter: true, hunterPellets: 2, hunterCap: 12, hunterSight: 4 });
+      if (mod === 'turbo') cfg.noTurbo = true;
+      const juego = new Game(cfg, () => {});
+      let ms = 0;
+      let vivos = 0;
+      while (juego.state !== 'dead' && ms < 15000) {
+        juego.botTurn();
+        juego.update(30);
+        ms += 30;
+        vivos = Math.max(vivos, juego.rivals.filter((r) => r.alive).length);
+      }
+      const coherente = juego.body.length >= 1 && juego.rivals.length === 3
+        && juego.cfg.mods[0] === mod;
+      resultadosMods.push(coherente && ms >= 1000);
+    }
+  } finally {
+    Math.random = randomArena;
+  }
+  comprobar(resultadosMods.every(Boolean), 'competitivo: algún modificador rompe la partida con bots');
+
+  // frenesí: las olas llegan y las frutas extra existen mientras se juega
+  {
+    const juego = new Game({ ...MODES.frenzy }, () => {});
+    let olas = 0;
+    let extra = 0;
+    juego.onEvent = (tipo) => {
+      if (tipo === 'wave') olas++;
+    };
+    let ms = 0;
+    while (juego.state !== 'dead' && ms < 40000) {
+      juego.botTurn();
+      juego.update(30);
+      ms += 30;
+      extra = Math.max(extra, juego.extraFoods.length);
+    }
+    comprobar(olas >= 1, 'frenesí: no llega ninguna ola de fruta en 40 s');
+    comprobar(extra >= 1, 'frenesí: las olas no dejan fruta en el tablero');
+    process.stdout.write(`  frenesí: ${olas} olas · hasta ${extra} frutas extra a la vez\n`);
+  }
+
+  // copas por puesto: la tabla baja con el puesto y nunca resta
+  const copas = [25, 10, 5, 0];
+  comprobar(copas[0] > copas[1] && copas[1] > copas[2] && copas[2] > copas[3] && copas[3] === 0,
+    'copas: la tabla por puesto no es decreciente o resta copas');
+  setLanguage('es');
+  comprobar(rankName(0) === 'bronce' && rankName(120) === 'plata' && rankName(600) === 'platino'
+    && rankName(1500) === 'maestro', 'rangos: los umbrales españoles no cuadran');
+  setLanguage('en');
+  comprobar(rankName(0) === 'bronze' && rankName(260) === 'gold' && rankName(900) === 'diamond',
+    'rangos: los umbrales ingleses no cuadran');
+  comprobar(t('cupsWon', { count: 25 }) === '+25 cups' && t('newRank', { name: 'gold' }).includes('gold')
+    && t('ruleCompetitive').includes('random'), 'idioma: faltan las cadenas inglesas de copas');
+  setLanguage('es');
+  comprobar(t('cupsWon', { count: 10 }) === '+10 copas' && t('statsCups') === 'copas'
+    && t('statsRank') === 'rango' && t('mod_ninguno') === 'sin modificador',
+    'idioma: faltan las cadenas españolas de copas');
+  comprobar(main.includes("marca = `${levelName(arena.name)} · "),
+    'competitivo: el HUD no enseña la arena y el modificador de la partida');
+  comprobar(main.includes("for (const campo of ['games', 'wins', 'fruits', 'timeMs', 'bestChain'])"),
+    'perfil: las estadísticas guardadas no se recuperan al recargar');
+  comprobar(readme.includes('cups') && readme.includes('bronze') && readme.includes('big clock')
+    && readme.includes('quadrant'), 'README: falta la descripción de copas, rangos o reloj grande');
+}
 
   const bloque = main.slice(main.indexOf('<ul class="reglas">'), main.indexOf('</ul>', main.indexOf('<ul class="reglas">')));
   const reglas = [...bloque.matchAll(/<li>([^<]+)<\/li>/g)].map((match) => match[1]);
