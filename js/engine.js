@@ -169,6 +169,36 @@ export class Game {
     this.setTurbo(!this.turbo);
   }
 
+  // en el competitivo caer no te saca: vuelves con la serpiente corta y sigues
+  // con los puntos que llevabas
+  revive() {
+    if (this.state !== 'dead') return false;
+    const start = this.findStart();
+    this.crash = null;
+    this.hitStop = 0;
+    this.shake = 0;
+    this.flash = Math.max(this.flash, 0.35);
+    this.speed = this.cfg.startSpeed;
+    this.chain = 0;
+    this.chainTimer = 0;
+    this.fx = { ghost: 0, slow: 0, shield: 0, double: 0 };
+    this.turbo = false;
+    this.acc = 0;
+    this.queue = [];
+    this.pendingWalls = [];
+    this.pendingFood = null;
+    this.body = [];
+    for (let i = 0; i < 4; i++) {
+      this.body.push({ x: start.x - start.dir.x * i, y: start.y - start.dir.y * i });
+    }
+    this.prevBody = this.body.map((p) => ({ ...p }));
+    this.dir = { ...start.dir };
+    this.state = 'running';
+    this.spawnFood();
+    this.emit('revive');
+    return true;
+  }
+
   // salir a la vez en los cuatro tableros, sin esperar a la primera tecla
   start() {
     if (this.state !== 'ready') return;
@@ -758,14 +788,11 @@ export class Game {
     const libres = this.reachableFree().filter((c) =>
       !this.ocupada(c.x, c.y) && !(c.x === this.food.x && c.y === this.food.y));
     if (!libres.length) return;
-    // cerca de la fruta buena para que haya que mirar bien
-    libres.sort((a, b) =>
-      (Math.abs(a.x - this.food.x) + Math.abs(a.y - this.food.y)) -
-      (Math.abs(b.x - this.food.x) + Math.abs(b.y - this.food.y)));
-    const cerca = libres.filter((c) =>
-      Math.abs(c.x - this.food.x) + Math.abs(c.y - this.food.y) <= 6);
-    const lista = cerca.length ? cerca : libres;
-    this.veneno = lista[rand(Math.min(lista.length, 8))];
+    // lejos de la fruta buena: se ve enseguida que hay dos manzanas
+    const lejos = libres.filter((c) =>
+      Math.abs(c.x - this.food.x) + Math.abs(c.y - this.food.y) >= 6);
+    const lista = lejos.length ? lejos : libres;
+    this.veneno = lista[rand(lista.length)];
   }
 
   // comer la envenenada cuesta segundos y corta la cadena
@@ -1362,7 +1389,9 @@ export class Game {
 
     // la envenenada es idéntica salvo un punto diminuto casi invisible
     if (this.veneno) {
-      const m = Math.round(cell * 0.16);
+      // la misma respiración que la fruta: late al mismo ritmo
+      const pulso = Math.floor((0.5 + 0.5 * Math.sin(this.time / 220)) * 3);
+      const m = Math.round(cell * 0.16) + pulso;
       const [px, py, w] = caja(this.veneno.x, this.veneno.y, m, lado - m * 2);
       ctx.fillStyle = '#ff2b2b';
       ctx.fillRect(px, py, w, w);

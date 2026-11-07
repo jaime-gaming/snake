@@ -1105,8 +1105,8 @@ process.stdout.write('v2.0, idioma y publicación\n');
     && main.includes('El cuerpo se extiende de forma continua y lenta'),
   'marca: la e no se aproxima despacio y de forma continua a la manzana');
 
-  comprobar(pagina.includes('snake.js?v=21') && pagina.includes('styles.css?v=21') && pagina.includes('Snake — v2.0'),
-    'caché: falta la versión v2.0 (v21) en la página');
+  comprobar(pagina.includes('snake.js?v=22') && pagina.includes('styles.css?v=22') && pagina.includes('Snake — v2.0'),
+    'caché: falta la versión v2.0 (v22) en la página');
   comprobar(pagina.includes('id="lang-switch"') && idiomas.includes("en: {")
     && idiomas.includes('export function setLanguage'), 'idioma: falta el selector ES/EN o su traducción');
   setLanguage('en');
@@ -1201,16 +1201,34 @@ process.stdout.write('v2.0: cuatro tableros, sorteo y cuenta atrás\n');
   'competitivo: los tableros no se crean uno por serpiente');
   comprobar(main.includes('function configuracionArena()') && main.includes('walls: nivel.walls.slice()'),
     'competitivo: la arena no toma los muros del mapa sorteado');
-  comprobar(main.includes('function eventoRival(i, tipo, datos)')
-    && main.includes('app.puestoMuerte = 1 + app.tableros.filter((tab) => !tab.esJugador && tab.vivo).length'),
-  'competitivo: no se reparte el puesto según quién sigue vivo');
+  comprobar(main.includes('function terminarCompetitivo()')
+    && main.includes('const orden = [...app.tableros].sort((a, b) => b.juego.score - a.juego.score)')
+    && main.includes('app.puestoMuerte = orden.findIndex((tab) => tab.esJugador) + 1'),
+  'competitivo: al acabar la ronda no se reparte el puesto por puntos');
+  comprobar(main.includes('const DURACION_RONDA = 60000') && main.includes('app.tiempoPartida = DURACION_RONDA')
+    && main.includes('app.tiempoPartida = Math.max(0, app.tiempoPartida - dt)'),
+  'competitivo: la ronda no dura 60 segundos');
+  comprobar(main.includes('const CASTIGO_CAIDA = 10') && main.includes('function perderPuntos(tab)')
+    && main.includes('juego.revive()') && motor.includes('\n  revive() {'),
+  'competitivo: caer no resta puntos o no se revive');
+  comprobar(main.includes("const texto = String(Math.round(tab.juego.score))"),
+    'competitivo: los tableros no muestran los puntos de cada jugador');
+  comprobar(css.includes('grid-template-columns: minmax(0, 1.7fr)') && main.includes('* 1.7) / 2.7'),
+    'competitivo: tu tablero no es más grande que los rivales');
+  comprobar(main.includes("meta = '';\n      marca = '';"),
+    'competitivo: la barra de arriba sigue cargada de texto');
+  comprobar(main.includes('class="comp-barra"') && main.includes('class="comp-mini"')
+    && css.includes('.comp-barra i') && css.includes('.comp-dato b'),
+  'competitivo: el menú no tiene barra de rango ni los datos en pequeño');
+  comprobar(main.includes('iconoRango(info.nivel)') && css.includes('.rango-icono[data-rango="5"]'),
+    'competitivo: falta el icono de rango a bloques');
   comprobar(main.includes('function dibujarArena()') && main.includes('function actualizarTableros()')
     && main.includes('vivosCompetitivo()'),
   'competitivo: faltan el dibujo y los rótulos de los cuatro tableros');
   comprobar(pagina.includes('id="arena"') && pagina.indexOf('class="tablero"') > 0
     && (pagina.match(/class="tablero"/g) || []).length === 4,
   'competitivo: la página no tiene cuatro tableros separados');
-  comprobar(css.includes('#arena {') && css.includes('grid-template-columns: repeat(2')
+  comprobar(css.includes('#arena {') && css.includes('grid-template-columns: minmax(0, 1.7fr)')
     && css.includes('.tablero.mio') && css.includes('#cuenta'),
   'competitivo: falta la rejilla de los tableros o la cuenta atrás en el estilo');
   comprobar(main.includes('rankInfo(puntosYa)') && idiomas.includes('export function rankInfo')
@@ -1234,6 +1252,8 @@ process.stdout.write('v2.0: cuatro tableros, sorteo y cuenta atrás\n');
   'contrarreloj: la envenenada sale siempre en vez de de vez en cuando');
   comprobar(motor.includes('px + Math.round(w * 0.26)') && !motor.includes('muesca'),
     'contrarreloj: la marca de la manzana envenenada sigue siendo evidente');
+  comprobar(motor.includes('>= 6);') && motor.includes('la misma respiración que la fruta'),
+    'contrarreloj: la envenenada no aparece lejos ni con la misma animación');
   comprobar(main.includes('const MODS_COMPETITIVO') && main.includes("['muros', 'reloj', 'cazador', 'turbo']"),
     'competitivo: el modificador no se sortea entre muros, reloj, cazador y sin turbo');
   comprobar(main.includes('const COPAS_POR_PUESTO = [25, 10, 5, 0]')

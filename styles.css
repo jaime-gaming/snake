@@ -338,12 +338,60 @@ button:disabled {
   color: var(--dim);
 }
 
+/* barra de progreso del rango: bloques, sin adornos */
+.comp-barra {
+  height: 6px;
+  width: 100%;
+  background: #171717;
+  display: flex;
+}
+
+.comp-barra i {
+  display: block;
+  height: 100%;
+  background: var(--fg);
+  transition: width 0.3s ease;
+}
+
+/* tres datos cortos, en fila */
+.comp-mini {
+  display: flex;
+  gap: 22px;
+  align-self: flex-start;
+}
+
+.comp-dato {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.comp-dato b {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.comp-dato b small {
+  font-size: 9px;
+  color: var(--muted);
+  margin-left: 1px;
+}
+
+.comp-dato span {
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
 .rango-icono {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 3px;
-  width: 54px;
-  height: 54px;
+  width: 64px;
+  height: 64px;
   flex: none;
 }
 
@@ -430,13 +478,19 @@ button:disabled {
 
 /* competitivo: cuatro tableros separados, cada uno con su serpiente */
 #arena {
+  /* tu tablero ocupa la columna ancha y las tres filas; los rivales van en fila */
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  grid-template-rows: repeat(3, minmax(0, 1fr));
   place-items: center;
   gap: 6px;
   width: 100%;
   height: 100%;
   padding: 2px;
+}
+
+#arena .tablero:first-child {
+  grid-row: 1 / span 3;
 }
 
 .tablero {
@@ -478,8 +532,13 @@ button:disabled {
   color: var(--fg);
 }
 
-.tablero.caido {
-  opacity: 0.42;
+.tablero.caido,
+.tablero.revive canvas {
+  opacity: 0.4;
+}
+
+.tablero.revive figcaption {
+  color: var(--accent);
 }
 
 /* cuenta atrás de 3 s al empezar una partida competitiva */

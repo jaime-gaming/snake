@@ -380,11 +380,19 @@ function ajustarArena() {
   const caja = el.arena.getBoundingClientRect();
   const ancho = caja.width || el.stage.getBoundingClientRect().width || 480;
   const alto = caja.height || el.stage.getBoundingClientRect().height || 480;
-  const lado = Math.max(90, Math.min((ancho - 10) / 2, (alto - 10) / 2 - 14));
+  const hueco = 6;
+  // la rejilla da más sitio a tu tablero: 1.7 partes frente a 1 de cada rival
+  const anchoMio = ((ancho - hueco) * 1.7) / 2.7;
+  const anchoRival = ((ancho - hueco) * 1.0) / 2.7;
+  const altoRival = (alto - hueco * 2) / 3;
   const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
   for (const tab of app.tableros) {
     const fig = el.tableros[tab.i];
     if (!fig) continue;
+    const disponible = tab.esJugador
+      ? Math.min(anchoMio, alto - 16)
+      : Math.min(anchoRival, altoRival - 16);
+    const lado = Math.max(70, disponible);
     const lienzo = fig.querySelector('canvas');
     if (!lienzo) continue;
     lienzo.style.width = `${lado}px`;
@@ -738,16 +746,11 @@ function actualizarMarcador() {
       meta = t('timeLeft', { s });
       el.meta.classList.toggle('urgente', s <= 10 && juego.state === 'running');
     } else if (app.modo === 'competitive') {
-      const vivos = app.tableros.length ? vivosCompetitivo() : 1;
-      meta = t('competitiveAlive', { alive: vivos, total: TOTAL_TABLEROS });
-      const arena = app.arena && LEVELS[app.arena.indice];
-      if (arena) {
-        marca = `${levelName(arena.name)} · ${app.arena.mods.map((m) => t('mod_' + m)).join(' + ')}`;
-        el.best.title = marca;
-      } else if (el.best.title) {
-        el.best.removeAttribute('title');
-      }
+      // arriba sólo los puntos: el resto vive en cada tablero
+      meta = '';
+      marca = '';
       el.meta.classList.remove('urgente');
+      if (el.best.title) el.best.removeAttribute('title');
     } else {
       meta = t('fruitScore', { mode: modeName(app.modo), fruits: juego.fruits, unit: fruitUnit(juego.fruits) });
       el.meta.classList.remove('urgente');
@@ -791,14 +794,16 @@ function reservarReloj(visible) {
 function actualizarReloj(juego) {
   const nodo = el.reloj;
   if (!nodo) return;
-  const conReloj = juego && juego.cfg && juego.cfg.timeAttack &&
-    (app.modo === 'timed' || app.modo === 'competitive');
+  const ronda = app.modo === 'competitive' && app.tableros.length > 0;
+  const conReloj = ronda || (juego && juego.cfg && juego.cfg.timeAttack && app.modo === 'timed');
   const visible = !!conReloj && (app.pantalla === 'playing' || app.pantalla === 'paused');
   if (nodo.hidden === visible || el.stage.classList.contains('con-reloj') !== visible) {
     reservarReloj(visible);
   }
   if (!visible) return;
-  const s = Math.max(0, Math.ceil(juego.timeLeft / 1000));
+  const s = ronda
+    ? Math.max(0, Math.ceil((app.tiempoPartida || 0) / 1000))
+    : Math.max(0, Math.ceil(juego.timeLeft / 1000));
   const cifra = nodo.querySelector('b');
   if (cifra && cifra.textContent !== String(s)) cifra.textContent = String(s);
   nodo.classList.toggle('urgente', s <= 10 && juego.state === 'running');
@@ -1505,6 +1510,8 @@ function copasDePartida(puesto) {
    modificador y la misma dificultad para todos. gana quien aguanta más. */
 
 const TOTAL_TABLEROS = 4;
+const DURACION_RONDA = 60000; // 60 s por partida
+const CASTIGO_CAIDA = 10; // puntos que se pierden al chocar
 
 // el icono del rango: una barra más por cada nivel, todo a bloques
 function iconoRango(nivel) {
@@ -1534,6 +1541,13 @@ function menuCompetitivo() {
   const puntosYa = guardado.competitive.points;
   const info = rankInfo(puntosYa);
 
+  const meta = info.siguiente
+    ? t('pointsToNext', { count: info.falta, rank: info.siguiente })
+    : t('maxRank');
+  const tramo = [100, 150, 250, 250, 250, 0][info.nivel] || 0;
+  const avance = tramo > 0 ? Math.min(100, Math.round(((tramo - info.falta) / tramo) * 100)) : 100;
+  const dato = (valor, etiqueta) => `<div class="comp-dato"><b>${valor}</b><span>${etiqueta}</span></div>`;
+
   ponerOverlay(`<div class="panel competitivo">
     <div class="comp-cabeza">
       ${iconoRango(info.nivel)}
@@ -1542,7 +1556,13 @@ function menuCompetitivo() {
         <p class="comp-puntos">${puntos(puntosYa)}</p>
       </div>
     </div>
-    <p class="comp-nota">${t('pointsToNext', { count: info.falta, rank: info.siguiente }) }</p>
+    <div class="comp-barra" aria-hidden="true"><i style="width:${avance}%"></i></div>
+    <p class="comp-nota">${meta}</p>
+    <div class="comp-mini">
+      ${dato(puntos(guardado.stats.games), t('labelGames'))}
+      ${dato(puntos(guardado.stats.wins), t('labelWins'))}
+      ${dato('60<small>s</small>', t('labelRound'))}
+    </div>
     <div class="acciones">
       <button class="principal" type="button" data-accion="jugarCompetitivo">${t('play')} <kbd>↵</kbd></button>
       <button type="button" data-accion="home">${t('back')} <kbd>esc</kbd></button>
@@ -1629,6 +1649,8 @@ function empezarCompetitivo() {
   actualizarTableros();
   actualizarMarcador();
   app.cuenta = 3000;
+  app.tiempoPartida = DURACION_RONDA;
+  for (const tab of app.tableros) tab.revivirEn = 0;
 }
 
 // la cuenta atrás pinta 3 · 2 · 1 sobre el tablero
@@ -1657,14 +1679,9 @@ function eventoRival(i, tipo, datos) {
   const tab = tableroPorIndice(i);
   if (!tab) return;
   if (tipo === 'die') {
-    tab.vivo = false;
-    tab.puesto = 1 + app.tableros.filter((o) => o !== tab && o.vivo).length;
+    perderPuntos(tab);
     audio.play('rivalDie');
     actualizarTableros();
-    const quedan = app.tableros.filter((o) => !o.esJugador && o.vivo).length;
-    if (quedan === 0 && app.tableros[0].vivo) {
-      app.temporizador = setTimeout(mostrarVictoria, 900);
-    }
   }
 }
 
@@ -1677,13 +1694,27 @@ function pasoCompetitivo(dt) {
     return;
   }
   if (app.pantalla !== 'playing') return;
+
+  app.tiempoPartida = Math.max(0, app.tiempoPartida - dt);
+  if (app.tiempoPartida <= 0) {
+    dibujarArena();
+    actualizarTableros();
+    actualizarReloj(app.juego);
+    terminarCompetitivo();
+    return;
+  }
+
   for (const tab of app.tableros) {
     const juego = tab.juego;
-    if (!tab.esJugador && tab.vivo) {
+    if (juego.state === 'dead') {
+      tab.revivirEn = Math.max(0, (tab.revivirEn || 0) - dt);
+      if (tab.revivirEn <= 0 && app.tiempoPartida > 1500) juego.revive();
+    }
+    if (!tab.esJugador && juego.state === 'running') {
       tab.acum += dt;
       if (tab.acum > 60) {
         tab.acum = 0;
-        if (juego.state === 'running') juego.decidir();
+        juego.decidir();
       }
     }
     juego.update(dt);
@@ -1724,15 +1755,35 @@ function actualizarTableros() {
     fig.classList.toggle('caido', !tab.vivo);
     const datos = fig.querySelector('.tablero-datos');
     if (!datos) return;
-    const texto = tab.vivo
-      ? `${tab.juego.fruits}`
-      : (tab.puesto ? t('placedShort', { rank: tab.puesto }) : t('out'));
+    const texto = String(Math.round(tab.juego.score));
     if (datos.textContent !== texto) datos.textContent = texto;
+    fig.classList.toggle('revive', tab.juego.state === 'dead');
   });
 }
 
 function vivosCompetitivo() {
   return app.tableros.filter((tab) => tab.vivo).length;
+}
+
+// caer cuesta puntos y la serpiente vuelve al rato
+function perderPuntos(tab) {
+  if (!tab) return;
+  tab.juego.score = Math.max(0, tab.juego.score - CASTIGO_CAIDA);
+  tab.caidas = (tab.caidas || 0) + 1;
+  tab.revivirEn = 800;
+}
+
+// fin de la ronda: manda quien tenga más puntos
+function terminarCompetitivo() {
+  if (app.pantalla !== 'playing') return;
+  const orden = [...app.tableros].sort((a, b) => b.juego.score - a.juego.score);
+  app.puestoMuerte = orden.findIndex((tab) => tab.esJugador) + 1;
+  app.totalMuerte = TOTAL_TABLEROS;
+  guardarMarca();
+  guardado.stats.games++;
+  guardar();
+  audio.play('level');
+  mostrarFinCompetitivo();
 }
 
 function configuracion(modo, nivel) {
@@ -1868,16 +1919,11 @@ function eventosJuego(tipo, datos) {
       guardar();
       app.motivoMuerte = datos.reason;
       if (app.modo === 'competitive') {
-        // el puesto sale de cuántos siguen vivos en los otros tableros
-        app.puestoMuerte = 1 + app.tableros.filter((tab) => !tab.esJugador && tab.vivo).length;
-        const mio = app.tableros[0];
-        if (mio) {
-          mio.vivo = false;
-          mio.puesto = app.puestoMuerte;
-        }
-        actualizarTableros();
+        perderPuntos(app.tableros[0]);
+        parpadear(el.score);
+        break;
       }
-      app.temporizador = setTimeout(app.modo === 'competitive' ? mostrarFinCompetitivo : mostrarFin, 900);
+      app.temporizador = setTimeout(mostrarFin, 900);
       break;
     case 'clear':
       audio.play(app.nivel >= LEVELS.length - 1 ? 'campaignComplete' : 'level');
@@ -1977,22 +2023,21 @@ function mostrarNivelSuperado() {
 
 function mostrarFinCompetitivo() {
   const juego = app.juego;
-  if (!juego || juego.state !== 'dead') return;
+  if (!juego) return;
   const puesto = app.puestoMuerte || TOTAL_TABLEROS;
   const copas = copasDePartida(puesto);
   app.record = juego.score > app.marca;
   const notas = [
     t('competitiveRank', { rank: puesto, total: TOTAL_TABLEROS }),
-    t('cupsWon', { count: copas.ganadas }),
+    t('pointsWon', { count: copas.ganadas }),
     rankName(copas.total),
   ];
   if (copas.subio) notas.push(t('newRank', { name: copas.subio }));
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
-      <p class="kicker">${t(app.record ? 'recordNew' : 'end')}</p>
+      <p class="kicker">${t('end')}</p>
       <p class="cifra" data-cifra>${puntos(juego.score)}</p>
       <p class="nota">${notas.join(' · ')}</p>
-      <p class="nota">${t('fruits', { count: juego.fruits, unit: fruitUnit(juego.fruits) })}</p>
     </div>
     <div class="acciones">
       <button class="principal" type="button" data-accion="retry">${t('retry')} <kbd>R</kbd></button>
@@ -2013,7 +2058,7 @@ function mostrarVictoria() {
   if (!juego || juego.state !== 'running') return;
   const caidos = TOTAL_TABLEROS - 1;
   const copas = copasDePartida(1);
-  const copasTexto = `${t('cupsWon', { count: copas.ganadas })} · ${rankName(copas.total)}${copas.subio ? ` · ${t('newRank', { name: copas.subio })}` : ''}`;
+  const copasTexto = `${t('pointsWon', { count: copas.ganadas })} · ${rankName(copas.total)}${copas.subio ? ` · ${t('newRank', { name: copas.subio })}` : ''}`;
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
       <p class="kicker">${t('win')} · ${t('competitiveWin')}</p>
