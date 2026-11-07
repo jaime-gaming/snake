@@ -1,4 +1,4 @@
-/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-11-07 · v19).
+/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-11-07 · v20).
    no lo edites a mano: cambia js/*.js y vuelve a ejecutar node tools/build.mjs */
 (function () {
 'use strict';
@@ -7,7 +7,7 @@ const modulos = { grid: {}, levels: {}, audio: {}, input: {}, engine: {}, i18n: 
 // ---- grid ----
 (function (modulo) {
 'use strict';
-// utilidades de rejilla que usan el motor y el piloto automático
+// utilidades de rejilla que usan el motor y las serpientes rivales
 
 const K = (x, y) => y * 4096 + x;
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -109,11 +109,14 @@ const cut = (...celdas) => celdas;
 const slit = (x, y, alto) => vline(x, y, alto);
 
 
+// rivales del competitivo: cada uno juega en su propio tablero
+const RIVAL_NAMES = ['KOBRA', 'VÍBORA', 'MAMBA'];
+
 // grupos del menú: cada uno es una subpágina con sus modos
 const GROUPS = [
   { name: 'progreso', tag: 'rutas con obstáculos', modes: ['campaign'] },
   { name: 'infinitos', tag: 'puntuación sin final', modes: ['classic', 'frenzy', 'hunter', 'timed'] },
-  { name: 'competitivo', tag: 'contra bots en la misma arena', modes: ['competitive'] },
+  { name: 'competitivo', tag: 'cuatro tableros a la vez', modes: ['competitive'] },
 ];
 
 const MODE_ORDER = GROUPS.flatMap((g) => g.modes);
@@ -189,11 +192,12 @@ const MODES = {
     ...base,
     id: 'timed',
     name: 'CONTRARRELOJ',
-    tag: '30 segundos · cada fruta suma 3',
+    tag: '30 segundos que aceleran · una manzana va envenenada',
     startSpeed: 140,
     minSpeed: 82,
     accelPerFood: 1.4,
-    timeAttack: { start: 30000, perFruit: 3200, max: 150000 },
+    timeAttack: { start: 30000, perFruit: 3200, max: 150000, rampMs: 60000 },
+    veneno: { ms: 5000 },
     bonusEvery: 5,
     powerEvery: 7,
     powerPool: POWER_POOLS.timed,
@@ -202,19 +206,13 @@ const MODES = {
     ...base,
     id: 'competitive',
     name: 'COMPETITIVO',
-    tag: 'tres bots en la misma arena · gana el último en pie',
-    startSpeed: 138,
-    minSpeed: 84,
-    accelPerFood: 1.1,
-    bots: 3,
-    walls: [
-      ...rect(9, 4, 2, 2),
-      ...rect(9, 14, 2, 2),
-      ...rect(4, 9, 2, 2),
-      ...rect(14, 9, 2, 2),
-    ],
+    tag: 'cuatro tableros · mapa y modificador al azar · aguanta más que los demás',
+    startSpeed: 132,
+    minSpeed: 78,
+    accelPerFood: 0.9,
+    rampPerSec: 0.16,
     bonusEvery: 5,
-    powerEvery: 7,
+    powerEvery: 6,
     powerPool: POWER_POOLS.competitive,
   },
 };
@@ -557,7 +555,7 @@ const LEVELS = [
   }),
 ];
 
-  Object.assign(modulo, { COLS, ROWS, GROUPS, MODE_ORDER, POWER_POOLS, MODES, LEVELS });
+  Object.assign(modulo, { COLS, ROWS, RIVAL_NAMES, GROUPS, MODE_ORDER, POWER_POOLS, MODES, LEVELS });
 })(modulos['levels']);
 
 // ---- audio ----
@@ -744,7 +742,7 @@ const SONIDOS = {
     tono(880, 0.045, { tipo: 'square', vol: 0.06 });
     tono(660, 0.04, { tipo: 'sine', vol: 0.05, delay: 0.05 });
   },
-  botDie() {
+  rivalDie() {
     ruido(0.16, { desde: 1800, hasta: 240, vol: 0.16 });
     tono(196, 0.14, { tipo: 'triangle', vol: 0.12, fin: 98 });
   },
@@ -940,6 +938,9 @@ const { K, DIRS, bfsStep } = modulos['grid'];
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const rand = (n) => Math.floor(Math.random() * n);
 
+// cuánto le apetece cada potenciador a una serpiente que juega sola
+const POTENCIADOR_UTIL = { ghost: 3, shield: 3, slow: 2, double: 1, shrink: 1 };
+
 const POWER_INFO = {
   ghost: { label: 'fantasma', ms: 5200 },
   slow: { label: 'lento', ms: 6000 },
@@ -992,19 +993,17 @@ class Game {
     this.hunter = null;
     this.hunterTick = 0;
     this.pellets = [];
-    this.rivals = [];
     this.timeLeft = cfg.timeAttack ? cfg.timeAttack.start : 0;
     this.ultimoSegundo = -1;
-    this.rank = 0;
+    // contrarreloj: el reloj acelera con el tiempo y el veneno espera su turno
+    this.timeRate = 1;
+    this.veneno = null;
     // frenesí: olas de fruta extra y picos de velocidad
     this.extraFoods = [];
     this.waveTimer = 0;
     this.pulseTimer = 0;
     this.pulseLeft = 0;
     this.pendingWalls = [];
-    if (cfg.bots) {
-      for (let i = 0; i < cfg.bots; i++) this.rivals.push(this.nacerRival(i));
-    }
     this.reveal = 0;
     this.chomp = 0;
     this.turbo = false;
@@ -1025,59 +1024,8 @@ class Game {
   }
 
   // competitivo: el tablero se parte en 4 parcelas; cada serpiente nace en la suya
-  cuadranteStart(i) {
-    const libre = (x, y) =>
-      x >= 0 && y >= 0 && x < this.cols && y < this.rows && !this.wallSet.has(K(x, y));
-    const esquinas = [
-      { x: 2, y: 3, dir: { x: 0, y: 1 } },
-      { x: this.cols - 3, y: 3, dir: { x: 0, y: 1 } },
-      { x: 2, y: this.rows - 4, dir: { x: 0, y: -1 } },
-      { x: this.cols - 3, y: this.rows - 4, dir: { x: 0, y: -1 } },
-    ];
-    const vale = (b, largo = 4) => {
-      for (let n = 0; n < largo; n++) {
-        if (!libre(b.x - b.dir.x * n, b.y - b.dir.y * n)) return false;
-      }
-      return true;
-    };
-    const cu = i % 4;
-    if (vale(esquinas[cu])) return esquinas[cu];
-
-    // la esquina está tapada: se busca dentro de la parcela, de dentro afuera
-    const w = Math.floor(this.cols / 2);
-    const h = Math.floor(this.rows / 2);
-    const mx = (cu % 2) * w;
-    const my = (cu < 2 ? 0 : h);
-    const celdas = [];
-    for (let y = my; y < Math.min(this.rows, my + h); y++) {
-      for (let x = mx; x < Math.min(this.cols, mx + w); x++) celdas.push({ x, y });
-    }
-    const esquina = esquinas[cu];
-    celdas.sort((a, b) =>
-      (Math.abs(a.x - esquina.x) + Math.abs(a.y - esquina.y)) -
-      (Math.abs(b.x - esquina.x) + Math.abs(b.y - esquina.y)));
-    const rumbos = DIRS.map(([dx, dy]) => ({ x: dx, y: dy }));
-    for (const c of celdas) {
-      for (const dir of rumbos) {
-        const b = { x: c.x, y: c.y, dir };
-        if (vale(b)) return b;
-      }
-    }
-    // parcela muy cerrada: al menos una casilla libre dentro de ella
-    for (const c of celdas) {
-      for (const dir of rumbos) {
-        const b = { x: c.x, y: c.y, dir };
-        if (vale(b, 1)) return b;
-      }
-    }
-    return null;
-  }
 
   findStart() {
-    if (this.cfg.bots) {
-      const c = this.cuadranteStart(0);
-      if (c) return c;
-    }
     const free = (x, y) =>
       x >= 0 && y >= 0 && x < this.cols && y < this.rows && !this.wallSet.has(K(x, y));
     const ring = (n, c) => {
@@ -1127,7 +1075,8 @@ class Game {
   }
 
   interval() {
-    const slow = this.fx.slow > 0 ? 1.5 : 1;
+    // en contrarreloj el potenciador «lento» se gasta en el reloj, no en la serpiente
+    const slow = this.fx.slow > 0 && !this.cfg.timeAttack ? 1.5 : 1;
     const pulso = this.pulseLeft > 0 ? 0.82 : 1;
     return Math.max(42, this.speed * (this.turbo ? 0.68 : 1) * slow * pulso);
   }
@@ -1145,6 +1094,7 @@ class Game {
   }
 
   setTurbo(on) {
+    if (this.cfg.noTurbo) on = false;
     if (this.state !== 'running' || this.turbo === on) return;
     this.turbo = on;
     if (on) this.emit('turbo');
@@ -1152,6 +1102,13 @@ class Game {
 
   toggleTurbo() {
     this.setTurbo(!this.turbo);
+  }
+
+  // salir a la vez en los cuatro tableros, sin esperar a la primera tecla
+  start() {
+    if (this.state !== 'ready') return;
+    this.state = 'running';
+    this.emit('start');
   }
 
   pause() {
@@ -1208,9 +1165,14 @@ class Game {
           }
         }
       }
-      // contrarreloj: el tiempo corre y cada segundo bajo aviso hace tick
+      // contrarreloj: el reloj corre cada vez más rápido (hasta el doble a los 60 s)
+      // y el potenciador «lento» lo frena a la mitad
       if (cfg.timeAttack) {
-        this.timeLeft -= dt;
+        const rampa = Math.min(1, (cfg.timeAttack.rampMs || 60000) > 0
+          ? this.time / (cfg.timeAttack.rampMs || 60000)
+          : 1);
+        this.timeRate = (1 + rampa) * (this.fx.slow > 0 ? 0.5 : 1);
+        this.timeLeft -= dt * this.timeRate;
         if (this.timeLeft <= 10000) {
           const seg = Math.max(0, Math.ceil(this.timeLeft / 1000));
           if (seg !== this.ultimoSegundo) {
@@ -1243,24 +1205,6 @@ class Game {
       while (this.state === 'running' && this.acc >= this.interval() && guard++ < 8) {
         this.acc -= this.interval();
         this.step();
-      }
-      // competitivo: los rivales se mueven a su ritmo y deciden con el piloto automático
-      for (const r of this.rivals) {
-        if (!r.alive || this.state !== 'running') continue;
-        for (const k of ['ghost', 'slow', 'shield', 'double']) {
-          if (r.fx[k] > 0) r.fx[k] = Math.max(0, r.fx[k] - dt);
-        }
-        r.botAcum = (r.botAcum || 0) + dt;
-        if (r.botAcum > 70) {
-          r.botAcum = 0;
-          this.botTurn(r);
-        }
-        r.acc += dt;
-        let g2 = 0;
-        while (r.alive && this.state === 'running' && r.acc >= this.intervalRival(r) && g2++ < 8) {
-          r.acc -= this.intervalRival(r);
-          this.stepRival(r);
-        }
       }
     }
     this.updateFx(dt);
@@ -1327,16 +1271,6 @@ class Game {
     }
 
     if (!ghost && this.wallSet.has(K(hx, hy))) return this.die('muro', hx, hy);
-    // competitivo: el cuerpo de un rival es pared para ti; su cabeza es un choque frontal
-    if (!ghost && this.rivals.length) {
-      for (const r of this.rivals) {
-        if (!r.alive) continue;
-        const golpe = r.body.findIndex((c) => c.x === hx && c.y === hy);
-        if (golpe < 0) continue;
-        if (golpe === 0) this.matarRival(r, 'choque', hx, hy);
-        return this.die('rival', hx, hy);
-      }
-    }
     // el cuerpo del cazador no te mata: le muerdes el anillo y sigues.
     // sólo su cabeza puede comerte (y sólo si cae sobre la tuya)
     if (!ghost && this.hunter) {
@@ -1372,6 +1306,7 @@ class Game {
     else this.body.pop();
 
     if (extraIdx >= 0) this.eatExtra(extraIdx);
+    if (this.veneno && hx === this.veneno.x && hy === this.veneno.y) this.comerVeneno();
     if (eats) this.eatFood();
     if (takesBonus) this.eatBonus();
     if (takesPower) this.takePower();
@@ -1451,34 +1386,6 @@ class Game {
     if (cfg.powerEvery && this.fruits % cfg.powerEvery === 0) this.spawnPower();
   }
 
-  // ola de frenesí: frutas extra temporales repartidas por el tablero
-  spawnWave() {
-    const cuantas = Math.min(this.cfg.waveFruits || 3, 6 - this.extraFoods.length);
-    const ttl = this.cfg.waveTtl || 9000;
-    for (let i = 0; i < cuantas; i++) {
-      const c = this.freeCell(1);
-      if (!c) break;
-      this.extraFoods.push({ ...c, ttl });
-    }
-    if (cuantas > 0) {
-      this.flash = Math.max(this.flash, 0.2);
-      this.emit('wave', { cuantas });
-    }
-  }
-
-  eatExtra(idx) {
-    const f = this.extraFoods.splice(idx, 1)[0];
-    this.fruits++;
-    this.grow += 1;
-    this.chain = Math.min(this.chain + 1, 30);
-    this.chainTimer = this.chainWindow;
-    this.score += 15 * this.multiplier * this.scoreFactor;
-    this.shake = 2.2;
-    this.chomp = 1;
-    this.burst(f.x + 0.5, f.y + 0.5, 8, '#ffd21e', 6);
-    this.emit('eat', { chain: this.chain, multiplier: this.multiplier });
-  }
-
   // los puntos azules también son para ti: quitaselo y el cazador no crece
   robaPunto() {
     const indice = this.pellets.findIndex((p) => p.x === this.body[0].x && p.y === this.body[0].y);
@@ -1531,77 +1438,6 @@ class Game {
     this.emit('power', { kind: p.kind, label: POWER_INFO[p.kind].label });
   }
 
-  /* ---------------------------------------------------------- competitivo (v2.0)
-     los rivales son serpientes bot en la misma arena: cada uno con su cuerpo,
-     su cola de giros y sus propios efectos. el último en pie gana. */
-
-  // nace en su propia parcela (cuadrante i+1), con cuatro anillos
-  nacerRival(i) {
-    const cabezaJugador = this.body[0];
-    const base0 = this.cuadranteStart((i + 1) % 4);
-    const libre = (x, y) =>
-      x >= 0 && y >= 0 && x < this.cols && y < this.rows &&
-      !this.wallSet.has(K(x, y)) &&
-      !this.body.some((s) => s.x === x && s.y === y);
-    let base = base0 || { x: this.cols - 3, y: 3, dir: { x: 0, y: 1 } };
-    const vale = (b) => {
-      const cuerpo = [];
-      for (let n = 0; n < 4; n++) {
-        const x = b.x - b.dir.x * n;
-        const y = b.y - b.dir.y * n;
-        if (!libre(x, y)) return null;
-        cuerpo.push({ x, y });
-      }
-      return cuerpo;
-    };
-    let cuerpo = vale(base);
-    if (this.cfg.bots) {
-      // cada uno nace en su parcela: nunca se busca fuera de ella
-      if (!cuerpo) {
-        cuerpo = [{ ...base }];
-      }
-    } else if (!cuerpo || Math.abs(base.x - cabezaJugador.x) + Math.abs(base.y - cabezaJugador.y) < 8) {
-      // si la esquina no vale, busca un tramo libre lejos de ti
-      for (let intento = 0; intento < 200 && !cuerpo; intento++) {
-        const origen = this.freeCell(1);
-        if (!origen) break;
-        if (Math.abs(origen.x - cabezaJugador.x) + Math.abs(origen.y - cabezaJugador.y) < 8) continue;
-        for (const dir of [DIRS[0], DIRS[1], DIRS[2], DIRS[3]]) {
-          const b = { x: origen.x, y: origen.y, dir };
-          cuerpo = vale(b);
-          if (cuerpo) break;
-        }
-      }
-    }
-    if (!cuerpo) {
-      const origen = this.freeCell(1) || { x: 2, y: 2 };
-      cuerpo = vale({ x: origen.x, y: origen.y, dir: { x: 1, y: 0 } }) || [{ ...origen }];
-      base = { x: origen.x, y: origen.y, dir: { x: 1, y: 0 } };
-    }
-    return {
-      id: i,
-      body: cuerpo,
-      prev: cuerpo.map((p) => ({ ...p })),
-      dir: { ...base.dir },
-      queue: [],
-      grow: 0,
-      alive: true,
-      fruits: 0,
-      fx: { ghost: 0, slow: 0, shield: 0, double: 0 },
-      acc: 0,
-      botAcum: 0,
-      factor: 0.94 + i * 0.06,
-      movido: 0,
-      paso: 0,
-      botTrail: new Map(),
-    };
-  }
-
-  intervalRival(r) {
-    const slow = r.fx.slow > 0 ? 1.5 : 1;
-    return Math.max(46, this.speed * r.factor * slow);
-  }
-
   // mete un giro en la cola del actor (jugador o rival) sin permitir la vuelta en redondo
   dirDe(yo, dx, dy) {
     if (yo === this) {
@@ -1614,112 +1450,7 @@ class Game {
     if (yo.queue.length < 2) yo.queue.push({ x: dx, y: dy });
   }
 
-  stepRival(r) {
-    if (r.queue.length) {
-      const d = r.queue.shift();
-      if (!(d.x === -r.dir.x && d.y === -r.dir.y)) r.dir = d;
-    }
-    r.prev = r.body.map((p) => ({ ...p }));
-    r.movido = this.time;
-    r.paso = this.intervalRival(r);
 
-    let hx = r.body[0].x + r.dir.x;
-    let hy = r.body[0].y + r.dir.y;
-    const ghost = r.fx.ghost > 0;
-
-    if (ghost) {
-      hx = (hx + this.cols) % this.cols;
-      hy = (hy + this.rows) % this.rows;
-    } else if (hx < 0 || hy < 0 || hx >= this.cols || hy >= this.rows) {
-      return this.matarRival(r, 'borde', hx, hy);
-    }
-    if (!ghost && this.wallSet.has(K(hx, hy))) return this.matarRival(r, 'muro', hx, hy);
-
-    const come = this.food && hx === this.food.x && hy === this.food.y;
-    const crece = r.grow > 0 || come;
-    if (!ghost) {
-      for (let i = 0; i < r.body.length; i++) {
-        if (!crece && i === r.body.length - 1) continue;
-        if (r.body[i].x === hx && r.body[i].y === hy) return this.matarRival(r, 'cola', hx, hy);
-      }
-      // tu cuerpo le mata; si le pisa la cabeza, los dos caéis
-      const jIdx = this.body.findIndex((c) => c.x === hx && c.y === hy);
-      if (jIdx >= 0) {
-        if (jIdx === 0) {
-          this.matarRival(r, 'choque', hx, hy);
-          this.die('rival', hx, hy);
-          return;
-        }
-        return this.matarRival(r, 'jugador', hx, hy);
-      }
-      // y el cuerpo de otro rival también
-      for (const o of this.rivals) {
-        if (o === r || !o.alive) continue;
-        const oIdx = o.body.findIndex((c) => c.x === hx && c.y === hy);
-        if (oIdx >= 0) {
-          if (oIdx === 0) this.matarRival(o, 'choque', hx, hy);
-          return this.matarRival(r, 'rival', hx, hy);
-        }
-      }
-    }
-
-    r.body.unshift({ x: hx, y: hy });
-    if (r.grow > 0) r.grow--;
-    else r.body.pop();
-
-    if (come) {
-      r.fruits++;
-      r.grow++;
-      this.burst(hx + 0.5, hy + 0.5, 8, '#bdbdbd', 5);
-      this.spawnFood();
-    }
-    if (this.bonus && hx === this.bonus.x && hy === this.bonus.y) {
-      this.bonus = null;
-      r.grow += 2;
-      this.burst(hx + 0.5, hy + 0.5, 10, '#ff2b2b', 6);
-    }
-    if (this.power && hx === this.power.x && hy === this.power.y) {
-      const p = this.power;
-      this.power = null;
-      this.burst(hx + 0.5, hy + 0.5, 10, '#ffffff', 6);
-      if (p.kind === 'ghost') r.fx.ghost = POWER_INFO.ghost.ms;
-      else if (p.kind === 'slow') r.fx.slow = POWER_INFO.slow.ms;
-      else if (p.kind === 'shield') r.fx.shield = POWER_INFO.shield.ms;
-      else if (p.kind === 'double') r.fx.double = POWER_INFO.double.ms;
-      else {
-        const corte = Math.min(5, Math.max(0, r.body.length - 3));
-        if (corte > 0) r.body.splice(r.body.length - corte, corte);
-      }
-    }
-  }
-
-  matarRival(r, reason, x, y) {
-    if (!r.alive) return;
-    // el escudo salva un choque una vez
-    if (r.fx.shield > 0) {
-      r.fx.shield = 0;
-      r.fx.ghost = Math.max(r.fx.ghost, 300);
-      this.burst(x ?? r.body[0].x, y ?? r.body[0].y, 12, '#b9f4ff', 6);
-      return;
-    }
-    r.alive = false;
-    const cx = x ?? r.body[0].x;
-    const cy = y ?? r.body[0].y;
-    for (const c of r.body) this.burst(c.x + 0.5, c.y + 0.5, 3, '#bdbdbd', 4);
-    this.shake = Math.max(this.shake, 4);
-    this.emit('botDie', {
-      id: r.id,
-      reason,
-      x: cx,
-      y: cy,
-      vivos: this.rivals.filter((q) => q.alive).length,
-    });
-    // si no queda ningún rival, ganas el competitivo
-    if (this.state === 'running' && this.rivals.length && this.rivals.every((q) => !q.alive)) {
-      this.state = 'cleared';
-      this.emit('win', { fruits: this.fruits, score: this.score });
-    }
-  }
 
   die(reason, x, y) {
     if (this.state !== 'running') return;
@@ -1741,33 +1472,21 @@ class Game {
     this.hitStop = 90;
     this.crash = { x: impactox, y: impactoY, t: 0, reason, popped: 0 };
     this.burst(impactox + 0.5, impactoY + 0.5, 22, '#ffffff', 10);
-    // en el competitivo dices en qué puesto quedas: por delante van los que siguen vivos
-    if (this.rivals.length) {
-      this.rank = 1 + this.rivals.filter((r) => r.alive).length;
-    }
     this.emit('die', {
       reason,
       score: this.score,
       fruits: this.fruits,
-      rank: this.rank,
-      total: this.rivals.length + 1,
     });
   }
 
-  blockedSet({ omitTail = false, walls = true, hunter = true, actor = null } = {}) {
+  blockedSet({ omitTail = false, walls = true, hunter = true } = {}) {
     const set = new Set();
     if (walls) for (const k of this.wallSet) set.add(k);
     const mete = (lista, omit) => {
       const end = omit ? lista.length - 1 : lista.length;
       for (let i = 0; i < end; i++) set.add(K(lista[i].x, lista[i].y));
     };
-    // el actor es el jugador (null) o un rival: su cola puede quedar libre
-    if (actor) mete(actor.body, omitTail);
-    if (!actor || actor !== this) mete(this.body, actor ? false : omitTail);
-    for (const r of this.rivals) {
-      if (!r.alive || r === actor) continue;
-      mete(r.body, false);
-    }
+    mete(this.body, omitTail);
     if (hunter && this.hunter) {
       for (const p of this.hunter.body) set.add(K(p.x, p.y));
     }
@@ -1794,19 +1513,24 @@ class Game {
     return visto.size;
   }
 
-  // piloto automático: una demo clara de cada modo en los menús y el cerebro
-  // de los rivales en el competitivo. sin actor, pilota al jugador.
-  botTurn(actor = null) {
-    const yo = actor || this;
-    if (yo !== this && !yo.alive) return;
-    if (yo === this && this.state !== 'ready' && this.state !== 'running') return;
+  // la serpiente decide su siguiente giro: así se mueven las demos del menú
+  // y las serpientes rivales de los otros tableros del competitivo
+  decidir() {
+    const yo = this;
+    if (this.state !== 'ready' && this.state !== 'running') return;
     const cabeza = yo.body[0];
-    const wrap = !!this.cfg.wrap || (yo.fx ? yo.fx.ghost > 0 : this.ghosting);
-    const ocupado = this.blockedSet({ omitTail: true, actor: yo });
-    const haciaComida = this.food
+    const wrap = !!this.cfg.wrap || this.ghosting;
+    const ocupado = this.blockedSet({ omitTail: true });
+    // si hay un potenciador que le conviene cerca, se apunta a él antes que a la fruta
+    let objetivo = this.food;
+    if (this.power) {
+      const cerca = Math.abs(cabeza.x - this.power.x) + Math.abs(cabeza.y - this.power.y);
+      if (POTENCIADOR_UTIL[this.power.kind] >= 2 && cerca <= 6) objetivo = this.power;
+    }
+    const haciaComida = objetivo
       ? bfsStep({
         start: cabeza,
-        goal: this.food,
+        goal: objetivo,
         blocked: ocupado,
         cols: this.cols,
         rows: this.rows,
@@ -1852,16 +1576,15 @@ class Game {
         const jefe = this.hunter.body[0];
         puntos += Math.min(20, Math.abs(destino.x - jefe.x) + Math.abs(destino.y - jefe.y)) * 1.5;
       }
-      // en el competitivo, huir de las cabezas ajenas es prioridad
-      const cabezasAjenas = [];
-      if (yo !== this) cabezasAjenas.push(this.body[0]);
-      for (const r of this.rivals) {
-        if (r !== yo && r.alive) cabezasAjenas.push(r.body[0]);
+      // potenciadores a tiro: los que interesan valen más que la fruta
+      if (this.power) {
+        const d = Math.abs(destino.x - this.power.x) + Math.abs(destino.y - this.power.y);
+        if (d <= 8) puntos += (9 - d) * 13 + POTENCIADOR_UTIL[this.power.kind] * 8;
       }
-      for (const ajena of cabezasAjenas) {
-        const d = Math.abs(destino.x - ajena.x) + Math.abs(destino.y - ajena.y);
-        if (d <= 2) puntos -= 260;
-        else puntos += Math.min(12, d) * 1.2;
+      // la manzana dorada siempre compensa
+      if (this.bonus) {
+        const d = Math.abs(destino.x - this.bonus.x) + Math.abs(destino.y - this.bonus.y);
+        if (d <= 7) puntos += (8 - d) * 10;
       }
       const visto = yo.botTrail.get(K(nx, ny));
       if (visto > 0) puntos -= visto * 7;
@@ -1921,9 +1644,7 @@ class Game {
     if (this.hunter && this.hunter.body.some((p) => p.x === x && p.y === y)) return true;
     if (this.pellets.some((p) => p.x === x && p.y === y)) return true;
     if (this.extraFoods.some((f) => f.x === x && f.y === y)) return true;
-    for (const r of this.rivals) {
-      if (r.alive && r.body.some((p) => p.x === x && p.y === y)) return true;
-    }
+    if (this.veneno && this.veneno.x === x && this.veneno.y === y) return true;
     return false;
   }
 
@@ -1938,9 +1659,7 @@ class Game {
       if (this.pellets.some((p) => p.x === x && p.y === y)) return true;
       if (this.pendingWalls.some((w) => w.x === x && w.y === y)) return true;
       if (this.extraFoods.some((f) => f.x === x && f.y === y)) return true;
-      for (const r of this.rivals) {
-        if (r.alive && r.body.some((p) => p.x === x && p.y === y)) return true;
-      }
+      if (this.veneno && this.veneno.x === x && this.veneno.y === y) return true;
       return false;
     };
     for (let i = 0; i < 600; i++) {
@@ -1955,19 +1674,47 @@ class Game {
   }
 
   spawnFood() {
-    let libres = this.reachableFree().filter((c) => !this.ocupada(c.x, c.y));
-    // competitivo: la comida cae en el centro, así las cuatro parcelas se cruzan
-    if (this.cfg.bots && libres.length) {
-      const centro = libres.filter((c) =>
-        c.x >= 4 && c.y >= 4 && c.x <= this.cols - 5 && c.y <= this.rows - 5);
-      if (centro.length) libres = centro;
-    }
+    const libres = this.reachableFree().filter((c) => !this.ocupada(c.x, c.y));
     if (libres.length) {
       this.food = libres[rand(libres.length)];
-      return;
+    } else {
+      const celda = this.freeCell(0);
+      if (celda) this.food = celda;
     }
-    const celda = this.freeCell(0);
-    if (celda) this.food = celda;
+    if (this.cfg.veneno) this.spawnVeneno();
+  }
+
+  // segunda manzana casi idéntica: lleva una muesca minima en una esquina
+  spawnVeneno() {
+    this.veneno = null;
+    if (!this.food) return;
+    const libres = this.reachableFree().filter((c) =>
+      !this.ocupada(c.x, c.y) && !(c.x === this.food.x && c.y === this.food.y));
+    if (!libres.length) return;
+    // cerca de la fruta buena para que haya que mirar bien
+    libres.sort((a, b) =>
+      (Math.abs(a.x - this.food.x) + Math.abs(a.y - this.food.y)) -
+      (Math.abs(b.x - this.food.x) + Math.abs(b.y - this.food.y)));
+    const cerca = libres.filter((c) =>
+      Math.abs(c.x - this.food.x) + Math.abs(c.y - this.food.y) <= 6);
+    const lista = cerca.length ? cerca : libres;
+    this.veneno = lista[rand(Math.min(lista.length, 8))];
+  }
+
+  // comer la envenenada cuesta segundos y corta la cadena
+  comerVeneno() {
+    const x = this.veneno.x;
+    const y = this.veneno.y;
+    this.veneno = null;
+    const casteigo = this.cfg.veneno.ms || 5000;
+    this.timeLeft = Math.max(0, this.timeLeft - casteigo);
+    this.chain = 0;
+    this.chainTimer = 0;
+    this.flash = Math.max(this.flash, 0.55);
+    this.shake = Math.max(this.shake, 7);
+    this.burst(x + 0.5, y + 0.5, 18, '#7a0d0d', 8);
+    this.emit('veneno', { segundos: Math.round(casteigo / 1000) });
+    this.spawnVeneno();
   }
 
   spawnBonus() {
@@ -2491,25 +2238,6 @@ class Game {
       tramoBorde(ox + W - grosor, oy + j * cell, grosor, cell, this.cols - 1, j, 'der');
     }
 
-    // competitivo: las cuatro parcelas se marcan con una cruz tenue
-    if (this.cfg && this.cfg.bots) {
-      ctx.fillStyle = 'rgba(255,255,255,0.1)';
-      const mx = Math.round(ox + (this.cols / 2) * cell);
-      const my = Math.round(oy + (this.rows / 2) * cell);
-      ctx.fillRect(mx, oy, 1, H);
-      ctx.fillRect(ox, my, W, 1);
-      // esquinas de cada parcela: un punto que ayuda a leer tu zona
-      ctx.fillStyle = 'rgba(255,255,255,0.16)';
-      const marcar = (x, y) => {
-        const [px, py] = caja(x, y, Math.round(cell * 0.35), Math.round(cell * 0.3));
-        ctx.fillRect(px, py, Math.max(2, Math.round(cell * 0.28)), Math.max(2, Math.round(cell * 0.28)));
-      };
-      marcar(1, 1);
-      marcar(this.cols - 2, 1);
-      marcar(1, this.rows - 2);
-      marcar(this.cols - 2, this.rows - 2);
-    }
-
     // muros: cubo hueco
     const inset = Math.max(1, Math.round(cell * 0.08));
     for (const [x, y] of this.walls) {
@@ -2563,6 +2291,17 @@ class Game {
       ctx.setLineDash([Math.max(2, Math.round(cell * 0.14)), Math.max(2, Math.round(cell * 0.14))]);
       ctx.strokeRect(px + 0.5, py + 0.5, w - 1, w - 1);
       ctx.setLineDash([]);
+    }
+
+    // la manzana envenenada es idéntica salvo una muesca mínima en una esquina
+    if (this.veneno) {
+      const m = Math.round(cell * 0.16);
+      const [px, py, w] = caja(this.veneno.x, this.veneno.y, m, lado - m * 2);
+      ctx.fillStyle = '#ff2b2b';
+      ctx.fillRect(px, py, w, w);
+      const muesca = Math.max(1, Math.round(w * 0.17));
+      ctx.fillStyle = 'rgba(120,0,0,0.9)';
+      ctx.fillRect(px + w - muesca, py, muesca, muesca);
     }
 
     // comida: cubo rojo que respira. la que cierra el nivel va en amarillo
@@ -2738,70 +2477,6 @@ class Game {
       }
     }
 
-    // rivales del competitivo: grises distintos y con trama para distinguirlos a ti
-    if (this.rivals.length) {
-      const estilos = [
-        { relleno: '#cfcfcf', contorno: null },
-        { relleno: '#9a9a9a', contorno: 'dash' },
-        { relleno: '#6b6b6b', contorno: 'sólido' },
-        { relleno: '#4a4a4a', contorno: 'dash' },
-      ];
-      for (const r of this.rivals) {
-        if (!r.alive) continue;
-        const est = estilos[r.id % estilos.length];
-        const avance = this.state === 'running'
-          ? clamp((this.time - (r.movido || 0)) / Math.max(1, r.paso || 1), 0, 1)
-          : 1;
-        const fantasma = r.fx.ghost > 0;
-        const m = Math.max(1, Math.round(cell * 0.1));
-        const ancho = lado - m * 2;
-        for (let i = r.body.length - 1; i >= 0; i--) {
-          const actual = r.body[i];
-          const previo = r.prev[i] || actual;
-          const salto = Math.abs(actual.x - previo.x) > 1 || Math.abs(actual.y - previo.y) > 1;
-          const px = salto ? actual.x : previo.x + (actual.x - previo.x) * avance;
-          const py = salto ? actual.y : previo.y + (actual.y - previo.y) * avance;
-          const x0 = Math.round(ox + px * cell) + m;
-          const y0 = Math.round(oy + py * cell) + m;
-          if (fantasma) {
-            ctx.strokeStyle = 'rgba(255,255,255,0.75)';
-            ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
-            ctx.strokeRect(x0 + 0.5, y0 + 0.5, ancho - 1, ancho - 1);
-          } else {
-            ctx.fillStyle = est.relleno;
-            ctx.fillRect(x0, y0, ancho, ancho);
-            if (est.contorno === 'dash') {
-              ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-              ctx.lineWidth = Math.max(1, Math.round(cell * 0.05));
-              ctx.setLineDash([Math.max(2, Math.round(cell * 0.14)), Math.max(2, Math.round(cell * 0.14))]);
-              ctx.strokeRect(x0 + 0.5, y0 + 0.5, ancho - 1, ancho - 1);
-              ctx.setLineDash([]);
-            } else if (est.contorno === 'sólido') {
-              ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-              ctx.lineWidth = Math.max(1, Math.round(cell * 0.05));
-              ctx.strokeRect(x0 + 0.5, y0 + 0.5, ancho - 1, ancho - 1);
-            }
-          }
-          if (i === 0 && r.fx.shield > 0) {
-            const pulso = 0.38 + 0.38 * (0.5 + 0.5 * Math.sin(this.time / 110));
-            ctx.strokeStyle = `rgba(185,244,255,${pulso.toFixed(2)})`;
-            ctx.lineWidth = Math.max(1, Math.round(cell * 0.055));
-            ctx.strokeRect(x0 - 2.5, y0 - 2.5, ancho + 4, ancho + 4);
-          }
-          if (i === 0) {
-            const ojo = Math.max(2, Math.round(ancho * 0.2));
-            const dx = r.dir.x;
-            const dy = r.dir.y;
-            ctx.fillStyle = '#000';
-            for (const s of [-1, 1]) {
-              const ex = x0 + ancho / 2 + dx * ancho * 0.18 + (dy !== 0 ? s * ancho * 0.2 : 0);
-              const ey = y0 + ancho / 2 + dy * ancho * 0.18 + (dx !== 0 ? s * ancho * 0.2 : 0);
-              ctx.fillRect(Math.round(ex - ojo / 2), Math.round(ey - ojo / 2), ojo, ojo);
-            }
-          }
-        }
-      }
-    }
 
     // la serpiente: un cubo por casilla, todos iguales
     const alpha = this.state === 'running' ? clamp(this.acc / this.interval(), 0, 1) : 1;
@@ -2946,8 +2621,8 @@ class Game {
 const KEY = 'snake.language';
 const STRINGS = {
   es: {
-    documentTitle: 'Snake — v2.1',
-    description: 'Snake v2.1: campaña de 30 niveles con modificadores, competitivo con arena al azar y copas, contrarreloj con reloj grande y perfil.',
+    documentTitle: 'Snake — v2.0',
+    description: 'Snake v2.0: campaña de 30 niveles con modificadores, contrarreloj, competitivo con cuatro tableros y copas, y perfil.',
     language: 'Idioma',
     sound: 'sonido',
     soundTitleOn: 'sonido activo (M)',
@@ -2970,7 +2645,7 @@ const STRINGS = {
     groupEndless: 'infinitos',
     groupEndlessTag: 'puntuación sin final',
     groupCompetitive: 'competitivo',
-    groupCompetitiveTag: 'arena y modificador al azar · copas y rangos',
+    groupCompetitiveTag: 'cuatro tableros · copas y rangos',
     modeClassic: 'clásico',
     modeClassicTag: 'cada fruta acelera · muros al llegar a 30 frutas',
     modeFrenzy: 'frenesí',
@@ -2980,7 +2655,7 @@ const STRINGS = {
     modeTimed: 'contrarreloj',
     modeTimedTag: '30 segundos · cada fruta suma 3',
     modeCompetitive: 'competitivo',
-    modeCompetitiveTag: 'mapa y modificador al azar · tres bots · copas en juego',
+    modeCompetitiveTag: 'cuatro tableros · mapa y modificador al azar · copas',
     levelNames: {
       LLANO: 'llano', CRUZ: 'cruz', PILARES: 'pilares', ANILLO: 'anillo', ZIGZAG: 'zigzag',
       COLUMNAS: 'columnas', 'DOBLE ANILLO': 'doble anillo', REJILLA: 'rejilla', JAULA: 'jaula',
@@ -3044,7 +2719,7 @@ const STRINGS = {
     ruleModes: 'frenesí: bordes abiertos, olas de fruta y picos de velocidad.',
     ruleHunter: 'cazador: su cabeza te mata; su cuerpo y los puntos son seguros.',
     ruleTimed: 'contrarreloj: 30 s y cada fruta suma 3 s; el tiempo no perdona.',
-    ruleCompetitive: 'competitivo: arena y modificador al azar; ganas copas; último en pie.',
+    ruleCompetitive: 'competitivo: cuatro tableros; gana quien aguanta más y el puesto da copas.',
     ruleMods: 'algunos niveles llevan modificador: muros, reloj, cazador o sin turbo.',
     powerBasics: 'fantasma atraviesa obstáculos; lento baja el ritmo; recorte acorta la cola.',
     powerAdvanced: 'los poderes dependen del modo; el escudo salva un choque y doble dura 7 s.',
@@ -3104,6 +2779,23 @@ const STRINGS = {
     rankPlatinum: 'platino', rankDiamond: 'diamante', rankMaster: 'maestro',
     statsCups: 'copas',
     statsRank: 'rango',
+    you: 'tú',
+    play: 'jugar',
+    cupsToNext: 'faltan {count} copas para {rank}',
+    maxRank: 'rango máximo · sigue sumando copas',
+    competitiveDraw: 'sorteo de la partida',
+    startMatch: 'empezar',
+    redraw: 'sortear otra',
+    placedShort: '{rank}º',
+    out: 'fuera',
+    compRuleBoards: 'cuatro tableros separados: uno por serpiente',
+    compRuleDraw: 'mapa y modificador sorteados en cada partida',
+    compRuleSurvive: 'gana quien aguanta más tiempo',
+    compRuleCups: 'el puesto da copas: 1º +25 · 2º +10 · 3º +5 · 4º +0',
+    modExplain_muros: 'cada pocos segundos aparece un muro nuevo',
+    modExplain_reloj: 'el reloj corre: si llega a cero te quedas fuera',
+    modExplain_cazador: 'una serpiente roja te persigue',
+    modExplain_turbo: 'sin turbo: no hay acelerón',
     win: '¡has ganado!',
     profile: 'perfil',
     profileTitle: 'tu perfil',
@@ -3135,7 +2827,7 @@ const STRINGS = {
   },
   en: {
     documentTitle: 'Snake — v2.0',
-    description: 'Snake v2.1: 30-level campaign with modifiers, competitive with random arenas and cups, time attack with a big clock, and a profile.',
+    description: 'Snake v2.0: 30-level campaign with modifiers, time attack, competitive with four boards and cups, and a profile.',
     language: 'Language',
     sound: 'sound',
     soundTitleOn: 'sound on (M)',
@@ -3158,7 +2850,7 @@ const STRINGS = {
     groupEndless: 'endless',
     groupEndlessTag: 'chase a high score',
     groupCompetitive: 'competitive',
-    groupCompetitiveTag: 'random arena and modifier · cups and ranks',
+    groupCompetitiveTag: 'four boards · cups and ranks',
     modeClassic: 'classic',
     modeClassicTag: 'each fruit speeds you up · walls begin at 30 fruits',
     modeFrenzy: 'frenzy',
@@ -3168,7 +2860,7 @@ const STRINGS = {
     modeTimed: 'time attack',
     modeTimedTag: '30 seconds · each fruit adds 3',
     modeCompetitive: 'competitive',
-    modeCompetitiveTag: 'random map and modifier · three bots · cups at stake',
+    modeCompetitiveTag: 'four boards · random map and modifier · cups',
     levelNames: {
       LLANO: 'open field', CRUZ: 'cross', PILARES: 'pillars', ANILLO: 'ring', ZIGZAG: 'zigzag',
       COLUMNAS: 'columns', 'DOBLE ANILLO': 'double ring', REJILLA: 'grid', JAULA: 'cage',
@@ -3232,7 +2924,7 @@ const STRINGS = {
     ruleModes: 'frenzy: open edges, fruit waves, and speed pulses.',
     ruleHunter: 'hunter: its head is deadly; its body and pellets are safe.',
     ruleTimed: 'time attack: 30 s and each fruit adds 3 s; time shows no mercy.',
-    ruleCompetitive: 'competitive: random arena and modifier, cups by placing; last one standing.',
+    ruleCompetitive: 'competitive: four boards, longest survivor wins, placing earns cups.',
     ruleMods: 'some levels add a modifier: walls, clock, hunter, or no boost.',
     powerBasics: 'ghost passes hazards; slow eases the pace; shrink trims your tail.',
     powerAdvanced: 'available powers depend on the mode; shield saves one crash and double lasts 7 s.',
@@ -3292,6 +2984,23 @@ const STRINGS = {
     rankPlatinum: 'platinum', rankDiamond: 'diamond', rankMaster: 'master',
     statsCups: 'cups',
     statsRank: 'rank',
+    you: 'you',
+    play: 'play',
+    cupsToNext: '{count} cups to {rank}',
+    maxRank: 'top rank · keep earning cups',
+    competitiveDraw: 'match draw',
+    startMatch: 'start',
+    redraw: 'draw again',
+    placedShort: '{rank}th',
+    out: 'out',
+    compRuleBoards: 'four separate boards, one per snake',
+    compRuleDraw: 'map and modifier drawn every match',
+    compRuleSurvive: 'whoever survives longest wins',
+    compRuleCups: 'placing earns cups: 1st +25 · 2nd +10 · 3rd +5 · 4th +0',
+    modExplain_muros: 'a new wall appears every few seconds',
+    modExplain_reloj: 'the clock runs: at zero you are out',
+    modExplain_cazador: 'a red snake hunts you',
+    modExplain_turbo: 'no boost: the speed burst is gone',
     win: 'you won!',
     profile: 'profile',
     profileTitle: 'your profile',
@@ -3403,6 +3112,19 @@ function rankName(cups) {
   return t('rankBronze');
 }
 
+function rankInfo(cups) {
+  const n = Math.max(0, Number(cups) || 0);
+  const idx = UMBRALES_RANGO.findIndex((u) => n >= u);
+  const nombre = t(CLAVES_RANGO[idx < 0 ? CLAVES_RANGO.length - 1 : idx]);
+  if (idx <= 0) return { nombre, copas: n, siguiente: null, falta: 0 };
+  return {
+    nombre,
+    copas: n,
+    siguiente: t(CLAVES_RANGO[idx - 1]),
+    falta: UMBRALES_RANGO[idx - 1] - n,
+  };
+}
+
 function fruitUnit(count) {
   const singular = Number(count) === 1;
   if (language === 'en') return singular ? 'fruit' : 'fruits';
@@ -3437,17 +3159,17 @@ function routeWords() {
   };
 }
 
-  Object.assign(modulo, { getLanguage, setLanguage, t, modeName, modeTag, groupName, groupTag, levelName, rankName, fruitUnit, appleUnit, routeSlug, routeWords });
+  Object.assign(modulo, { getLanguage, setLanguage, t, modeName, modeTag, groupName, groupTag, levelName, rankName, rankInfo, fruitUnit, appleUnit, routeSlug, routeWords });
 })(modulos['i18n']);
 
 // ---- main ----
 (function (modulo) {
 'use strict';
 const { Game, POWER_INFO } = modulos['engine'];
-const { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS } = modulos['levels'];
+const { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS, RIVAL_NAMES } = modulos['levels'];
 const { audio } = modulos['audio'];
 const { attachInput } = modulos['input'];
-const { t, getLanguage, setLanguage, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, appleUnit, routeSlug, routeWords, rankName } = modulos['i18n'];
+const { t, getLanguage, setLanguage, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, appleUnit, routeSlug, routeWords, rankName, rankInfo } = modulos['i18n'];
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -3478,6 +3200,9 @@ const el = {
   overlay: $('#overlay'),
   prompt: $('#prompt'),
   reloj: $('#reloj'),
+  arena: $('#arena'),
+  cuenta: $('#cuenta'),
+  tableros: [...document.querySelectorAll('#arena .tablero')],
   meta: $('#hud-meta'),
   score: $('#hud-score'),
   best: $('#hud-best'),
@@ -3585,6 +3310,9 @@ const app = {
   chips: new Map(),
   arena: null, // mapa + modificador sorteados en la partida competitiva
   copas: null, // resultado de copas al cerrar la partida
+  tableros: [], // un tablero por serpiente en el competitivo
+  cuenta: 0, // cuenta atrás de 3 s antes de salir
+  puestoMuerte: 0,
 };
 
 const rutas = { listas: false, restaurando: false };
@@ -3611,7 +3339,7 @@ function esTactil() {
 }
 
 function turboPermitido() {
-  return app.pantalla === 'playing' && app.modo !== 'hunter'
+  return app.pantalla === 'playing' && app.modo !== 'hunter' && app.modo !== 'timed'
     && !(app.juego && app.juego.cfg && app.juego.cfg.noTurbo);
 }
 
@@ -3812,6 +3540,28 @@ function dibujarMarca(dt) {
 
 /* ---------------------------------------------------------- lienzo */
 
+// los cuatro tableros del competitivo: cada uno en su celda de la rejilla
+function ajustarArena() {
+  if (!el.arena || !app.tableros.length) return;
+  const caja = el.arena.getBoundingClientRect();
+  const ancho = caja.width || el.stage.getBoundingClientRect().width || 480;
+  const alto = caja.height || el.stage.getBoundingClientRect().height || 480;
+  const lado = Math.max(90, Math.min((ancho - 10) / 2, (alto - 10) / 2 - 14));
+  const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  for (const tab of app.tableros) {
+    const fig = el.tableros[tab.i];
+    if (!fig) continue;
+    const lienzo = fig.querySelector('canvas');
+    if (!lienzo) continue;
+    lienzo.style.width = `${lado}px`;
+    lienzo.style.height = `${lado}px`;
+    lienzo.width = Math.round(lado * dpr);
+    lienzo.height = Math.round(lado * dpr);
+    tab.pincel = lienzo.getContext('2d', { alpha: false });
+    tab.vista = { cell: lado / Math.max(COLS, ROWS), ox: 0, oy: 0, width: lado, height: lado, dpr };
+  }
+}
+
 function ajustarLienzo() {
   const caja = el.stage.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
@@ -3832,6 +3582,7 @@ function ajustarLienzo() {
   Object.assign(vista, { cell: celda, ox: 0, oy: 0, width: ancho, height: alto, dpr });
 
   ajustarMarca();
+  if (!el.arena.hidden) ajustarArena();
 
   const lienzoDemo = document.getElementById('demo');
   if (lienzoDemo) {
@@ -3957,6 +3708,13 @@ function pantalla(nombre) {
   app.pantalla = nombre;
   document.body.dataset.screen = nombre;
   if (!app.juego) actualizarEfectos(null);
+  if (el.arena) {
+    el.arena.hidden = !(app.modo === 'competitive' && ['playing', 'paused', 'countdown'].includes(nombre));
+    if (!el.arena.hidden) ajustarArena();
+  }
+  // el lienzo de un solo tablero sólo se aparta cuando manda la arena
+  if (el.canvas) el.canvas.hidden = !el.arena.hidden;
+  if (el.cuenta && nombre !== 'countdown') el.cuenta.hidden = true;
   actualizarReloj(app.juego);
   if (antes !== nombre) taparPantalla();
   actualizarPista();
@@ -4041,6 +3799,10 @@ function rutaDeEstado() {
   if (app.pantalla === 'settings') return `${BASE_PATH}${routeSlug('settings')}`;
   if (app.pantalla === 'profile') return `${BASE_PATH}${routeSlug('profile')}`;
   if (app.pantalla === 'levels') return `${BASE_PATH}${routeSlug('campaign')}`;
+  if (['compmenu', 'preview', 'countdown', 'won', 'dead'].includes(app.pantalla)
+    && app.modo === 'competitive') {
+    return `${BASE_PATH}${routeSlug('competitive')}`;
+  }
   if (app.modo === 'campaign') {
     return `${BASE_PATH}${routeSlug('campaign')}/nivel-${dosDigitos(app.nivel + 1)}`;
   }
@@ -4067,6 +3829,8 @@ function mostrarRuta(ruta) {
     mostrarAjustes('modes');
   } else if (ruta.tipo === 'profile') {
     mostrarPerfil();
+  } else if (ruta.tipo === 'game' && ruta.modo === 'competitive') {
+    menuCompetitivo();
   } else if (ruta.tipo === 'game') {
     empezarPartida(ruta.modo, 0);
   } else if (ruta.tipo === 'campaign-level') {
@@ -4140,8 +3904,8 @@ function actualizarMarcador() {
       meta = t('timeLeft', { s });
       el.meta.classList.toggle('urgente', s <= 10 && juego.state === 'running');
     } else if (app.modo === 'competitive') {
-      const vivos = 1 + juego.rivals.filter((r) => r.alive).length;
-      meta = t('competitiveAlive', { alive: vivos, total: juego.rivals.length + 1 });
+      const vivos = app.tableros.length ? vivosCompetitivo() : 1;
+      meta = t('competitiveAlive', { alive: vivos, total: TOTAL_TABLEROS });
       const arena = app.arena && LEVELS[app.arena.indice];
       if (arena) {
         marca = `${levelName(arena.name)} · ${app.arena.mods.map((m) => t('mod_' + m)).join(' + ')}`;
@@ -4537,6 +4301,7 @@ function seleccionarModo(i) {
 
 function elegirModo(modo) {
   if (modo === 'campaign') mostrarNiveles();
+  else if (modo === 'competitive') menuCompetitivo();
   else empezarPartida(modo, 0);
 }
 
@@ -4820,7 +4585,7 @@ function mostrarPerfil() {
 
 /* ---------------------------------------------------------- partida */
 
-/* ---------------------------------------------------------- competitivo (v2.1)
+/* ---------------------------------------------------------- competitivo
    partida rápida al estilo de siempre: mapa y modificador se sortean en cada
    partida (los mismos para todos), cada serpiente nace en su parcela y al
    final se ganan copas que suben de rango. */
@@ -4840,21 +4605,28 @@ function sortearArena() {
   return { indice, mods: [elegir(MODS_COMPETITIVO)] };
 }
 
-// el mapa pone los muros; el modificador añade la regla hostil de turno
-function datosArena(arena) {
-  const nivel = LEVELS[arena.indice];
-  const datos = {
-    walls: nivel.walls,
-    startSpeed: Math.max(120, Math.min(150, nivel.speed + 30)),
-    mods: arena.mods.slice(),
+// cada tablero recibe la misma arena y el mismo modificador: la carrera es justa
+function configuracionArena() {
+  const nivel = LEVELS[app.arena.indice];
+  const cfg = {
+    ...MODES.competitive,
+    walls: nivel.walls.slice(),
+    startSpeed: Math.max(120, Math.min(150, nivel.speed + 26)),
+    mods: app.arena.mods.slice(),
   };
-  if (arena.mods.includes('muros')) Object.assign(datos, CUADROS_ARENA);
-  if (arena.mods.includes('reloj')) datos.timeAttack = { start: 45000, perFruit: 3200, max: 120000 };
-  if (arena.mods.includes('cazador')) {
-    Object.assign(datos, { hunter: true, hunterPellets: 2, hunterCap: 12, hunterSight: 4 });
+  if (app.arena.mods.includes('muros')) Object.assign(cfg, CUADROS_ARENA);
+  if (app.arena.mods.includes('reloj')) {
+    cfg.timeAttack = { start: 45000, perFruit: 3200, max: 120000, rampMs: 60000 };
   }
-  if (arena.mods.includes('turbo')) datos.noTurbo = true;
-  return datos;
+  if (app.arena.mods.includes('cazador')) {
+    Object.assign(cfg, { hunter: true, hunterPellets: 2, hunterCap: 12, hunterSight: 4 });
+  }
+  if (app.arena.mods.includes('turbo')) cfg.noTurbo = true;
+  return cfg;
+}
+
+function configuracionSuelta(modo) {
+  return { ...MODES[modo] };
 }
 
 function camposMods(datos) {
@@ -4894,19 +4666,251 @@ function copasDePartida(puesto) {
   return app.copas;
 }
 
-function configuracion(modo, nivel) {
-  if (modo === 'competitive') {
-    const arena = app.arena || sortearArena();
-    const datos = datosArena(arena);
-    return {
-      ...MODES.competitive,
-      mods: datos.mods,
-      walls: datos.walls,
-      startSpeed: datos.startSpeed,
-      ...camposMods(datos),
-    };
+/* ---------------------------------------------------------- competitivo (v2.0)
+   cuatro tableros separados, uno por serpiente: el mismo mapa, el mismo
+   modificador y la misma dificultad para todos. gana quien aguanta más. */
+
+const TOTAL_TABLEROS = 4;
+
+function nombreTablero(i) {
+  return i === 0 ? t('you') : RIVAL_NAMES[i - 1];
+}
+
+function tableroPorIndice(i) {
+  return app.tableros.find((tab) => tab.i === i) || null;
+}
+
+// menú previo: rango, copas y reglas del modo
+function menuCompetitivo() {
+  pararTemporizador();
+  app.juego = null;
+  app.demo = null;
+  app.tableros = [];
+  app.arena = null;
+  el.arena.hidden = true;
+
+  const copas = guardado.competitive.cups;
+  const info = rankInfo(copas);
+  const fila = (indice, nombre, valor) => `<div class="row stat">
+    <span class="row-idx">${indice}</span>
+    <span class="row-name">${nombre}</span>
+    <span class="row-right">${valor}</span>
+  </div>`;
+  const progreso = info.siguiente
+    ? t('cupsToNext', { count: info.falta, rank: info.siguiente })
+    : t('maxRank');
+
+  ponerOverlay(`<div class="panel niveles">
+    <div class="niveles-cabeza">
+      <div>
+        <p class="kicker">${t('groupCompetitiveTag')}</p>
+        <h2>${t('modeCompetitive')}</h2>
+      </div>
+      <button class="ghost" type="button" data-accion="home">${t('back')} <kbd>esc</kbd></button>
+    </div>
+    <div class="filas">
+      ${fila('01', t('statsRank'), info.nombre)}
+      ${fila('02', t('statsCups'), puntos(copas))}
+      ${fila('03', t('statsWins'), puntos(guardado.stats.wins))}
+    </div>
+    <p class="nota">${progreso}</p>
+    <ul class="reglas">
+      <li>${t('compRuleBoards')}</li>
+      <li>${t('compRuleDraw')}</li>
+      <li>${t('compRuleSurvive')}</li>
+      <li>${t('compRuleCups')}</li>
+    </ul>
+    <div class="acciones">
+      <button class="principal" type="button" data-accion="jugarCompetitivo">${t('play')} <kbd>↵</kbd></button>
+    </div>
+  </div>`);
+
+  el.score.textContent = '—';
+  el.meta.textContent = t('modeCompetitive');
+  el.best.textContent = `${info.nombre} · ${puntos(copas)}`;
+  el.mult.textContent = '';
+  el.chain.style.width = '0%';
+  el.pause.disabled = true;
+  el.prompt.classList.remove('visible');
+  pantalla('compmenu');
+  enfocarPrimero('button[data-accion="jugarCompetitivo"]');
+}
+
+// sorteo: mapa y modificador, los mismos para los cuatro tableros
+function prepararCompetitivo() {
+  pararTemporizador();
+  app.juego = null;
+  app.demo = null;
+  app.tableros = [];
+  app.modo = 'competitive';
+  app.arena = sortearArena();
+  el.arena.hidden = true;
+
+  const nivel = LEVELS[app.arena.indice];
+  const mods = app.arena.mods;
+  ponerOverlay(`<div class="panel fin">
+    <div class="fin-cabeza">
+      <p class="kicker">${t('competitiveDraw')}</p>
+      <p class="cifra">${levelName(nivel.name)}</p>
+      <p class="nota">${mods.map((m) => t('mod_' + m)).join(' + ')}</p>
+      <p class="nota">${t('modExplain_' + mods[0])}</p>
+    </div>
+    <div class="acciones">
+      <button class="principal" type="button" data-accion="empezarCompetitivo">${t('startMatch')} <kbd>↵</kbd></button>
+      <button type="button" data-accion="jugarCompetitivo">${t('redraw')} <kbd>R</kbd></button>
+      <button type="button" data-accion="home">${t('menu')} <kbd>esc</kbd></button>
+    </div>
+  </div>`);
+
+  el.meta.textContent = t('modeCompetitive');
+  el.best.textContent = `${levelName(nivel.name)} · ${mods.map((m) => t('mod_' + m)).join(' + ')}`;
+  el.score.textContent = '—';
+  el.pause.disabled = true;
+  el.prompt.classList.remove('visible');
+  pantalla('preview');
+  enfocarPrimero('button[data-accion="empezarCompetitivo"]');
+}
+
+// cuatro tableros iguales, cada uno con su serpiente
+function empezarCompetitivo() {
+  pararTemporizador();
+  audio.unlock();
+  if (!app.arena) app.arena = sortearArena();
+  app.modo = 'competitive';
+  app.copas = null;
+  app.puestoMuerte = 0;
+  app.motivoMuerte = null;
+  app.record = false;
+  app.tableros = [];
+  ponerOverlay(null);
+
+  for (let i = 0; i < TOTAL_TABLEROS; i++) {
+    const juego = new Game(
+      configuracionArena(),
+      i === 0 ? eventosJuego : (tipo, datos) => eventoRival(i, tipo, datos),
+    );
+    app.tableros.push({
+      i,
+      nombre: nombreTablero(i),
+      esJugador: i === 0,
+      juego,
+      vivo: true,
+      puesto: 0,
+      acum: 0,
+    });
   }
-  if (modo !== 'campaign') return { ...MODES[modo] };
+  app.juego = app.tableros[0].juego;
+  app.marca = mejorActual();
+
+  el.arena.hidden = false;
+  pantalla('countdown');
+  ajustarLienzo();
+  actualizarTableros();
+  actualizarMarcador();
+  app.cuenta = 3000;
+}
+
+// la cuenta atrás pinta 3 · 2 · 1 sobre el tablero
+function pasoCuenta(dt) {
+  if (app.cuenta <= 0) return false;
+  const antes = Math.ceil(app.cuenta / 1000);
+  app.cuenta -= dt;
+  const ahora = Math.max(0, Math.ceil(app.cuenta / 1000));
+  if (ahora !== antes) audio.play('tick');
+  if (el.cuenta) {
+    el.cuenta.hidden = false;
+    const cifra = el.cuenta.querySelector('b');
+    const texto = String(Math.max(1, ahora));
+    if (cifra && cifra.textContent !== texto) cifra.textContent = texto;
+  }
+  if (app.cuenta <= 0) {
+    if (el.cuenta) el.cuenta.hidden = true;
+    for (const tab of app.tableros) tab.juego.start();
+    pantalla('playing');
+    actualizarMarcador();
+  }
+  return true;
+}
+
+function eventoRival(i, tipo, datos) {
+  const tab = tableroPorIndice(i);
+  if (!tab) return;
+  if (tipo === 'die') {
+    tab.vivo = false;
+    tab.puesto = 1 + app.tableros.filter((o) => o !== tab && o.vivo).length;
+    audio.play('rivalDie');
+    actualizarTableros();
+    const quedan = app.tableros.filter((o) => !o.esJugador && o.vivo).length;
+    if (quedan === 0 && app.tableros[0].vivo) {
+      app.temporizador = setTimeout(mostrarVictoria, 900);
+    }
+  }
+}
+
+// un paso de los cuatro tableros: los rivales deciden y todos avanzan igual
+function pasoCompetitivo(dt) {
+  if (pasoCuenta(dt)) return;
+  if (app.pantalla !== 'playing') return;
+  for (const tab of app.tableros) {
+    const juego = tab.juego;
+    if (!tab.esJugador && tab.vivo) {
+      tab.acum += dt;
+      if (tab.acum > 60) {
+        tab.acum = 0;
+        if (juego.state === 'running') juego.decidir();
+      }
+    }
+    juego.update(dt);
+  }
+  dibujarArena();
+  actualizarTableros();
+  actualizarMarcador();
+  if (app.tableros[0].juego.state === 'running') {
+    guardado.stats.timeMs += dt;
+    app.statsAcum += dt;
+    if (app.statsAcum > 5000) {
+      app.statsAcum = 0;
+      guardar();
+    }
+  }
+}
+
+function dibujarArena() {
+  for (const tab of app.tableros) {
+    const fig = el.tableros[tab.i];
+    if (!fig || !tab.vista) continue;
+    const lienzo = fig.querySelector('canvas');
+    if (!lienzo || !tab.pincel) continue;
+    tab.juego.draw(tab.pincel, tab.vista);
+  }
+}
+
+function actualizarTableros() {
+  app.tableros.forEach((tab) => {
+    const fig = el.tableros[tab.i];
+    if (!fig) return;
+    if (tab.nombre !== fig.dataset.nombre) {
+      fig.dataset.nombre = tab.nombre;
+      const nombre = fig.querySelector('.tablero-nombre');
+      if (nombre) nombre.textContent = tab.nombre;
+    }
+    fig.classList.toggle('mio', tab.esJugador);
+    fig.classList.toggle('caido', !tab.vivo);
+    const datos = fig.querySelector('.tablero-datos');
+    if (!datos) return;
+    const texto = tab.vivo
+      ? `${tab.juego.fruits}`
+      : (tab.puesto ? t('placedShort', { rank: tab.puesto }) : t('out'));
+    if (datos.textContent !== texto) datos.textContent = texto;
+  });
+}
+
+function vivosCompetitivo() {
+  return app.tableros.filter((tab) => tab.vivo).length;
+}
+
+function configuracion(modo, nivel) {
+  if (modo !== 'campaign') return configuracionSuelta(modo);
   const datos = LEVELS[nivel];
   return {
     cols: COLS,
@@ -4928,6 +4932,10 @@ function configuracion(modo, nivel) {
 }
 
 function empezarPartida(modo, nivel = 0) {
+  if (modo === 'competitive') {
+    menuCompetitivo();
+    return;
+  }
   pararTemporizador();
   audio.unlock();
   app.demo = null;
@@ -4935,8 +4943,6 @@ function empezarPartida(modo, nivel = 0) {
   app.nivel = nivel;
   app.record = false;
   app.motivoMuerte = null;
-  app.rankMuerte = 0;
-  app.totalMuerte = 0;
   app.copas = null;
   app.arena = modo === 'competitive' ? sortearArena() : null;
   app.juego = new Game(configuracion(modo, nivel), eventosJuego);
@@ -4964,9 +4970,10 @@ function eventosJuego(tipo, datos) {
     case 'tick':
       audio.play('tick');
       break;
-    case 'botDie':
-      audio.play('botDie');
+    case 'veneno':
+      audio.play('death');
       parpadear(el.meta);
+      parpadear(el.score);
       break;
     case 'win':
       audio.play('win');
@@ -5034,9 +5041,17 @@ function eventosJuego(tipo, datos) {
       guardado.stats.games++;
       guardar();
       app.motivoMuerte = datos.reason;
-      app.rankMuerte = datos.rank || 0;
-      app.totalMuerte = datos.total || 0;
-      app.temporizador = setTimeout(mostrarFin, 900);
+      if (app.modo === 'competitive') {
+        // el puesto sale de cuántos siguen vivos en los otros tableros
+        app.puestoMuerte = 1 + app.tableros.filter((tab) => !tab.esJugador && tab.vivo).length;
+        const mio = app.tableros[0];
+        if (mio) {
+          mio.vivo = false;
+          mio.puesto = app.puestoMuerte;
+        }
+        actualizarTableros();
+      }
+      app.temporizador = setTimeout(app.modo === 'competitive' ? mostrarFinCompetitivo : mostrarFin, 900);
       break;
     case 'clear':
       audio.play(app.nivel >= LEVELS.length - 1 ? 'campaignComplete' : 'level');
@@ -5081,12 +5096,6 @@ function mostrarFin() {
     meta = `${t('timeUp')} · ${resumenManzanas(juego)}`;
   } else if (esCampana) {
     meta = resumenManzanas(juego);
-  } else if (app.modo === 'competitive') {
-    const total = app.totalMuerte || juego.rivals.length + 1;
-    const puesto = app.rankMuerte || juego.rank || total;
-    const copas = copasDePartida(puesto);
-    meta = `${t('competitiveRank', { rank: puesto, total })} · ${t('cupsWon', { count: copas.ganadas })} · ${rankName(copas.total)}`;
-    if (copas.subio) meta += ` · ${t('newRank', { name: copas.subio })}`;
   } else if (app.modo === 'timed' && app.motivoMuerte === 'tiempo') {
     meta = `${t('timeUp')} · ${t('fruits', { count: juego.fruits, unit: fruitUnit(juego.fruits) })}`;
   } else {
@@ -5140,11 +5149,43 @@ function mostrarNivelSuperado() {
   el.prompt.classList.remove('visible');
 }
 
-// v2.0: victoria en el competitivo — todos los rivales han caído y tú sigues en pie
+function mostrarFinCompetitivo() {
+  const juego = app.juego;
+  if (!juego || juego.state !== 'dead') return;
+  const puesto = app.puestoMuerte || TOTAL_TABLEROS;
+  const copas = copasDePartida(puesto);
+  app.record = juego.score > app.marca;
+  const notas = [
+    t('competitiveRank', { rank: puesto, total: TOTAL_TABLEROS }),
+    t('cupsWon', { count: copas.ganadas }),
+    rankName(copas.total),
+  ];
+  if (copas.subio) notas.push(t('newRank', { name: copas.subio }));
+  ponerOverlay(`<div class="panel fin">
+    <div class="fin-cabeza">
+      <p class="kicker">${t(app.record ? 'recordNew' : 'end')}</p>
+      <p class="cifra" data-cifra>${puntos(juego.score)}</p>
+      <p class="nota">${notas.join(' · ')}</p>
+      <p class="nota">${t('fruits', { count: juego.fruits, unit: fruitUnit(juego.fruits) })}</p>
+    </div>
+    <div class="acciones">
+      <button class="principal" type="button" data-accion="retry">${t('retry')} <kbd>R</kbd></button>
+      <button type="button" data-accion="jugarCompetitivo">${t('redraw')}</button>
+      <button type="button" data-accion="home">${t('menu')} <kbd>esc</kbd></button>
+    </div>
+  </div>`);
+  pantalla('dead');
+  animarCifra(el.overlay.querySelector('[data-cifra]'), juego.score);
+  enfocarPrimero('button[data-accion="retry"]');
+  el.pause.disabled = true;
+  el.prompt.classList.remove('visible');
+}
+
+// v2.0: victoria — los tres rivales han caído y tú sigues en pie
 function mostrarVictoria() {
   const juego = app.juego;
-  if (!juego || juego.state !== 'cleared') return;
-  const caidos = juego.rivals.length;
+  if (!juego || juego.state !== 'running') return;
+  const caidos = TOTAL_TABLEROS - 1;
   const copas = copasDePartida(1);
   const copasTexto = `${t('cupsWon', { count: copas.ganadas })} · ${rankName(copas.total)}${copas.subio ? ` · ${t('newRank', { name: copas.subio })}` : ''}`;
   ponerOverlay(`<div class="panel fin">
@@ -5233,6 +5274,7 @@ function mostrarPausa() {
 
 function pausar() {
   if (!app.juego || app.pantalla !== 'playing') return;
+  for (const tab of app.tableros) tab.juego.pause();
   app.juego.pause();
   if (app.juego.state !== 'paused') return;
   audio.play('ui');
@@ -5242,6 +5284,7 @@ function pausar() {
 
 function reanudar() {
   if (!app.juego) return;
+  for (const tab of app.tableros) tab.juego.resume();
   app.juego.resume();
   ponerOverlay(null);
   foco.indice = -1;
@@ -5361,6 +5404,32 @@ function accion(nombre) {
     return;
   }
 
+  if (app.pantalla === 'compmenu' || app.pantalla === 'preview') {
+    if (esDireccion) {
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
+      return;
+    }
+    if (nombre === 'confirm') activarFoco();
+    else if (nombre === 'jugarCompetitivo') prepararCompetitivo();
+    else if (nombre === 'empezarCompetitivo') empezarCompetitivo();
+    else if (nombre === 'restart' && app.pantalla === 'preview') prepararCompetitivo();
+    else if (nombre === 'back' || nombre === 'pause') mostrarInicio();
+    return;
+  }
+
+  if (app.pantalla === 'countdown') return;
+
+  if (app.pantalla === 'won') {
+    if (esDireccion) {
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
+      return;
+    }
+    if (nombre === 'confirm') activarFoco();
+    else if (nombre === 'restart') prepararCompetitivo();
+    else if (nombre === 'back') mostrarInicio();
+    return;
+  }
+
   if (app.pantalla === 'paused' || app.pantalla === 'dead' || app.pantalla === 'cleared') {
     if (esDireccion) {
       moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
@@ -5391,7 +5460,8 @@ function accion(nombre) {
     return;
   }
   if (nombre === 'restart') {
-    if (app.juego) empezarPartida(app.modo, app.nivel);
+    if (app.modo === 'competitive') prepararCompetitivo();
+    else if (app.juego) empezarPartida(app.modo, app.nivel);
     return;
   }
   if (!esDireccion) return;
@@ -5404,7 +5474,14 @@ function accion(nombre) {
 function ejecutar(nombre) {
   switch (nombre) {
     case 'retry':
-      empezarPartida(app.modo, app.nivel);
+      if (app.modo === 'competitive') prepararCompetitivo();
+      else empezarPartida(app.modo, app.nivel);
+      break;
+    case 'jugarCompetitivo':
+      prepararCompetitivo();
+      break;
+    case 'empezarCompetitivo':
+      empezarCompetitivo();
       break;
     case 'next':
       empezarPartida('campaign', Math.min(app.nivel + 1, LEVELS.length - 1));
@@ -5573,7 +5650,7 @@ function pasoDemo(dt) {
   app.demoAcum += dt;
   if (app.demoAcum > 60) {
     app.demoAcum = 0;
-    demo.botTurn();
+    demo.decidir();
   }
   if (demo.state === 'dead' || demo.state === 'cleared') crearDemo(app.demoModo);
 
@@ -5694,6 +5771,8 @@ function bucle(t) {
   if (app.pantalla === 'home' || app.pantalla === 'modes') {
     pasoDemo(dt);
     dibujarMarca(dt);
+  } else if (app.juego && app.modo === 'competitive' && app.tableros.length) {
+    pasoCompetitivo(dt);
   } else if (app.juego) {
     app.juego.update(dt);
     app.juego.draw(pincel, vista);
@@ -5744,7 +5823,7 @@ try {
 }
 
 if (location.hash === '#debug') {
-  window.__snake = { app, guardado, accion, empezarPartida, mostrarInicio, crearDemo, mostrarFin, mostrarNivelSuperado, mostrarVictoria };
+  window.__snake = { app, guardado, accion, ejecutar, empezarPartida, mostrarInicio, crearDemo, mostrarFin, mostrarNivelSuperado, mostrarVictoria };
   // rótulo: para poder mirarlo desde las pruebas
   window.__snake.marca = marca;
   window.__snake.serpientesMarca = SERPIENTES_NOMBRE;

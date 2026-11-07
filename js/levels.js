@@ -34,11 +34,14 @@ const cut = (...celdas) => celdas;
 const slit = (x, y, alto) => vline(x, y, alto);
 
 
+// rivales del competitivo: cada uno juega en su propio tablero
+export const RIVAL_NAMES = ['KOBRA', 'VÍBORA', 'MAMBA'];
+
 // grupos del menú: cada uno es una subpágina con sus modos
 export const GROUPS = [
   { name: 'progreso', tag: 'rutas con obstáculos', modes: ['campaign'] },
   { name: 'infinitos', tag: 'puntuación sin final', modes: ['classic', 'frenzy', 'hunter', 'timed'] },
-  { name: 'competitivo', tag: 'contra bots en la misma arena', modes: ['competitive'] },
+  { name: 'competitivo', tag: 'cuatro tableros a la vez', modes: ['competitive'] },
 ];
 
 export const MODE_ORDER = GROUPS.flatMap((g) => g.modes);
@@ -114,11 +117,12 @@ export const MODES = {
     ...base,
     id: 'timed',
     name: 'CONTRARRELOJ',
-    tag: '30 segundos · cada fruta suma 3',
+    tag: '30 segundos que aceleran · una manzana va envenenada',
     startSpeed: 140,
     minSpeed: 82,
     accelPerFood: 1.4,
-    timeAttack: { start: 30000, perFruit: 3200, max: 150000 },
+    timeAttack: { start: 30000, perFruit: 3200, max: 150000, rampMs: 60000 },
+    veneno: { ms: 5000 },
     bonusEvery: 5,
     powerEvery: 7,
     powerPool: POWER_POOLS.timed,
@@ -127,19 +131,13 @@ export const MODES = {
     ...base,
     id: 'competitive',
     name: 'COMPETITIVO',
-    tag: 'tres bots en la misma arena · gana el último en pie',
-    startSpeed: 138,
-    minSpeed: 84,
-    accelPerFood: 1.1,
-    bots: 3,
-    walls: [
-      ...rect(9, 4, 2, 2),
-      ...rect(9, 14, 2, 2),
-      ...rect(4, 9, 2, 2),
-      ...rect(14, 9, 2, 2),
-    ],
+    tag: 'cuatro tableros · mapa y modificador al azar · aguanta más que los demás',
+    startSpeed: 132,
+    minSpeed: 78,
+    accelPerFood: 0.9,
+    rampPerSec: 0.16,
     bonusEvery: 5,
-    powerEvery: 7,
+    powerEvery: 6,
     powerPool: POWER_POOLS.competitive,
   },
 };

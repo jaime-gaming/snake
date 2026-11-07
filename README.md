@@ -1,8 +1,8 @@
-# snake — v2.1
+# snake — v2.0
 
 A monochrome grid-based Snake game with no external dependencies or network requests. It supports English and Spanish, remembers the selected language in the browser, and works with a keyboard, touch controls, and a gamepad. It is served from its own domain, **https://snake.jaime-gaming.com**, via **Cloudflare Workers**.
 
-v2.1 turns the competitive mode into a quick-match arena: every match draws a **random map and modifier** (the same for everyone), each snake starts in **its own quadrant**, and placing earns **cups** that climb **ranks**. Frenzy now throws **waves of extra fruit** and short **speed pulses**, time attack shows a **big clock** over the board, and clearing a campaign level just says so. The site moved from GitHub Pages to **Cloudflare Workers** on its own domain.
+Competitive is a quick match on **four separate boards**: one per snake, all with the same map, the same modifier and the same difficulty. Before playing, a menu shows your **rank and cups**, then the **draw** (map + modifier) is announced, a **3-second countdown** starts the match, and whoever survives longest wins. Placing earns **cups** that climb **ranks**. Frenzy throws **waves of extra fruit** and **speed pulses**, time attack shows a **big clock** that **keeps accelerating** (and a **poisoned apple** hidden among the fruit), and the site is served from its own domain via **Cloudflare Workers**.
 
 ## Controls
 
@@ -25,10 +25,14 @@ The home screen has three groups: **progress**, **endless**, and **competitive**
 - **Classic** — Endless play. Each fruit speeds up the snake; walls begin to appear after 30 fruits.
 - **Frenzy** — The edges wrap around and the snake gradually speeds up. Every 16 seconds a **wave of three extra fruits** lands (they blink before vanishing) and every 11 seconds a **speed pulse** pushes everyone faster for a moment.
 - **Hunter** — A red snake eats blue pellets and then pursues you. Its head is dangerous; its body and pellets are safe. If it collides with your body, it disappears and returns smaller. You can eat the blue pellets too.
-- **Time attack** — You start with **30 seconds**, shown as a **big clock** over the board. Every fruit adds 3 seconds (up to a cap); under 10 seconds the clock turns red and blinks, and when time runs out the run ends.
-- **Competitive** — Quick match against three bots on a board split into **four quadrants**, one per snake. Each match **draws an arena** (the walls of a campaign map) and **one modifier** — *walls that appear*, a *clock* (45 s, extended by fruit), the *hunter*, or *no boost* — and everyone plays the same draw; the HUD shows both. Walls, your own body, and any rival's body are deadly; head-on collisions knock out both snakes. The last one standing wins.
+- **Time attack** — You start with **30 seconds**, shown as a **big clock** over the board. Every fruit adds 3 seconds (up to a cap), but the clock **keeps speeding up** (up to twice as fast after 60 seconds); the *slow* power-up now **halves the clock** instead of the snake, **boost is disabled**, and under 10 seconds the clock turns red and blinks.
 
-  Placing awards **cups**: 1st +25, 2nd +10, 3rd +5, 4th +0. Cups climb six **ranks** — bronze (0), silver (100), gold (250), platinum (500), diamond (750), master (1000) — and both cups and rank appear on the result screen and in the profile. The draw is new on every match, so the result screen is a one-minute loop: retry and you get another arena.
+  Two apples always appear together and one of them is **poisoned**: it looks identical except for a tiny notch in one corner. Eating it **costs 5 seconds** and **resets the chain**.
+- **Competitive** — Four **separate boards**, one per snake (you and three rivals). They never share cells or fruit: each board is a full 20×20 grid, and your board is marked in the corner of the screen along with each rival's name and score. Every match **draws a map** (the walls of a campaign map) and **one modifier** — *walls that appear*, a *clock* (45 s, extended by fruit), the *hunter*, or *no boost* — and all four boards play exactly the same draw.
+
+  The flow is: **menu** (rank, cups, wins, rules) → **draw** (map and modifier announced) → **3-second countdown** → match. **Whoever survives longest wins**; walls, your own body, the clock and the hunter are what end a run.
+
+  Placing awards **cups**: 1st +25, 2nd +10, 3rd +5, 4th +0. Cups climb six **ranks** — bronze (0), silver (100), gold (250), platinum (500), diamond (750), master (1000) — shown on the menu, the result screen and the profile, with the remaining cups to the next rank. Rivals steer towards the power-ups that help them (shield, ghost, slow) and the golden apple.
 
 Power-ups vary by mode:
 
@@ -67,13 +71,13 @@ wrangler.toml       Cloudflare Workers config: static assets + SPA fallback
 styles.css          block design, responsive layout, and accessibility
 snake.js            generated classic-script bundle loaded by the page
 js/
-  engine.js         game engine, collisions, powers, bots, clock, modifiers, and drawing
+  engine.js         game engine, collisions, powers, clock, modifiers, and drawing
   grid.js           BFS and grid utilities
   levels.js         groups, five modes, and 30 levels with modifiers
   audio.js          synthesized audio; no audio files
   input.js          keyboard, gestures, and gamepad
   i18n.js           English/Spanish strings and localized names
-  main.js           screens, routes, progress, profile, title, and game loop
+  main.js           screens, routes, progress, profile, four-board arena, and game loop
 serve.mjs           local server with no-cache headers and SPA route fallback
 tools/build.mjs     bundles js/ into snake.js without dependencies
 tools/check.mjs     level, engine, language, and publishing tests

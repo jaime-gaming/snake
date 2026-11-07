@@ -179,7 +179,7 @@ const SONIDOS = {
     tono(880, 0.045, { tipo: 'square', vol: 0.06 });
     tono(660, 0.04, { tipo: 'sine', vol: 0.05, delay: 0.05 });
   },
-  botDie() {
+  rivalDie() {
     ruido(0.16, { desde: 1800, hasta: 240, vol: 0.16 });
     tono(196, 0.14, { tipo: 'triangle', vol: 0.12, fin: 98 });
   },

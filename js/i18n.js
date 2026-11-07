@@ -3,8 +3,8 @@
 const KEY = 'snake.language';
 const STRINGS = {
   es: {
-    documentTitle: 'Snake — v2.1',
-    description: 'Snake v2.1: campaña de 30 niveles con modificadores, competitivo con arena al azar y copas, contrarreloj con reloj grande y perfil.',
+    documentTitle: 'Snake — v2.0',
+    description: 'Snake v2.0: campaña de 30 niveles con modificadores, contrarreloj, competitivo con cuatro tableros y copas, y perfil.',
     language: 'Idioma',
     sound: 'sonido',
     soundTitleOn: 'sonido activo (M)',
@@ -27,7 +27,7 @@ const STRINGS = {
     groupEndless: 'infinitos',
     groupEndlessTag: 'puntuación sin final',
     groupCompetitive: 'competitivo',
-    groupCompetitiveTag: 'arena y modificador al azar · copas y rangos',
+    groupCompetitiveTag: 'cuatro tableros · copas y rangos',
     modeClassic: 'clásico',
     modeClassicTag: 'cada fruta acelera · muros al llegar a 30 frutas',
     modeFrenzy: 'frenesí',
@@ -37,7 +37,7 @@ const STRINGS = {
     modeTimed: 'contrarreloj',
     modeTimedTag: '30 segundos · cada fruta suma 3',
     modeCompetitive: 'competitivo',
-    modeCompetitiveTag: 'mapa y modificador al azar · tres bots · copas en juego',
+    modeCompetitiveTag: 'cuatro tableros · mapa y modificador al azar · copas',
     levelNames: {
       LLANO: 'llano', CRUZ: 'cruz', PILARES: 'pilares', ANILLO: 'anillo', ZIGZAG: 'zigzag',
       COLUMNAS: 'columnas', 'DOBLE ANILLO': 'doble anillo', REJILLA: 'rejilla', JAULA: 'jaula',
@@ -101,7 +101,7 @@ const STRINGS = {
     ruleModes: 'frenesí: bordes abiertos, olas de fruta y picos de velocidad.',
     ruleHunter: 'cazador: su cabeza te mata; su cuerpo y los puntos son seguros.',
     ruleTimed: 'contrarreloj: 30 s y cada fruta suma 3 s; el tiempo no perdona.',
-    ruleCompetitive: 'competitivo: arena y modificador al azar; ganas copas; último en pie.',
+    ruleCompetitive: 'competitivo: cuatro tableros; gana quien aguanta más y el puesto da copas.',
     ruleMods: 'algunos niveles llevan modificador: muros, reloj, cazador o sin turbo.',
     powerBasics: 'fantasma atraviesa obstáculos; lento baja el ritmo; recorte acorta la cola.',
     powerAdvanced: 'los poderes dependen del modo; el escudo salva un choque y doble dura 7 s.',
@@ -161,6 +161,23 @@ const STRINGS = {
     rankPlatinum: 'platino', rankDiamond: 'diamante', rankMaster: 'maestro',
     statsCups: 'copas',
     statsRank: 'rango',
+    you: 'tú',
+    play: 'jugar',
+    cupsToNext: 'faltan {count} copas para {rank}',
+    maxRank: 'rango máximo · sigue sumando copas',
+    competitiveDraw: 'sorteo de la partida',
+    startMatch: 'empezar',
+    redraw: 'sortear otra',
+    placedShort: '{rank}º',
+    out: 'fuera',
+    compRuleBoards: 'cuatro tableros separados: uno por serpiente',
+    compRuleDraw: 'mapa y modificador sorteados en cada partida',
+    compRuleSurvive: 'gana quien aguanta más tiempo',
+    compRuleCups: 'el puesto da copas: 1º +25 · 2º +10 · 3º +5 · 4º +0',
+    modExplain_muros: 'cada pocos segundos aparece un muro nuevo',
+    modExplain_reloj: 'el reloj corre: si llega a cero te quedas fuera',
+    modExplain_cazador: 'una serpiente roja te persigue',
+    modExplain_turbo: 'sin turbo: no hay acelerón',
     win: '¡has ganado!',
     profile: 'perfil',
     profileTitle: 'tu perfil',
@@ -192,7 +209,7 @@ const STRINGS = {
   },
   en: {
     documentTitle: 'Snake — v2.0',
-    description: 'Snake v2.1: 30-level campaign with modifiers, competitive with random arenas and cups, time attack with a big clock, and a profile.',
+    description: 'Snake v2.0: 30-level campaign with modifiers, time attack, competitive with four boards and cups, and a profile.',
     language: 'Language',
     sound: 'sound',
     soundTitleOn: 'sound on (M)',
@@ -215,7 +232,7 @@ const STRINGS = {
     groupEndless: 'endless',
     groupEndlessTag: 'chase a high score',
     groupCompetitive: 'competitive',
-    groupCompetitiveTag: 'random arena and modifier · cups and ranks',
+    groupCompetitiveTag: 'four boards · cups and ranks',
     modeClassic: 'classic',
     modeClassicTag: 'each fruit speeds you up · walls begin at 30 fruits',
     modeFrenzy: 'frenzy',
@@ -225,7 +242,7 @@ const STRINGS = {
     modeTimed: 'time attack',
     modeTimedTag: '30 seconds · each fruit adds 3',
     modeCompetitive: 'competitive',
-    modeCompetitiveTag: 'random map and modifier · three bots · cups at stake',
+    modeCompetitiveTag: 'four boards · random map and modifier · cups',
     levelNames: {
       LLANO: 'open field', CRUZ: 'cross', PILARES: 'pillars', ANILLO: 'ring', ZIGZAG: 'zigzag',
       COLUMNAS: 'columns', 'DOBLE ANILLO': 'double ring', REJILLA: 'grid', JAULA: 'cage',
@@ -289,7 +306,7 @@ const STRINGS = {
     ruleModes: 'frenzy: open edges, fruit waves, and speed pulses.',
     ruleHunter: 'hunter: its head is deadly; its body and pellets are safe.',
     ruleTimed: 'time attack: 30 s and each fruit adds 3 s; time shows no mercy.',
-    ruleCompetitive: 'competitive: random arena and modifier, cups by placing; last one standing.',
+    ruleCompetitive: 'competitive: four boards, longest survivor wins, placing earns cups.',
     ruleMods: 'some levels add a modifier: walls, clock, hunter, or no boost.',
     powerBasics: 'ghost passes hazards; slow eases the pace; shrink trims your tail.',
     powerAdvanced: 'available powers depend on the mode; shield saves one crash and double lasts 7 s.',
@@ -349,6 +366,23 @@ const STRINGS = {
     rankPlatinum: 'platinum', rankDiamond: 'diamond', rankMaster: 'master',
     statsCups: 'cups',
     statsRank: 'rank',
+    you: 'you',
+    play: 'play',
+    cupsToNext: '{count} cups to {rank}',
+    maxRank: 'top rank · keep earning cups',
+    competitiveDraw: 'match draw',
+    startMatch: 'start',
+    redraw: 'draw again',
+    placedShort: '{rank}th',
+    out: 'out',
+    compRuleBoards: 'four separate boards, one per snake',
+    compRuleDraw: 'map and modifier drawn every match',
+    compRuleSurvive: 'whoever survives longest wins',
+    compRuleCups: 'placing earns cups: 1st +25 · 2nd +10 · 3rd +5 · 4th +0',
+    modExplain_muros: 'a new wall appears every few seconds',
+    modExplain_reloj: 'the clock runs: at zero you are out',
+    modExplain_cazador: 'a red snake hunts you',
+    modExplain_turbo: 'no boost: the speed burst is gone',
     win: 'you won!',
     profile: 'profile',
     profileTitle: 'your profile',
@@ -458,6 +492,19 @@ export function rankName(cups) {
     if (n >= UMBRALES_RANGO[i]) return t(CLAVES_RANGO[i]);
   }
   return t('rankBronze');
+}
+
+export function rankInfo(cups) {
+  const n = Math.max(0, Number(cups) || 0);
+  const idx = UMBRALES_RANGO.findIndex((u) => n >= u);
+  const nombre = t(CLAVES_RANGO[idx < 0 ? CLAVES_RANGO.length - 1 : idx]);
+  if (idx <= 0) return { nombre, copas: n, siguiente: null, falta: 0 };
+  return {
+    nombre,
+    copas: n,
+    siguiente: t(CLAVES_RANGO[idx - 1]),
+    falta: UMBRALES_RANGO[idx - 1] - n,
+  };
 }
 
 export function fruitUnit(count) {
