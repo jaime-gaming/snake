@@ -296,43 +296,110 @@ button:disabled {
   opacity: 1;
 }
 
-/* menú del competitivo: rango con icono, puntos y poco más */
+/* menú del competitivo: tarjeta con escalera, datos y rivales */
+.panel.competitivo,
+.panel.sorteo {
+  display: flex;
+  flex-direction: column;
+}
+
 .panel.competitivo {
-  max-width: 380px;
-  gap: 16px;
+  position: relative;
+  max-width: 420px;
+  gap: 12px;
+  padding: 16px 16px 14px;
+  border: 1px solid var(--line2);
+  background: #000;
+}
+
+/* dos esquinas marcadas: el marco no necesita más adornos */
+.panel.competitivo::before,
+.panel.competitivo::after {
+  content: '';
+  position: absolute;
+  width: 46px;
+  height: 2px;
+  background: var(--fg);
+  pointer-events: none;
+}
+
+.panel.competitivo::before {
+  top: -1px;
+  left: -1px;
+}
+
+.panel.competitivo::after {
+  right: -1px;
+  bottom: -1px;
+}
+
+.comp-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--line);
+  font-size: 8px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.comp-top span:last-child {
+  color: var(--dim);
 }
 
 .comp-cabeza {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 15px;
+}
+
+.comp-cabeza .rango-icono {
+  width: 74px;
+  height: 74px;
+  gap: 4px;
+  padding: 7px;
+  border: 1px solid var(--line2);
+  background: #050505;
 }
 
 .comp-datos {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+  min-width: 0;
 }
 
 .comp-rango {
   margin: 0;
-  font-size: 11px;
-  letter-spacing: 0.24em;
+  font-size: 9px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
 }
 
 .comp-puntos {
   margin: 0;
-  font-size: clamp(34px, 7vmin, 54px);
+  font-size: clamp(34px, 7vmin, 52px);
   font-weight: 600;
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 
+.comp-puntos small {
+  margin-left: 6px;
+  font-size: 8px;
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .comp-nota {
-  margin: 0;
-  font-size: 9px;
+  margin: -4px 0 0;
+  font-size: 8px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--dim);
@@ -340,9 +407,10 @@ button:disabled {
 
 /* barra de progreso del rango: bloques, sin adornos */
 .comp-barra {
-  height: 6px;
+  position: relative;
+  height: 7px;
   width: 100%;
-  background: #171717;
+  background: #161616;
   display: flex;
 }
 
@@ -353,11 +421,90 @@ button:disabled {
   transition: width 0.3s ease;
 }
 
+.comp-barra::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0 calc(20% - 1px),
+    #000 calc(20% - 1px) 20%
+  );
+  pointer-events: none;
+}
+
+/* los seis peldaños: el rango actual va enmarcado */
+.comp-escalera {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 2px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.escalon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 5px 2px;
+  border: 1px solid transparent;
+  opacity: 0.3;
+}
+
+.escalon .rango-icono {
+  width: 18px;
+  height: 18px;
+  gap: 1px;
+}
+
+.escalon em {
+  max-width: 100%;
+  overflow: hidden;
+  font-style: normal;
+  font-size: 7px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.escalon.hecho {
+  opacity: 0.55;
+}
+
+.escalon.aqui {
+  border-color: var(--line2);
+  background: #0b0b0b;
+  opacity: 1;
+}
+
+.escalon.aqui em {
+  color: var(--fg);
+}
+
+.escalon.aqui .rango-icono i {
+  background: #232323;
+}
+
+.escalon.aqui .rango-icono i.lleno {
+  background: var(--fg);
+}
+
+.escalon.aqui .rango-icono[data-rango="5"] i.lleno {
+  background: var(--accent);
+}
+
 /* tres datos cortos, en fila */
 .comp-mini {
   display: flex;
-  gap: 22px;
-  align-self: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  align-self: stretch;
+  padding: 0 2px;
 }
 
 .comp-dato {
@@ -367,7 +514,7 @@ button:disabled {
 }
 
 .comp-dato b {
-  font-size: 17px;
+  font-size: 19px;
   font-weight: 600;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -380,10 +527,93 @@ button:disabled {
 }
 
 .comp-dato span {
-  font-size: 8px;
+  font-size: 7px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--dim);
+}
+
+/* los rivales de la partida y su fuerza, según tu rango */
+.comp-rivales {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+}
+
+.comp-sub {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  font-size: 7px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.comp-sub span:last-child {
+  color: #333;
+}
+
+.comp-rivales ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.comp-rivales li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.comp-rival {
+  color: var(--fg);
+}
+
+.comp-fuerza {
+  display: flex;
+  gap: 2px;
+}
+
+.comp-fuerza i {
+  display: block;
+  width: 14px;
+  height: 4px;
+  background: #1b1b1b;
+}
+
+.comp-fuerza i.lleno {
+  background: var(--fg);
+}
+
+.comp-reglas {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  font-size: 7px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.comp-reglas span {
+  white-space: nowrap;
+}
+
+.comp-reglas span:first-child {
+  color: var(--fg);
 }
 
 .rango-icono {
@@ -539,6 +769,23 @@ button:disabled {
 
 .tablero.revive figcaption {
   color: var(--accent);
+}
+
+/* recién revivido: marco discontinuo mientras dura la protección */
+.tablero.protegido canvas {
+  border-color: var(--accent);
+  border-style: dashed;
+  animation: tablero-protegido 0.7s steps(2, end) infinite;
+}
+
+.tablero.protegido figcaption {
+  color: var(--fg);
+}
+
+@keyframes tablero-protegido {
+  50% {
+    border-color: var(--line2);
+  }
 }
 
 /* cuenta atrás de 3 s al empezar una partida competitiva */
@@ -1463,6 +1710,10 @@ button.foco {
   .meta.urgente {
     animation: none;
     opacity: 1;
+  }
+
+  .tablero.protegido canvas {
+    animation: none;
   }
 }
 

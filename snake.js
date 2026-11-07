@@ -1,4 +1,4 @@
-/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-11-07 · v22).
+/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-11-07 · v23).
    no lo edites a mano: cambia js/*.js y vuelve a ejecutar node tools/build.mjs */
 (function () {
 'use strict';
@@ -151,6 +151,7 @@ const MODES = {
     wallFrom: 30,
     wallEvery: 6,
     wallMax: 18,
+    veneno: { chance: 0.16, puntos: 15 },
     powerPool: POWER_POOLS.classic,
   },
   frenzy: {
@@ -170,6 +171,7 @@ const MODES = {
     pulseMs: 1600,
     bonusEvery: 4,
     powerEvery: 5,
+    veneno: { chance: 0.2, puntos: 20 },
     powerPool: POWER_POOLS.frenzy,
   },
   hunter: {
@@ -186,6 +188,7 @@ const MODES = {
     hunterSight: 4,
     bonusEvery: 6,
     powerEvery: 6,
+    veneno: { chance: 0.14, puntos: 15 },
     powerPool: POWER_POOLS.hunter,
   },
   timed: {
@@ -197,7 +200,7 @@ const MODES = {
     minSpeed: 82,
     accelPerFood: 1.4,
     timeAttack: { start: 30000, perFruit: 3200, max: 150000, rampMs: 60000 },
-    veneno: { ms: 5000, chance: 0.4 },
+    veneno: { ms: 3000, chance: 0.28 },
     bonusEvery: 5,
     powerEvery: 7,
     powerPool: POWER_POOLS.timed,
@@ -213,6 +216,7 @@ const MODES = {
     rampPerSec: 0.16,
     bonusEvery: 5,
     powerEvery: 6,
+    veneno: { chance: 0.12, puntos: 20 },
     powerPool: POWER_POOLS.competitive,
   },
 };
@@ -998,6 +1002,8 @@ class Game {
     // contrarreloj: el reloj acelera con el tiempo y el veneno espera su turno
     this.timeRate = 1;
     this.veneno = null;
+    // competitivo: unos instantes de protección al volver tras una caída
+    this.gracia = 0;
     // frenesí: olas de fruta extra y picos de velocidad
     this.extraFoods = [];
     this.waveTimer = 0;
@@ -1129,9 +1135,36 @@ class Game {
     this.prevBody = this.body.map((p) => ({ ...p }));
     this.dir = { ...start.dir };
     this.state = 'running';
+    this.gracia = Math.max(0, Number(this.cfg.graciaMs) || 0);
     this.spawnFood();
     this.emit('revive');
     return true;
+  }
+
+  // una casilla libre de muros, cuerpo y cazador: se usa al cerrar la protección
+  casillaSegura(celda) {
+    if (!celda) return false;
+    if (celda.x < 0 || celda.y < 0 || celda.x >= this.cols || celda.y >= this.rows) return false;
+    if (this.wallSet.has(K(celda.x, celda.y))) return false;
+    for (let i = 1; i < this.body.length; i++) {
+      if (this.body[i].x === celda.x && this.body[i].y === celda.y) return false;
+    }
+    if (this.hunter && this.hunter.body.some((c) => c.x === celda.x && c.y === celda.y)) return false;
+    return true;
+  }
+
+  // si la protección termina encima de un muro, la serpiente vuelve a un hueco libre
+  recolocar() {
+    const start = this.findStart();
+    this.body = [];
+    for (let i = 0; i < 4; i++) {
+      this.body.push({ x: start.x - start.dir.x * i, y: start.y - start.dir.y * i });
+    }
+    this.prevBody = this.body.map((p) => ({ ...p }));
+    this.dir = { ...start.dir };
+    this.queue = [];
+    this.acc = 0;
+    this.gracia = Math.max(this.gracia, 400);
   }
 
   // salir a la vez en los cuatro tableros, sin esperar a la primera tecla
@@ -1167,6 +1200,10 @@ class Game {
     }
     if (this.state === 'running') {
       const cfg = this.cfg;
+      if (this.gracia > 0) {
+        this.gracia = Math.max(0, this.gracia - dt);
+        if (this.gracia === 0 && !this.casillaSegura(this.body[0])) this.recolocar();
+      }
       if (cfg.rampPerSec) {
         this.speed = Math.max(cfg.minSpeed, this.speed - (cfg.rampPerSec * dt) / 1000);
       }
@@ -1283,6 +1320,8 @@ class Game {
   step() {
     const cfg = this.cfg;
     const ghost = this.ghosting;
+    const gracia = this.gracia > 0;
+    const intangible = ghost || gracia;
     if (this.queue.length) {
       const d = this.queue.shift();
       if (!(d.x === -this.dir.x && d.y === -this.dir.y)) this.dir = d;
@@ -1293,17 +1332,17 @@ class Game {
     let hx = this.body[0].x + this.dir.x;
     let hy = this.body[0].y + this.dir.y;
 
-    if (cfg.wrap || ghost) {
+    if (cfg.wrap || intangible) {
       hx = (hx + this.cols) % this.cols;
       hy = (hy + this.rows) % this.rows;
     } else if (hx < 0 || hy < 0 || hx >= this.cols || hy >= this.rows) {
       return this.die('borde', clamp(hx, 0, this.cols - 1), clamp(hy, 0, this.rows - 1));
     }
 
-    if (!ghost && this.wallSet.has(K(hx, hy))) return this.die('muro', hx, hy);
+    if (!intangible && this.wallSet.has(K(hx, hy))) return this.die('muro', hx, hy);
     // el cuerpo del cazador no te mata: le muerdes el anillo y sigues.
     // sólo su cabeza puede comerte (y sólo si cae sobre la tuya)
-    if (!ghost && this.hunter) {
+    if (!intangible && this.hunter) {
       const golpe = this.hunter.body.findIndex((c) => c.x === hx && c.y === hy);
       if (golpe === 0) return this.die('cazador', hx, hy);
       if (golpe > 0) {
@@ -1323,8 +1362,8 @@ class Game {
     const takesPower = this.power && hx === this.power.x && hy === this.power.y;
     const willGrow = this.grow > 0 || eats || takesBonus;
 
-    // con el fantasma puesto atraviesas también tu propio cuerpo
-    if (!ghost) {
+    // con el fantasma o la protección puestos atraviesas también tu propio cuerpo
+    if (!intangible) {
       for (let i = 0; i < this.body.length; i++) {
         if (!willGrow && i === this.body.length - 1) continue;
         if (this.body[i].x === hx && this.body[i].y === hy) return this.die('cola', hx, hy);
@@ -1545,8 +1584,11 @@ class Game {
 
   // la serpiente decide su siguiente giro: así se mueven las demos del menú
   // y las serpientes rivales de los otros tableros del competitivo
-  decidir() {
+  decidir(opciones = {}) {
     const yo = this;
+    // los rivales de rango bajo se equivocan más: el fallo elige un giro seguro
+    // pero malo, para que pierdan tiempo sin regalar la partida
+    const fallo = clamp(Number(opciones.error) || 0, 0, 0.6);
     if (this.state !== 'ready' && this.state !== 'running') return;
     const cabeza = yo.body[0];
     const wrap = !!this.cfg.wrap || this.ghosting;
@@ -1619,7 +1661,7 @@ class Game {
       const visto = yo.botTrail.get(K(nx, ny));
       if (visto > 0) puntos -= visto * 7;
 
-      const movimiento = { dx, dy, puntos };
+      const movimiento = { dx, dy, puntos, seguro: espacio > yo.body.length + 1 };
       movimientos.push(movimiento);
       if (puntos > mejorPunto) {
         mejorPunto = puntos;
@@ -1628,6 +1670,13 @@ class Game {
     }
 
     if (mejor) {
+      if (fallo > 0 && Math.random() < fallo) {
+        const seguros = movimientos.filter((m) => m.seguro);
+        const lista = [...(seguros.length ? seguros : movimientos)]
+          .sort((a, b) => a.puntos - b.puntos);
+        const torpe = lista[Math.floor(Math.random() * Math.min(2, lista.length))];
+        if (torpe) mejor = torpe;
+      }
       this.dirDe(yo, mejor.dx, mejor.dy);
       return;
     }
@@ -1730,20 +1779,25 @@ class Game {
     this.veneno = lista[rand(lista.length)];
   }
 
-  // comer la envenenada cuesta segundos y corta la cadena
+  // comer la envenenada cuesta tiempo o puntos y deja la cadena a la mitad
   comerVeneno() {
     const x = this.veneno.x;
     const y = this.veneno.y;
     this.veneno = null;
-    const casteigo = this.cfg.veneno.ms || 5000;
-    this.timeLeft = Math.max(0, this.timeLeft - casteigo);
-    this.chain = 0;
+    const castigo = this.cfg.veneno.ms || 0;
+    const puntos = this.cfg.veneno.puntos || 0;
+    if (this.cfg.timeAttack && castigo > 0) {
+      this.timeLeft = Math.max(0, this.timeLeft - castigo);
+    } else if (puntos > 0) {
+      this.score = Math.max(0, this.score - puntos);
+    }
+    this.chain = Math.floor(this.chain / 2);
     this.chainTimer = 0;
-    this.flash = Math.max(this.flash, 0.55);
-    this.shake = Math.max(this.shake, 7);
+    this.flash = Math.max(this.flash, 0.5);
+    this.shake = Math.max(this.shake, 6);
     this.burst(x + 0.5, y + 0.5, 18, '#7a0d0d', 8);
-    this.emit('veneno', { segundos: Math.round(casteigo / 1000) });
-    this.spawnVeneno();
+    this.emit('veneno', { segundos: Math.round(castigo / 1000), puntos });
+    // la siguiente envenenada sale con la próxima fruta, no de golpe
   }
 
   spawnBonus() {
@@ -2523,6 +2577,7 @@ class Game {
     const huecoCabeza = Math.max(0, hueco - Math.round(this.chomp * cell * 0.07));
     const tamanoCabeza = lado - huecoCabeza * 2;
     const fantasma = this.ghosting;
+    const protegida = this.gracia > 0;
     // el fantasma no se corta de golpe: se apaga en cuatro escalones durante
     // el último 1,6 s. primero pierde el relleno, luego el contorno
     const pasoFantasma = this.ghostPaso;
@@ -2549,6 +2604,12 @@ class Game {
         ctx.fillStyle = i === 0 ? '#ffffff' : '#e8e8e8';
         ctx.fillRect(x0, y0, tamano, tamano);
       }
+      if (protegida) {
+        const pulso = (0.3 + 0.3 * (0.5 + 0.5 * Math.sin(this.time / 90))).toFixed(2);
+        ctx.strokeStyle = `rgba(255,255,255,${pulso})`;
+        ctx.lineWidth = Math.max(1, Math.round(cell * 0.05));
+        ctx.strokeRect(x0 + 0.5, y0 + 0.5, tamano - 1, tamano - 1);
+      }
     }
     ctx.restore();
 
@@ -2568,6 +2629,20 @@ class Game {
       } else {
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(x0, y0, tamanoCabeza, tamanoCabeza);
+      }
+      if (protegida) {
+        const pulso = 0.3 + 0.4 * (0.5 + 0.5 * Math.sin(this.time / 90));
+        const margen = Math.max(2, Math.round(cell * 0.18));
+        ctx.strokeStyle = `rgba(255,255,255,${pulso.toFixed(2)})`;
+        ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
+        ctx.setLineDash([Math.max(2, Math.round(cell * 0.18)), Math.max(2, Math.round(cell * 0.12))]);
+        ctx.strokeRect(
+          x0 - margen + 0.5,
+          y0 - margen + 0.5,
+          tamanoCabeza + margen * 2 - 1,
+          tamanoCabeza + margen * 2 - 1,
+        );
+        ctx.setLineDash([]);
       }
       if (this.fx.shield > 0) {
         const pulso = 0.38 + 0.38 * (0.5 + 0.5 * Math.sin(this.time / 110));
@@ -2684,15 +2759,15 @@ const STRINGS = {
     groupCompetitive: 'competitivo',
     groupCompetitiveTag: 'cuatro tableros · puntos y rangos',
     modeClassic: 'clásico',
-    modeClassicTag: 'cada fruta acelera · muros al llegar a 30 frutas',
+    modeClassicTag: 'cada fruta acelera · muros a las 30 · veneno',
     modeFrenzy: 'frenesí',
-    modeFrenzyTag: 'bordes abiertos · olas de fruta y picos de velocidad',
+    modeFrenzyTag: 'bordes abiertos · olas y picos · veneno',
     modeHunter: 'cazador',
-    modeHunterTag: 'una serpiente roja come puntos azules y crece',
+    modeHunterTag: 'una serpiente roja come puntos azules · veneno',
     modeTimed: 'contrarreloj',
-    modeTimedTag: '30 segundos · cada fruta suma 3',
+    modeTimedTag: '30 segundos · cada fruta suma 3 · veneno',
     modeCompetitive: 'competitivo',
-    modeCompetitiveTag: 'cuatro tableros · mapa y modificador al azar',
+    modeCompetitiveTag: 'cuatro tableros · 60 s · rangos',
     levelNames: {
       LLANO: 'llano', CRUZ: 'cruz', PILARES: 'pilares', ANILLO: 'anillo', ZIGZAG: 'zigzag',
       COLUMNAS: 'columnas', 'DOBLE ANILLO': 'doble anillo', REJILLA: 'rejilla', JAULA: 'jaula',
@@ -2755,8 +2830,8 @@ const STRINGS = {
     ruleCampaign: 'campaña: manzanas, no puntos; la última fruta es dorada.',
     ruleModes: 'frenesí: bordes abiertos, olas de fruta y picos de velocidad.',
     ruleHunter: 'cazador: su cabeza te mata; su cuerpo y los puntos son seguros.',
-    ruleTimed: 'contrarreloj: 30 s y cada fruta suma 3 s; el tiempo no perdona.',
-    ruleCompetitive: 'competitivo: cuatro tableros; aguanta más que los demás.',
+    ruleTimed: 'contrarreloj: 30 s y cada fruta suma 3 s; la envenenada resta 3.',
+    ruleCompetitive: 'competitivo: 60 s; caer resta 10 y vuelves protegido.',
     ruleMods: 'algunos niveles llevan modificador: muros, reloj, cazador o sin turbo.',
     powerBasics: 'fantasma atraviesa obstáculos; lento baja el ritmo; recorte acorta la cola.',
     powerAdvanced: 'los poderes dependen del modo; el escudo salva un choque y doble dura 7 s.',
@@ -2817,6 +2892,13 @@ const STRINGS = {
     labelGames: 'partidas',
     labelWins: 'victorias',
     labelRound: 'ronda',
+    compYourRank: 'tu rango',
+    compRivals: 'rivales',
+    compStrength: 'fuerza',
+    compBoards: '4 tableros',
+    compDrop: '−10 al caer',
+    compProtected: 'protegido',
+    rulePoison: 'manzana envenenada: parece igual, pero resta tiempo o puntos.',
     statsRank: 'rango',
     you: 'tú',
     play: 'jugar',
@@ -2883,15 +2965,15 @@ const STRINGS = {
     groupCompetitive: 'competitive',
     groupCompetitiveTag: 'four boards · points and ranks',
     modeClassic: 'classic',
-    modeClassicTag: 'each fruit speeds you up · walls begin at 30 fruits',
+    modeClassicTag: 'each fruit speeds you up · walls at 30 · poison',
     modeFrenzy: 'frenzy',
-    modeFrenzyTag: 'open edges · fruit waves and speed pulses',
+    modeFrenzyTag: 'open edges · waves and pulses · poison',
     modeHunter: 'hunter',
-    modeHunterTag: 'a red snake eats blue pellets and grows',
+    modeHunterTag: 'a red snake eats blue pellets · poison',
     modeTimed: 'time attack',
-    modeTimedTag: '30 seconds · each fruit adds 3',
+    modeTimedTag: '30 seconds · each fruit adds 3 · poison',
     modeCompetitive: 'competitive',
-    modeCompetitiveTag: 'four boards · random map and modifier',
+    modeCompetitiveTag: 'four boards · 60 s · ranks',
     levelNames: {
       LLANO: 'open field', CRUZ: 'cross', PILARES: 'pillars', ANILLO: 'ring', ZIGZAG: 'zigzag',
       COLUMNAS: 'columns', 'DOBLE ANILLO': 'double ring', REJILLA: 'grid', JAULA: 'cage',
@@ -2954,8 +3036,8 @@ const STRINGS = {
     ruleCampaign: 'campaign: apples, not points; the final fruit is golden.',
     ruleModes: 'frenzy: open edges, fruit waves, and speed pulses.',
     ruleHunter: 'hunter: its head is deadly; its body and pellets are safe.',
-    ruleTimed: 'time attack: 30 s and each fruit adds 3 s; time shows no mercy.',
-    ruleCompetitive: 'competitive: four boards; outlast the rest.',
+    ruleTimed: 'time attack: 30 s and each fruit adds 3 s; poison costs 3.',
+    ruleCompetitive: 'competitive: 60 s; a crash costs 10 and you return protected.',
     ruleMods: 'some levels add a modifier: walls, clock, hunter, or no boost.',
     powerBasics: 'ghost passes hazards; slow eases the pace; shrink trims your tail.',
     powerAdvanced: 'available powers depend on the mode; shield saves one crash and double lasts 7 s.',
@@ -3016,6 +3098,13 @@ const STRINGS = {
     labelGames: 'matches',
     labelWins: 'wins',
     labelRound: 'round',
+    compYourRank: 'your rank',
+    compRivals: 'rivals',
+    compStrength: 'strength',
+    compBoards: '4 boards',
+    compDrop: '−10 on crash',
+    compProtected: 'protected',
+    rulePoison: 'poisoned apple: it looks the same, but costs time or points.',
     statsRank: 'rank',
     you: 'you',
     play: 'play',
@@ -3137,6 +3226,14 @@ function rankName(cups) {
   return t('rankBronze');
 }
 
+function rankList() {
+  return CLAVES_RANGO.map((clave, pos) => ({
+    nivel: CLAVES_RANGO.length - 1 - pos,
+    nombre: t(clave),
+    puntos: UMBRALES_RANGO[pos],
+  })).reverse();
+}
+
 function rankInfo(cups) {
   const n = Math.max(0, Number(cups) || 0);
   const idx = UMBRALES_RANGO.findIndex((u) => n >= u);
@@ -3187,7 +3284,7 @@ function routeWords() {
   };
 }
 
-  Object.assign(modulo, { getLanguage, setLanguage, t, modeName, modeTag, groupName, groupTag, levelName, rankName, rankInfo, fruitUnit, appleUnit, routeSlug, routeWords });
+  Object.assign(modulo, { getLanguage, setLanguage, t, modeName, modeTag, groupName, groupTag, levelName, rankName, rankList, rankInfo, fruitUnit, appleUnit, routeSlug, routeWords });
 })(modulos['i18n']);
 
 // ---- main ----
@@ -3197,7 +3294,7 @@ const { Game, POWER_INFO } = modulos['engine'];
 const { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS, RIVAL_NAMES } = modulos['levels'];
 const { audio } = modulos['audio'];
 const { attachInput } = modulos['input'];
-const { t, getLanguage, setLanguage, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, appleUnit, routeSlug, routeWords, rankName, rankInfo } = modulos['i18n'];
+const { t, getLanguage, setLanguage, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, appleUnit, routeSlug, routeWords, rankName, rankInfo, rankList } = modulos['i18n'];
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -4496,6 +4593,7 @@ function mostrarAyuda() {
     <p class="kicker">${t('gameRules')}</p>
     <ul class="reglas">
       <li>${t('ruleChain')}</li>
+      <li>${t('rulePoison')}</li>
       <li>${t('ruleCampaign')}</li>
       <li>${t('ruleModes')}</li>
       <li>${t('ruleHunter')}</li>
@@ -4659,6 +4757,16 @@ function configuracionArena() {
   return cfg;
 }
 
+// el mismo mapa para todos, pero cada rival con su velocidad según el rango
+function configuracionRival(ritmo = 1) {
+  const cfg = configuracionArena();
+  return {
+    ...cfg,
+    startSpeed: Math.round(cfg.startSpeed * ritmo),
+    minSpeed: Math.round(cfg.minSpeed * ritmo),
+  };
+}
+
 function configuracionSuelta(modo) {
   return { ...MODES[modo] };
 }
@@ -4707,6 +4815,46 @@ function copasDePartida(puesto) {
 const TOTAL_TABLEROS = 4;
 const DURACION_RONDA = 60000; // 60 s por partida
 const CASTIGO_CAIDA = 10; // puntos que se pierden al chocar
+const GRACIA_MS = 1300; // protección al volver de una caída
+
+// los rivales aprietan más según tu rango: reaccionan antes, fallan menos y van
+// más rápidos. en bronce dan tiempo; en maestro casi no perdonan.
+const DIFICULTAD_RIVALES = [
+  { cada: 210, fallo: 0.3, ritmo: 1.14 }, // bronce
+  { cada: 180, fallo: 0.24, ritmo: 1.1 }, // plata
+  { cada: 150, fallo: 0.17, ritmo: 1.05 }, // oro
+  { cada: 120, fallo: 0.11, ritmo: 1 }, // platino
+  { cada: 90, fallo: 0.06, ritmo: 0.96 }, // diamante
+  { cada: 62, fallo: 0.02, ritmo: 0.92 }, // maestro
+];
+// kobra es el más fuerte de los tres; mamba, el más tranquilo
+const TONO_RIVAL = [
+  { cada: 0.86, fallo: 0.7, ritmo: 0.97 },
+  { cada: 0.97, fallo: 1, ritmo: 1 },
+  { cada: 1.12, fallo: 1.3, ritmo: 1.03 },
+];
+
+function dificultadRivales(nivel) {
+  const i = Math.max(0, Math.min(DIFICULTAD_RIVALES.length - 1, Number(nivel) || 0));
+  return DIFICULTAD_RIVALES[i];
+}
+
+function ajusteRival(nivel, posicion) {
+  const base = dificultadRivales(nivel);
+  const tono = TONO_RIVAL[Math.max(0, Math.min(TONO_RIVAL.length - 1, posicion))] || TONO_RIVAL[1];
+  return {
+    cada: Math.max(45, Math.round(base.cada * tono.cada)),
+    fallo: Math.min(0.45, base.fallo * tono.fallo),
+    ritmo: base.ritmo * tono.ritmo,
+  };
+}
+
+// cinco bloques para enseñar la fuerza de cada rival en el menú
+function fuerzaRival(nivel, posicion) {
+  const k = Math.max(0, Math.min(5, Number(nivel) || 0));
+  const tono = [1, 0, -1][Math.max(0, Math.min(2, posicion))] || 0;
+  return Math.max(1, Math.min(5, 1 + Math.round(k * 0.8) + tono));
+}
 
 // el icono del rango: una barra más por cada nivel, todo a bloques
 function iconoRango(nivel) {
@@ -4735,7 +4883,6 @@ function menuCompetitivo() {
 
   const puntosYa = guardado.competitive.points;
   const info = rankInfo(puntosYa);
-
   const meta = info.siguiente
     ? t('pointsToNext', { count: info.falta, rank: info.siguiente })
     : t('maxRank');
@@ -4743,21 +4890,47 @@ function menuCompetitivo() {
   const avance = tramo > 0 ? Math.min(100, Math.round(((tramo - info.falta) / tramo) * 100)) : 100;
   const dato = (valor, etiqueta) => `<div class="comp-dato"><b>${valor}</b><span>${etiqueta}</span></div>`;
 
+  // la escalera de rangos: los seis peldaños, con el actual enmarcado
+  const escalera = rankList().map((r) => {
+    const clase = r.nivel === info.nivel ? ' aqui' : r.nivel < info.nivel ? ' hecho' : '';
+    const actual = r.nivel === info.nivel ? ' aria-current="step"' : '';
+    return `<span class="escalon${clase}" title="${r.nombre}"${actual}>${iconoRango(r.nivel)}<em>${r.nombre}</em></span>`;
+  }).join('');
+
+  // los tres rivales, con su fuerza de hoy: sube contigo de rango
+  const rivales = RIVAL_NAMES.map((nombre, i) => {
+    const fuerza = fuerzaRival(info.nivel, i);
+    const bloques = [1, 2, 3, 4, 5]
+      .map((n) => `<i${n <= fuerza ? ' class="lleno"' : ''}></i>`)
+      .join('');
+    return `<li><span class="comp-rival">${nombre}</span><span class="comp-fuerza" aria-label="${t('compStrength')} ${fuerza}/5">${bloques}</span></li>`;
+  }).join('');
+
   ponerOverlay(`<div class="panel competitivo">
+    <div class="comp-top">
+      <span>${t('modeCompetitive')}</span>
+      <span>${t('compBoards')}</span>
+    </div>
     <div class="comp-cabeza">
       ${iconoRango(info.nivel)}
       <div class="comp-datos">
-        <p class="comp-rango">${info.nombre}</p>
-        <p class="comp-puntos">${puntos(puntosYa)}</p>
+        <p class="comp-rango">${t('compYourRank')} · ${info.nombre}</p>
+        <p class="comp-puntos">${puntos(puntosYa)}<small>${t('statsPoints')}</small></p>
       </div>
     </div>
     <div class="comp-barra" aria-hidden="true"><i style="width:${avance}%"></i></div>
     <p class="comp-nota">${meta}</p>
+    <div class="comp-escalera">${escalera}</div>
     <div class="comp-mini">
       ${dato(puntos(guardado.stats.games), t('labelGames'))}
       ${dato(puntos(guardado.stats.wins), t('labelWins'))}
       ${dato('60<small>s</small>', t('labelRound'))}
     </div>
+    <div class="comp-rivales">
+      <p class="comp-sub"><span>${t('compRivals')}</span><span>${t('compStrength')}</span></p>
+      <ul>${rivales}</ul>
+    </div>
+    <p class="comp-reglas"><span>60 s</span><span>${t('compDrop')}</span><span>${t('compProtected')}</span></p>
     <div class="acciones">
       <button class="principal" type="button" data-accion="jugarCompetitivo">${t('play')} <kbd>↵</kbd></button>
       <button type="button" data-accion="home">${t('back')} <kbd>esc</kbd></button>
@@ -4820,9 +4993,14 @@ function empezarCompetitivo() {
   app.tableros = [];
   ponerOverlay(null);
 
+  const nivelRivales = rankInfo(guardado.competitive.points).nivel;
   for (let i = 0; i < TOTAL_TABLEROS; i++) {
+    const ajuste = i === 0 ? null : ajusteRival(nivelRivales, i - 1);
+    const cfg = i === 0
+      ? { ...configuracionArena(), graciaMs: GRACIA_MS }
+      : { ...configuracionRival(ajuste.ritmo), graciaMs: GRACIA_MS };
     const juego = new Game(
-      configuracionArena(),
+      cfg,
       i === 0 ? eventosJuego : (tipo, datos) => eventoRival(i, tipo, datos),
     );
     app.tableros.push({
@@ -4833,6 +5011,8 @@ function empezarCompetitivo() {
       vivo: true,
       puesto: 0,
       acum: 0,
+      cada: ajuste ? ajuste.cada : 0,
+      fallo: ajuste ? ajuste.fallo : 0,
     });
   }
   app.juego = app.tableros[0].juego;
@@ -4907,9 +5087,9 @@ function pasoCompetitivo(dt) {
     }
     if (!tab.esJugador && juego.state === 'running') {
       tab.acum += dt;
-      if (tab.acum > 60) {
+      if (tab.acum >= (tab.cada || 60)) {
         tab.acum = 0;
-        juego.decidir();
+        juego.decidir({ error: tab.fallo || 0 });
       }
     }
     juego.update(dt);
@@ -4953,6 +5133,7 @@ function actualizarTableros() {
     const texto = String(Math.round(tab.juego.score));
     if (datos.textContent !== texto) datos.textContent = texto;
     fig.classList.toggle('revive', tab.juego.state === 'dead');
+    fig.classList.toggle('protegido', tab.juego.gracia > 0);
   });
 }
 
@@ -5043,7 +5224,7 @@ function eventosJuego(tipo, datos) {
       audio.play('tick');
       break;
     case 'veneno':
-      audio.play('death');
+      audio.play('alerta');
       parpadear(el.meta);
       parpadear(el.score);
       break;

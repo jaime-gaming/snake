@@ -1,8 +1,8 @@
-import { Game, POWER_INFO } from './engine.js?v=3';
-import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS, RIVAL_NAMES } from './levels.js?v=3';
+import { Game, POWER_INFO } from './engine.js?v=4';
+import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS, RIVAL_NAMES } from './levels.js?v=4';
 import { audio } from './audio.js?v=3';
 import { attachInput } from './input.js?v=3';
-import { t, getLanguage, setLanguage, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, appleUnit, routeSlug, routeWords, rankName, rankInfo } from './i18n.js?v=18';
+import { t, getLanguage, setLanguage, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, appleUnit, routeSlug, routeWords, rankName, rankInfo, rankList } from './i18n.js?v=19';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -1301,6 +1301,7 @@ function mostrarAyuda() {
     <p class="kicker">${t('gameRules')}</p>
     <ul class="reglas">
       <li>${t('ruleChain')}</li>
+      <li>${t('rulePoison')}</li>
       <li>${t('ruleCampaign')}</li>
       <li>${t('ruleModes')}</li>
       <li>${t('ruleHunter')}</li>
@@ -1464,6 +1465,16 @@ function configuracionArena() {
   return cfg;
 }
 
+// el mismo mapa para todos, pero cada rival con su velocidad según el rango
+function configuracionRival(ritmo = 1) {
+  const cfg = configuracionArena();
+  return {
+    ...cfg,
+    startSpeed: Math.round(cfg.startSpeed * ritmo),
+    minSpeed: Math.round(cfg.minSpeed * ritmo),
+  };
+}
+
 function configuracionSuelta(modo) {
   return { ...MODES[modo] };
 }
@@ -1512,6 +1523,46 @@ function copasDePartida(puesto) {
 const TOTAL_TABLEROS = 4;
 const DURACION_RONDA = 60000; // 60 s por partida
 const CASTIGO_CAIDA = 10; // puntos que se pierden al chocar
+const GRACIA_MS = 1300; // protección al volver de una caída
+
+// los rivales aprietan más según tu rango: reaccionan antes, fallan menos y van
+// más rápidos. en bronce dan tiempo; en maestro casi no perdonan.
+const DIFICULTAD_RIVALES = [
+  { cada: 210, fallo: 0.3, ritmo: 1.14 }, // bronce
+  { cada: 180, fallo: 0.24, ritmo: 1.1 }, // plata
+  { cada: 150, fallo: 0.17, ritmo: 1.05 }, // oro
+  { cada: 120, fallo: 0.11, ritmo: 1 }, // platino
+  { cada: 90, fallo: 0.06, ritmo: 0.96 }, // diamante
+  { cada: 62, fallo: 0.02, ritmo: 0.92 }, // maestro
+];
+// kobra es el más fuerte de los tres; mamba, el más tranquilo
+const TONO_RIVAL = [
+  { cada: 0.86, fallo: 0.7, ritmo: 0.97 },
+  { cada: 0.97, fallo: 1, ritmo: 1 },
+  { cada: 1.12, fallo: 1.3, ritmo: 1.03 },
+];
+
+function dificultadRivales(nivel) {
+  const i = Math.max(0, Math.min(DIFICULTAD_RIVALES.length - 1, Number(nivel) || 0));
+  return DIFICULTAD_RIVALES[i];
+}
+
+function ajusteRival(nivel, posicion) {
+  const base = dificultadRivales(nivel);
+  const tono = TONO_RIVAL[Math.max(0, Math.min(TONO_RIVAL.length - 1, posicion))] || TONO_RIVAL[1];
+  return {
+    cada: Math.max(45, Math.round(base.cada * tono.cada)),
+    fallo: Math.min(0.45, base.fallo * tono.fallo),
+    ritmo: base.ritmo * tono.ritmo,
+  };
+}
+
+// cinco bloques para enseñar la fuerza de cada rival en el menú
+function fuerzaRival(nivel, posicion) {
+  const k = Math.max(0, Math.min(5, Number(nivel) || 0));
+  const tono = [1, 0, -1][Math.max(0, Math.min(2, posicion))] || 0;
+  return Math.max(1, Math.min(5, 1 + Math.round(k * 0.8) + tono));
+}
 
 // el icono del rango: una barra más por cada nivel, todo a bloques
 function iconoRango(nivel) {
@@ -1540,7 +1591,6 @@ function menuCompetitivo() {
 
   const puntosYa = guardado.competitive.points;
   const info = rankInfo(puntosYa);
-
   const meta = info.siguiente
     ? t('pointsToNext', { count: info.falta, rank: info.siguiente })
     : t('maxRank');
@@ -1548,21 +1598,47 @@ function menuCompetitivo() {
   const avance = tramo > 0 ? Math.min(100, Math.round(((tramo - info.falta) / tramo) * 100)) : 100;
   const dato = (valor, etiqueta) => `<div class="comp-dato"><b>${valor}</b><span>${etiqueta}</span></div>`;
 
+  // la escalera de rangos: los seis peldaños, con el actual enmarcado
+  const escalera = rankList().map((r) => {
+    const clase = r.nivel === info.nivel ? ' aqui' : r.nivel < info.nivel ? ' hecho' : '';
+    const actual = r.nivel === info.nivel ? ' aria-current="step"' : '';
+    return `<span class="escalon${clase}" title="${r.nombre}"${actual}>${iconoRango(r.nivel)}<em>${r.nombre}</em></span>`;
+  }).join('');
+
+  // los tres rivales, con su fuerza de hoy: sube contigo de rango
+  const rivales = RIVAL_NAMES.map((nombre, i) => {
+    const fuerza = fuerzaRival(info.nivel, i);
+    const bloques = [1, 2, 3, 4, 5]
+      .map((n) => `<i${n <= fuerza ? ' class="lleno"' : ''}></i>`)
+      .join('');
+    return `<li><span class="comp-rival">${nombre}</span><span class="comp-fuerza" aria-label="${t('compStrength')} ${fuerza}/5">${bloques}</span></li>`;
+  }).join('');
+
   ponerOverlay(`<div class="panel competitivo">
+    <div class="comp-top">
+      <span>${t('modeCompetitive')}</span>
+      <span>${t('compBoards')}</span>
+    </div>
     <div class="comp-cabeza">
       ${iconoRango(info.nivel)}
       <div class="comp-datos">
-        <p class="comp-rango">${info.nombre}</p>
-        <p class="comp-puntos">${puntos(puntosYa)}</p>
+        <p class="comp-rango">${t('compYourRank')} · ${info.nombre}</p>
+        <p class="comp-puntos">${puntos(puntosYa)}<small>${t('statsPoints')}</small></p>
       </div>
     </div>
     <div class="comp-barra" aria-hidden="true"><i style="width:${avance}%"></i></div>
     <p class="comp-nota">${meta}</p>
+    <div class="comp-escalera">${escalera}</div>
     <div class="comp-mini">
       ${dato(puntos(guardado.stats.games), t('labelGames'))}
       ${dato(puntos(guardado.stats.wins), t('labelWins'))}
       ${dato('60<small>s</small>', t('labelRound'))}
     </div>
+    <div class="comp-rivales">
+      <p class="comp-sub"><span>${t('compRivals')}</span><span>${t('compStrength')}</span></p>
+      <ul>${rivales}</ul>
+    </div>
+    <p class="comp-reglas"><span>60 s</span><span>${t('compDrop')}</span><span>${t('compProtected')}</span></p>
     <div class="acciones">
       <button class="principal" type="button" data-accion="jugarCompetitivo">${t('play')} <kbd>↵</kbd></button>
       <button type="button" data-accion="home">${t('back')} <kbd>esc</kbd></button>
@@ -1625,9 +1701,14 @@ function empezarCompetitivo() {
   app.tableros = [];
   ponerOverlay(null);
 
+  const nivelRivales = rankInfo(guardado.competitive.points).nivel;
   for (let i = 0; i < TOTAL_TABLEROS; i++) {
+    const ajuste = i === 0 ? null : ajusteRival(nivelRivales, i - 1);
+    const cfg = i === 0
+      ? { ...configuracionArena(), graciaMs: GRACIA_MS }
+      : { ...configuracionRival(ajuste.ritmo), graciaMs: GRACIA_MS };
     const juego = new Game(
-      configuracionArena(),
+      cfg,
       i === 0 ? eventosJuego : (tipo, datos) => eventoRival(i, tipo, datos),
     );
     app.tableros.push({
@@ -1638,6 +1719,8 @@ function empezarCompetitivo() {
       vivo: true,
       puesto: 0,
       acum: 0,
+      cada: ajuste ? ajuste.cada : 0,
+      fallo: ajuste ? ajuste.fallo : 0,
     });
   }
   app.juego = app.tableros[0].juego;
@@ -1712,9 +1795,9 @@ function pasoCompetitivo(dt) {
     }
     if (!tab.esJugador && juego.state === 'running') {
       tab.acum += dt;
-      if (tab.acum > 60) {
+      if (tab.acum >= (tab.cada || 60)) {
         tab.acum = 0;
-        juego.decidir();
+        juego.decidir({ error: tab.fallo || 0 });
       }
     }
     juego.update(dt);
@@ -1758,6 +1841,7 @@ function actualizarTableros() {
     const texto = String(Math.round(tab.juego.score));
     if (datos.textContent !== texto) datos.textContent = texto;
     fig.classList.toggle('revive', tab.juego.state === 'dead');
+    fig.classList.toggle('protegido', tab.juego.gracia > 0);
   });
 }
 
@@ -1848,7 +1932,7 @@ function eventosJuego(tipo, datos) {
       audio.play('tick');
       break;
     case 'veneno':
-      audio.play('death');
+      audio.play('alerta');
       parpadear(el.meta);
       parpadear(el.score);
       break;

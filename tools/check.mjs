@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 import { Game, POWER_INFO } from '../js/engine.js';
 import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS, POWER_POOLS } from '../js/levels.js';
-import { setLanguage, t, routeSlug, routeWords, levelName, fruitUnit, appleUnit, rankName, rankInfo } from '../js/i18n.js';
+import { setLanguage, t, routeSlug, routeWords, levelName, fruitUnit, appleUnit, rankName, rankInfo, rankList } from '../js/i18n.js';
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -1081,7 +1081,7 @@ process.stdout.write('v2.0, idioma y publicación\n');
 
   comprobar(!!MODES.competitive && GROUPS.flatMap((g) => g.modes).includes('competitive'),
     'v2.0: falta el modo competitivo en los grupos');
-  comprobar(/\n  start\(\) \{/.test(motor) && /\n  decidir\(\) \{/.test(motor)
+  comprobar(/\n  start\(\) \{/.test(motor) && /\n  decidir\(opciones = \{\}\) \{/.test(motor)
     && !/rivals|cfg\.bots|botTurn/.test(motor),
   'v2.0: el motor debe arrancar tableros y decidir sin rivales dentro de la misma rejilla');
   comprobar(/timeAttack/.test(motor) && /timeLeft/.test(motor),
@@ -1105,7 +1105,7 @@ process.stdout.write('v2.0, idioma y publicación\n');
     && main.includes('El cuerpo se extiende de forma continua y lenta'),
   'marca: la e no se aproxima despacio y de forma continua a la manzana');
 
-  comprobar(pagina.includes('snake.js?v=22') && pagina.includes('styles.css?v=22') && pagina.includes('Snake — v2.0'),
+  comprobar(pagina.includes('snake.js?v=23') && pagina.includes('styles.css?v=23') && pagina.includes('Snake — v2.0'),
     'caché: falta la versión v2.0 (v22) en la página');
   comprobar(pagina.includes('id="lang-switch"') && idiomas.includes("en: {")
     && idiomas.includes('export function setLanguage'), 'idioma: falta el selector ES/EN o su traducción');
@@ -1211,6 +1211,25 @@ process.stdout.write('v2.0: cuatro tableros, sorteo y cuenta atrás\n');
   comprobar(main.includes('const CASTIGO_CAIDA = 10') && main.includes('function perderPuntos(tab)')
     && main.includes('juego.revive()') && motor.includes('\n  revive() {'),
   'competitivo: caer no resta puntos o no se revive');
+  comprobar(main.includes('const GRACIA_MS = 1300') && main.includes('graciaMs: GRACIA_MS')
+    && motor.includes('this.gracia = Math.max(0, Number(this.cfg.graciaMs) || 0)')
+    && motor.includes('const intangible = ghost || gracia'),
+  'competitivo: al revivir no hay unos instantes de protección');
+  comprobar(main.includes('function actualizarTableros()') && main.includes("fig.classList.toggle('protegido'")
+    && css.includes('.tablero.protegido canvas'),
+  'competitivo: la protección no se ve en el tablero');
+  comprobar(main.includes('const DIFICULTAD_RIVALES') && main.includes('function ajusteRival(nivel, posicion)')
+    && main.includes('decidir({ error: tab.fallo || 0 })') && main.includes('configuracionRival(ajuste.ritmo)'),
+  'competitivo: los rivales no ajustan su fuerza al rango');
+  {
+    const bloque = main.slice(main.indexOf('const DIFICULTAD_RIVALES'), main.indexOf('const TONO_RIVAL'));
+    const filas = [...bloque.matchAll(/cada: (\d+), fallo: ([\d.]+), ritmo: ([\d.]+)/g)]
+      .map((m) => ({ cada: Number(m[1]), fallo: Number(m[2]), ritmo: Number(m[3]) }));
+    const ordenado = filas.length === 6
+      && filas.every((f, i) => i === 0 || (f.cada < filas[i - 1].cada
+        && f.fallo < filas[i - 1].fallo && f.ritmo < filas[i - 1].ritmo));
+    comprobar(ordenado, 'competitivo: los rivales no reaccionan antes, fallan menos y corren más al subir de rango');
+  }
   comprobar(main.includes("const texto = String(Math.round(tab.juego.score))"),
     'competitivo: los tableros no muestran los puntos de cada jugador');
   comprobar(css.includes('grid-template-columns: minmax(0, 1.7fr)') && main.includes('* 1.7) / 2.7'),
@@ -1218,8 +1237,15 @@ process.stdout.write('v2.0: cuatro tableros, sorteo y cuenta atrás\n');
   comprobar(main.includes("meta = '';\n      marca = '';"),
     'competitivo: la barra de arriba sigue cargada de texto');
   comprobar(main.includes('class="comp-barra"') && main.includes('class="comp-mini"')
-    && css.includes('.comp-barra i') && css.includes('.comp-dato b'),
-  'competitivo: el menú no tiene barra de rango ni los datos en pequeño');
+    && css.includes('.comp-barra i') && css.includes('.comp-dato b')
+    && css.includes('.panel.competitivo') && css.includes('display: flex'),
+  'competitivo: el menú no tiene barra de rango, datos en pequeño o estructura de tarjeta');
+  comprobar(main.includes('class="comp-escalera"') && main.includes('rankList().map')
+    && css.includes('.comp-escalera') && css.includes('.escalon.aqui'),
+  'competitivo: falta la escalera de rangos en el menú');
+  comprobar(main.includes('class="comp-rivales"') && main.includes('fuerzaRival(info.nivel, i)')
+    && css.includes('.comp-fuerza i.lleno'),
+  'competitivo: el menú no enseña la fuerza de los rivales');
   comprobar(main.includes('iconoRango(info.nivel)') && css.includes('.rango-icono[data-rango="5"]'),
     'competitivo: falta el icono de rango a bloques');
   comprobar(main.includes('function dibujarArena()') && main.includes('function actualizarTableros()')
@@ -1247,9 +1273,16 @@ process.stdout.write('v2.0: cuatro tableros, sorteo y cuenta atrás\n');
     'cuenta atrás: no se dibuja tu serpiente mientras corre el 3·2·1');
   comprobar(main.includes('cifra superado') && css.includes('.cifra.superado'),
     'campaña: el aviso de nivel superado no sale en grande');
-  comprobar(MODES.timed.veneno.chance > 0 && MODES.timed.veneno.chance < 0.7
+  comprobar(MODES.timed.veneno.chance > 0 && MODES.timed.veneno.chance <= 0.3
+    && MODES.timed.veneno.ms <= 3000
     && motor.includes('Math.random() < (this.cfg.veneno.chance'),
-  'contrarreloj: la envenenada sale siempre en vez de de vez en cuando');
+  'contrarreloj: la envenenada no está nerfeada (frecuencia o castigo)');
+  comprobar(['classic', 'frenzy', 'hunter', 'competitive']
+    .every((modo) => MODES[modo].veneno && MODES[modo].veneno.chance > 0),
+  'veneno: faltan las manzanas envenenadas en los demás modos');
+  comprobar(niveles.includes('veneno: { chance: 0.16, puntos: 15 }')
+    && niveles.includes('puntos: 20') && motor.includes('this.score = Math.max(0, this.score - puntos)'),
+  'veneno: fuera de contrarreloj no resta puntos');
   comprobar(motor.includes('px + Math.round(w * 0.26)') && !motor.includes('muesca'),
     'contrarreloj: la marca de la manzana envenenada sigue siendo evidente');
   comprobar(motor.includes('>= 6);') && motor.includes('la misma respiración que la fruta'),
@@ -1359,9 +1392,10 @@ process.stdout.write('v2.0: cuatro tableros, sorteo y cuenta atrás\n');
   comprobar(main.includes("app.modo !== 'hunter' && app.modo !== 'timed'")
     && motor.includes('if (this.cfg.noTurbo) on = false;'),
   'contrarreloj: el turbo sigue disponible');
-  comprobar(motor.includes('comerVeneno()') && motor.includes('this.chain = 0')
-    && motor.includes('this.veneno = null'),
-  'contrarreloj: la manzana envenenada no resta tiempo ni corta la cadena');
+  comprobar(motor.includes('comerVeneno()') && motor.includes('Math.floor(this.chain / 2)')
+    && motor.includes('this.veneno = null')
+    && !motor.slice(motor.indexOf('  comerVeneno() {'), motor.indexOf('  spawnBonus() {')).includes('spawnVeneno()'),
+  'contrarreloj: la envenenada sigue cortando toda la cadena o reponiéndose sola');
   comprobar(pagina.indexOf('id="cuenta"') > 0 && idiomas.includes('sorteoEtiqueta') === false
     && main.includes('sorteo-mod'),
   'interfaz: falta la cuenta atrás o el anuncio del modificador');
@@ -1373,14 +1407,56 @@ process.stdout.write('v2.0: cuatro tableros, sorteo y cuenta atrás\n');
     const antes = juego.timeLeft;
     juego.chain = 6;
     juego.chainTimer = 900;
+    juego.food = { x: 0, y: 0 };
     juego.veneno = { x: 10, y: 10 };
     juego.body = [{ x: 10, y: 9 }, { x: 10, y: 8 }, { x: 10, y: 7 }];
     juego.prevBody = juego.body.map((p) => ({ ...p }));
     juego.dir = { x: 0, y: 1 };
     juego.queue = [];
     juego.step();
-    comprobar(juego.timeLeft <= antes - 4000 && juego.chain === 0,
-      'contrarreloj: comer la envenenada no cuesta cinco segundos o no corta la cadena');
+    comprobar(juego.timeLeft <= antes - 2900 && juego.chain === 3,
+      'contrarreloj: comer la envenenada no cuesta tres segundos o no deja la cadena a la mitad');
+  }
+
+  // fuera del reloj, la envenenada resta puntos en vez de segundos
+  {
+    const juego = new Game({ ...MODES.classic }, () => {});
+    juego.start();
+    juego.score = 100;
+    juego.chain = 8;
+    juego.chainTimer = 900;
+    juego.food = { x: 0, y: 0 };
+    juego.veneno = { x: 10, y: 10 };
+    juego.body = [{ x: 10, y: 9 }, { x: 10, y: 8 }, { x: 10, y: 7 }];
+    juego.prevBody = juego.body.map((p) => ({ ...p }));
+    juego.dir = { x: 0, y: 1 };
+    juego.queue = [];
+    juego.step();
+    comprobar(juego.score === 85 && juego.chain === 4,
+      'veneno: en clásico no resta puntos o no deja la cadena a la mitad');
+  }
+
+  // protección al revivir: se atraviesan muros y bordes unos instantes
+  {
+    const juego = new Game({ ...MODES.competitive, graciaMs: 1200 }, () => {});
+    juego.state = 'dead';
+    juego.revive();
+    comprobar(juego.state === 'running' && juego.gracia === 1200,
+      'protección: al revivir no se activa el margen de gracia');
+    juego.body = [{ x: 0, y: 10 }, { x: 1, y: 10 }, { x: 2, y: 10 }, { x: 3, y: 10 }];
+    juego.prevBody = juego.body.map((p) => ({ ...p }));
+    juego.dir = { x: -1, y: 0 };
+    juego.queue = [];
+    juego.step();
+    comprobar(juego.state === 'running' && juego.body[0].x === 19,
+      'protección: el borde mata durante el margen de gracia');
+    juego.gracia = 0;
+    juego.body = [{ x: 0, y: 10 }, { x: 1, y: 10 }, { x: 2, y: 10 }, { x: 3, y: 10 }];
+    juego.prevBody = juego.body.map((p) => ({ ...p }));
+    juego.dir = { x: -1, y: 0 };
+    juego.queue = [];
+    juego.step();
+    comprobar(juego.state === 'dead', 'protección: al acabar la gracia el borde ya no debe perdonar');
   }
 
   // el reloj acelera con la partida y se frena con «lento»
@@ -1405,18 +1481,23 @@ process.stdout.write('v2.0: cuatro tableros, sorteo y cuenta atrás\n');
   comprobar(rankInfo(120).nombre === 'plata' && rankInfo(120).siguiente === 'oro'
     && rankInfo(120).falta === 130 && rankInfo(1500).siguiente === null,
   'idioma: el rango actual o lo que falta para el siguiente no cuadran');
+  comprobar(rankList().length === 6 && rankList()[0].nombre === 'bronce'
+    && rankList()[5].nombre === 'maestro' && rankList()[5].nivel === 5,
+  'idioma: la escalera de rangos no va de bronce a maestro');
   comprobar(t('you') === 'tú' && t('play') === 'jugar'
     && t('pointsWon', { count: 10 }) === '+10 puntos'
     && t('competitiveRank', { rank: 3, total: 4 }) === 'quedaste 3º de 4'
     && t('statsPoints') === 'puntos' && t('statsRank') === 'rango'
     && t('pointsToNext', { count: 80, rank: 'plata' }) === '80 para plata'
-    && t('placedShort', { rank: 2 }) === '2º' && rankInfo(620).nivel === 3,
+    && t('placedShort', { rank: 2 }) === '2º' && rankInfo(620).nivel === 3
+    && t('compRivals') === 'rivales' && t('compDrop') === '−10 al caer',
   'idioma: faltan las cadenas españolas del competitivo de cuatro tableros');
   setLanguage('en');
   comprobar(rankInfo(260).nombre === 'gold' && t('you') === 'you' && t('play') === 'play'
     && t('pointsToNext', { count: 3, rank: 'gold' }) === '3 to gold'
     && t('competitiveAlive', { alive: 4, total: 4 }) === '4 alive of 4'
-    && t('statsPoints') === 'points', 'idioma: faltan las cadenas inglesas del competitivo');
+    && t('statsPoints') === 'points' && t('compRivals') === 'rivals'
+    && t('compDrop') === '−10 on crash', 'idioma: faltan las cadenas inglesas del competitivo');
   setLanguage('es');
 
   // copas por puesto: la tabla baja con el puesto y nunca resta

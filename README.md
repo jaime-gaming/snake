@@ -2,7 +2,7 @@
 
 A monochrome grid-based Snake game with no external dependencies or network requests. It supports English and Spanish, remembers the selected language in the browser, and works with a keyboard, touch controls, and a gamepad. It is served from its own domain, **https://snake.jaime-gaming.com**, via **Cloudflare Workers**.
 
-Competitive is a quick match on **four separate boards**: one per snake, all with the same map, the same modifier and the same difficulty. Before playing, a menu shows your **rank and cups**, then the **draw** (map + modifier) is announced, a **3-second countdown** starts the match, and whoever survives longest wins. Placing earns **points** that climb **ranks**. Frenzy throws **waves of extra fruit** and **speed pulses**, time attack shows a **big clock** that **keeps accelerating** (and a **poisoned apple** hidden among the fruit), and the site is served from its own domain via **Cloudflare Workers**.
+Competitive is a quick match on **four separate boards**: one per snake, all with the same map and modifier, while each rival's **skill scales with your rank**. Before playing, a card shows your **rank ladder**, your points and each rival's **strength**, then the **draw** (map + modifier) is announced, a **3-second countdown** starts the match, and **most points after 60 seconds wins**. Crashing costs points and you **revive with a short grace period**. Placing earns **points** that climb **ranks**. Classic, Frenzy, Hunter and Time attack all hide a **poisoned apple** now and then; Time attack also shows a **big clock** that **keeps accelerating**. The site is served from its own domain via **Cloudflare Workers**.
 
 ## Controls
 
@@ -22,17 +22,17 @@ Group, mode, level, help, profile, and settings navigation all support the keybo
 The home screen has three groups: **progress**, **endless**, and **competitive**. Switch groups with `←→` on the mode screen.
 
 - **Campaign** — 30 hand-designed levels. Clear each level to unlock the next. There is no score: progress is measured by apples collected and remaining. Some levels carry a **modifier** that changes the rules instead of (or besides) the map: level 8 and 21 get *walls that appear*, level 12 is *no boost*, level 16 and 30 have a *clock*, and level 26 brings the *hunter* into the campaign. The HUD shows the active modifier next to the level name.
-- **Classic** — Endless play. Each fruit speeds up the snake; walls begin to appear after 30 fruits.
-- **Frenzy** — The edges wrap around and the snake gradually speeds up. Every 16 seconds a **wave of three extra fruits** lands (they blink before vanishing) and every 11 seconds a **speed pulse** pushes everyone faster for a moment.
-- **Hunter** — A red snake eats blue pellets and then pursues you. Its head is dangerous; its body and pellets are safe. If it collides with your body, it disappears and returns smaller. You can eat the blue pellets too.
+- **Classic** — Endless play. Each fruit speeds up the snake; walls begin to appear after 30 fruits. A **poisoned apple** shows up now and then and costs points.
+- **Frenzy** — The edges wrap around and the snake gradually speeds up. Every 16 seconds a **wave of three extra fruits** lands (they blink before vanishing) and every 11 seconds a **speed pulse** pushes everyone faster for a moment. The **poisoned apple** also appears.
+- **Hunter** — A red snake eats blue pellets and then pursues you. Its head is dangerous; its body and pellets are safe. If it collides with your body, it disappears and returns smaller. You can eat the blue pellets too. Watch for the occasional **poisoned apple**.
 - **Time attack** — You start with **30 seconds**, shown as a **big clock** over the board. Every fruit adds 3 seconds (up to a cap), but the clock **keeps speeding up** (up to twice as fast after 60 seconds); the *slow* power-up now **halves the clock** instead of the snake, **boost is disabled**, and under 10 seconds the clock turns red and blinks.
 
-  Now and then a second apple appears **far from the real one** and it is **poisoned**: it pulses with exactly the same breathing animation and only a tiny off-centre dot, a couple of pixels, gives it away. Eating it **costs 5 seconds** and **resets the chain**.
+  Now and then a second apple appears **far from the real one** and it is **poisoned**: it pulses with exactly the same breathing animation and only a tiny off-centre dot, a couple of pixels, gives it away. Eating it **costs 3 seconds** and **halves the chain**; in the other modes it **costs points** instead (15 in Classic and Hunter, 20 in Frenzy and Competitive), and it never respawns immediately.
 - **Competitive** — A **60-second round** on four **separate boards**, one per snake (you and three rivals). Boards never share cells or fruit, and yours is **bigger** and framed in white, with each snake's name and **points** next to it. Every match **draws a map** (the walls of a campaign map) and **one modifier** — *walls that appear*, a *clock*, the *hunter*, or *no boost* — the same for everyone.
 
-  The flow is **menu → draw → countdown → round**: the menu shows your **rank icon**, your points, a **progress bar** to the next rank and three short figures; the draw slides in and **starts on its own**; a **3-second countdown** runs while your snake is already visible, then the round begins. **Most points when the clock hits zero wins.** Crashing costs **10 points** and your snake **revives** after a moment, so a bad start never ends the match.
+  The flow is **menu → draw → countdown → round**. The menu is a bordered card: your **rank emblem**, points and a **progress bar**, the **six-rank ladder** with the current step framed, three short figures, and the **three rivals with a strength meter** that grows with your rank. The draw slides in and **starts on its own**; a **3-second countdown** runs while your snake is already visible, then the round begins. **Most points when the clock hits zero wins.** Crashing costs **10 points**; the snake **revives after 0.8 s with 1.3 s of grace**, during which it crosses walls and bodies and the board edge wraps instead of killing, so a bad start never ends the match.
 
-  Placing awards **rank points**: 1st +25, 2nd +10, 3rd +5, 4th +0, across six **ranks** — bronze (0), silver (100), gold (250), platinum (500), diamond (750), master (1000) — with a six-block icon that fills up. Rivals steer towards the power-ups that help them (shield, ghost, slow) and the golden apple.
+  Placing awards **rank points**: 1st +25, 2nd +10, 3rd +5, 4th +0, across six **ranks** — bronze (0), silver (100), gold (250), platinum (500), diamond (750), master (1000) — with a six-block icon that fills up. Rivals steer towards the power-ups that help them (shield, ghost, slow) and the golden apple, and their **reaction time, mistake rate and speed improve with your rank**: bronze rivals are slow and hesitant, master rivals barely miss a turn. Within each rank, KOBRA is the strongest of the three and MAMBA the calmest.
 
 Power-ups vary by mode:
 
@@ -47,7 +47,7 @@ Ghost passes through hazards; slow reduces speed; shrink shortens the tail; shie
 
 ## Profile
 
-The home screen has a **profile** link (route `/perfil`, `/profile`). It shows lifetime stats saved in the browser: games played, competitive wins, fruits collected, time played, best chain, best score, plus competitive **cups** and the current **rank**. Clearing records in settings wipes them too.
+The home screen has a **profile** link (route `/perfil`, `/profile`). It shows lifetime stats saved in the browser: games played, competitive wins, fruits collected, time played, best chain, best score, plus competitive **points** and the current **rank**. Clearing records in settings wipes them too.
 
 ## Home screen
 

@@ -76,6 +76,7 @@ export const MODES = {
     wallFrom: 30,
     wallEvery: 6,
     wallMax: 18,
+    veneno: { chance: 0.16, puntos: 15 },
     powerPool: POWER_POOLS.classic,
   },
   frenzy: {
@@ -95,6 +96,7 @@ export const MODES = {
     pulseMs: 1600,
     bonusEvery: 4,
     powerEvery: 5,
+    veneno: { chance: 0.2, puntos: 20 },
     powerPool: POWER_POOLS.frenzy,
   },
   hunter: {
@@ -111,6 +113,7 @@ export const MODES = {
     hunterSight: 4,
     bonusEvery: 6,
     powerEvery: 6,
+    veneno: { chance: 0.14, puntos: 15 },
     powerPool: POWER_POOLS.hunter,
   },
   timed: {
@@ -122,7 +125,7 @@ export const MODES = {
     minSpeed: 82,
     accelPerFood: 1.4,
     timeAttack: { start: 30000, perFruit: 3200, max: 150000, rampMs: 60000 },
-    veneno: { ms: 5000, chance: 0.4 },
+    veneno: { ms: 3000, chance: 0.28 },
     bonusEvery: 5,
     powerEvery: 7,
     powerPool: POWER_POOLS.timed,
@@ -138,6 +141,7 @@ export const MODES = {
     rampPerSec: 0.16,
     bonusEvery: 5,
     powerEvery: 6,
+    veneno: { chance: 0.12, puntos: 20 },
     powerPool: POWER_POOLS.competitive,
   },
 };

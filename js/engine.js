@@ -63,6 +63,8 @@ export class Game {
     // contrarreloj: el reloj acelera con el tiempo y el veneno espera su turno
     this.timeRate = 1;
     this.veneno = null;
+    // competitivo: unos instantes de protección al volver tras una caída
+    this.gracia = 0;
     // frenesí: olas de fruta extra y picos de velocidad
     this.extraFoods = [];
     this.waveTimer = 0;
@@ -194,9 +196,36 @@ export class Game {
     this.prevBody = this.body.map((p) => ({ ...p }));
     this.dir = { ...start.dir };
     this.state = 'running';
+    this.gracia = Math.max(0, Number(this.cfg.graciaMs) || 0);
     this.spawnFood();
     this.emit('revive');
     return true;
+  }
+
+  // una casilla libre de muros, cuerpo y cazador: se usa al cerrar la protección
+  casillaSegura(celda) {
+    if (!celda) return false;
+    if (celda.x < 0 || celda.y < 0 || celda.x >= this.cols || celda.y >= this.rows) return false;
+    if (this.wallSet.has(K(celda.x, celda.y))) return false;
+    for (let i = 1; i < this.body.length; i++) {
+      if (this.body[i].x === celda.x && this.body[i].y === celda.y) return false;
+    }
+    if (this.hunter && this.hunter.body.some((c) => c.x === celda.x && c.y === celda.y)) return false;
+    return true;
+  }
+
+  // si la protección termina encima de un muro, la serpiente vuelve a un hueco libre
+  recolocar() {
+    const start = this.findStart();
+    this.body = [];
+    for (let i = 0; i < 4; i++) {
+      this.body.push({ x: start.x - start.dir.x * i, y: start.y - start.dir.y * i });
+    }
+    this.prevBody = this.body.map((p) => ({ ...p }));
+    this.dir = { ...start.dir };
+    this.queue = [];
+    this.acc = 0;
+    this.gracia = Math.max(this.gracia, 400);
   }
 
   // salir a la vez en los cuatro tableros, sin esperar a la primera tecla
@@ -232,6 +261,10 @@ export class Game {
     }
     if (this.state === 'running') {
       const cfg = this.cfg;
+      if (this.gracia > 0) {
+        this.gracia = Math.max(0, this.gracia - dt);
+        if (this.gracia === 0 && !this.casillaSegura(this.body[0])) this.recolocar();
+      }
       if (cfg.rampPerSec) {
         this.speed = Math.max(cfg.minSpeed, this.speed - (cfg.rampPerSec * dt) / 1000);
       }
@@ -348,6 +381,8 @@ export class Game {
   step() {
     const cfg = this.cfg;
     const ghost = this.ghosting;
+    const gracia = this.gracia > 0;
+    const intangible = ghost || gracia;
     if (this.queue.length) {
       const d = this.queue.shift();
       if (!(d.x === -this.dir.x && d.y === -this.dir.y)) this.dir = d;
@@ -358,17 +393,17 @@ export class Game {
     let hx = this.body[0].x + this.dir.x;
     let hy = this.body[0].y + this.dir.y;
 
-    if (cfg.wrap || ghost) {
+    if (cfg.wrap || intangible) {
       hx = (hx + this.cols) % this.cols;
       hy = (hy + this.rows) % this.rows;
     } else if (hx < 0 || hy < 0 || hx >= this.cols || hy >= this.rows) {
       return this.die('borde', clamp(hx, 0, this.cols - 1), clamp(hy, 0, this.rows - 1));
     }
 
-    if (!ghost && this.wallSet.has(K(hx, hy))) return this.die('muro', hx, hy);
+    if (!intangible && this.wallSet.has(K(hx, hy))) return this.die('muro', hx, hy);
     // el cuerpo del cazador no te mata: le muerdes el anillo y sigues.
     // sólo su cabeza puede comerte (y sólo si cae sobre la tuya)
-    if (!ghost && this.hunter) {
+    if (!intangible && this.hunter) {
       const golpe = this.hunter.body.findIndex((c) => c.x === hx && c.y === hy);
       if (golpe === 0) return this.die('cazador', hx, hy);
       if (golpe > 0) {
@@ -388,8 +423,8 @@ export class Game {
     const takesPower = this.power && hx === this.power.x && hy === this.power.y;
     const willGrow = this.grow > 0 || eats || takesBonus;
 
-    // con el fantasma puesto atraviesas también tu propio cuerpo
-    if (!ghost) {
+    // con el fantasma o la protección puestos atraviesas también tu propio cuerpo
+    if (!intangible) {
       for (let i = 0; i < this.body.length; i++) {
         if (!willGrow && i === this.body.length - 1) continue;
         if (this.body[i].x === hx && this.body[i].y === hy) return this.die('cola', hx, hy);
@@ -610,8 +645,11 @@ export class Game {
 
   // la serpiente decide su siguiente giro: así se mueven las demos del menú
   // y las serpientes rivales de los otros tableros del competitivo
-  decidir() {
+  decidir(opciones = {}) {
     const yo = this;
+    // los rivales de rango bajo se equivocan más: el fallo elige un giro seguro
+    // pero malo, para que pierdan tiempo sin regalar la partida
+    const fallo = clamp(Number(opciones.error) || 0, 0, 0.6);
     if (this.state !== 'ready' && this.state !== 'running') return;
     const cabeza = yo.body[0];
     const wrap = !!this.cfg.wrap || this.ghosting;
@@ -684,7 +722,7 @@ export class Game {
       const visto = yo.botTrail.get(K(nx, ny));
       if (visto > 0) puntos -= visto * 7;
 
-      const movimiento = { dx, dy, puntos };
+      const movimiento = { dx, dy, puntos, seguro: espacio > yo.body.length + 1 };
       movimientos.push(movimiento);
       if (puntos > mejorPunto) {
         mejorPunto = puntos;
@@ -693,6 +731,13 @@ export class Game {
     }
 
     if (mejor) {
+      if (fallo > 0 && Math.random() < fallo) {
+        const seguros = movimientos.filter((m) => m.seguro);
+        const lista = [...(seguros.length ? seguros : movimientos)]
+          .sort((a, b) => a.puntos - b.puntos);
+        const torpe = lista[Math.floor(Math.random() * Math.min(2, lista.length))];
+        if (torpe) mejor = torpe;
+      }
       this.dirDe(yo, mejor.dx, mejor.dy);
       return;
     }
@@ -795,20 +840,25 @@ export class Game {
     this.veneno = lista[rand(lista.length)];
   }
 
-  // comer la envenenada cuesta segundos y corta la cadena
+  // comer la envenenada cuesta tiempo o puntos y deja la cadena a la mitad
   comerVeneno() {
     const x = this.veneno.x;
     const y = this.veneno.y;
     this.veneno = null;
-    const casteigo = this.cfg.veneno.ms || 5000;
-    this.timeLeft = Math.max(0, this.timeLeft - casteigo);
-    this.chain = 0;
+    const castigo = this.cfg.veneno.ms || 0;
+    const puntos = this.cfg.veneno.puntos || 0;
+    if (this.cfg.timeAttack && castigo > 0) {
+      this.timeLeft = Math.max(0, this.timeLeft - castigo);
+    } else if (puntos > 0) {
+      this.score = Math.max(0, this.score - puntos);
+    }
+    this.chain = Math.floor(this.chain / 2);
     this.chainTimer = 0;
-    this.flash = Math.max(this.flash, 0.55);
-    this.shake = Math.max(this.shake, 7);
+    this.flash = Math.max(this.flash, 0.5);
+    this.shake = Math.max(this.shake, 6);
     this.burst(x + 0.5, y + 0.5, 18, '#7a0d0d', 8);
-    this.emit('veneno', { segundos: Math.round(casteigo / 1000) });
-    this.spawnVeneno();
+    this.emit('veneno', { segundos: Math.round(castigo / 1000), puntos });
+    // la siguiente envenenada sale con la próxima fruta, no de golpe
   }
 
   spawnBonus() {
@@ -1588,6 +1638,7 @@ export class Game {
     const huecoCabeza = Math.max(0, hueco - Math.round(this.chomp * cell * 0.07));
     const tamanoCabeza = lado - huecoCabeza * 2;
     const fantasma = this.ghosting;
+    const protegida = this.gracia > 0;
     // el fantasma no se corta de golpe: se apaga en cuatro escalones durante
     // el último 1,6 s. primero pierde el relleno, luego el contorno
     const pasoFantasma = this.ghostPaso;
@@ -1614,6 +1665,12 @@ export class Game {
         ctx.fillStyle = i === 0 ? '#ffffff' : '#e8e8e8';
         ctx.fillRect(x0, y0, tamano, tamano);
       }
+      if (protegida) {
+        const pulso = (0.3 + 0.3 * (0.5 + 0.5 * Math.sin(this.time / 90))).toFixed(2);
+        ctx.strokeStyle = `rgba(255,255,255,${pulso})`;
+        ctx.lineWidth = Math.max(1, Math.round(cell * 0.05));
+        ctx.strokeRect(x0 + 0.5, y0 + 0.5, tamano - 1, tamano - 1);
+      }
     }
     ctx.restore();
 
@@ -1633,6 +1690,20 @@ export class Game {
       } else {
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(x0, y0, tamanoCabeza, tamanoCabeza);
+      }
+      if (protegida) {
+        const pulso = 0.3 + 0.4 * (0.5 + 0.5 * Math.sin(this.time / 90));
+        const margen = Math.max(2, Math.round(cell * 0.18));
+        ctx.strokeStyle = `rgba(255,255,255,${pulso.toFixed(2)})`;
+        ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
+        ctx.setLineDash([Math.max(2, Math.round(cell * 0.18)), Math.max(2, Math.round(cell * 0.12))]);
+        ctx.strokeRect(
+          x0 - margen + 0.5,
+          y0 - margen + 0.5,
+          tamanoCabeza + margen * 2 - 1,
+          tamanoCabeza + margen * 2 - 1,
+        );
+        ctx.setLineDash([]);
       }
       if (this.fx.shield > 0) {
         const pulso = 0.38 + 0.38 * (0.5 + 0.5 * Math.sin(this.time / 110));
