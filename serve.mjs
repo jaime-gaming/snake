@@ -1,5 +1,5 @@
 // Servidor estático de desarrollo: sin caché y con fallback de rutas del juego.
-// Sirve el sitio bajo /snake/ como GitHub Pages y también desde / para el preview.
+// Sirve el sitio en la raíz (dominio propio / preview) y también bajo /snake/ (Pages legacy).
 
 import http from 'node:http';
 import fs from 'node:fs';
@@ -70,8 +70,10 @@ const servidor = http.createServer((peticion, respuesta) => {
     }
 
     const aceptaHtml = (peticion.headers.accept || '').includes('text/html');
-    const esRutaDelJuego = rutaOriginal === '/snake' || rutaOriginal.startsWith('/snake/');
-    if (aceptaHtml && esRutaDelJuego) {
+    // fallback SPA también en la raíz del dominio (Workers): cualquier ruta sin
+    // extensión que pida html cae en index.html, tanto en / como en /snake/
+    const pareceArchivo = /\.[a-z0-9]+$/i.test(rutaOriginal);
+    if (aceptaHtml && !pareceArchivo) {
       const index = path.join(RAIZ, 'index.html');
       fs.readFile(index, (fallo, contenido) => {
         process.stdout.write(`${marca} ${fallo ? 404 : 200} ${rutaOriginal}${url.search} (fallback)\n`);

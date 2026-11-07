@@ -174,7 +174,7 @@ const SONIDOS = {
   locked() {
     tono(120, 0.075, { tipo: 'triangle', vol: 0.09, fin: 95 });
   },
-  // v2.0: contrarreloj y duelo
+  // v2.0: contrarreloj y competitivo
   tick() {
     tono(880, 0.045, { tipo: 'square', vol: 0.06 });
     tono(660, 0.04, { tipo: 'sine', vol: 0.05, delay: 0.05 });

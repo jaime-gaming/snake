@@ -1,4 +1,4 @@
-/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-11-07 · v17).
+/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-11-07 · v18).
    no lo edites a mano: cambia js/*.js y vuelve a ejecutar node tools/build.mjs */
 (function () {
 'use strict';
@@ -113,7 +113,7 @@ const slit = (x, y, alto) => vline(x, y, alto);
 const GROUPS = [
   { name: 'progreso', tag: 'rutas con obstáculos', modes: ['campaign'] },
   { name: 'infinitos', tag: 'puntuación sin final', modes: ['classic', 'frenzy', 'hunter', 'timed'] },
-  { name: 'duelo', tag: 'contra bots en la misma arena', modes: ['versus'] },
+  { name: 'competitivo', tag: 'contra bots en la misma arena', modes: ['competitive'] },
 ];
 
 const MODE_ORDER = GROUPS.flatMap((g) => g.modes);
@@ -124,7 +124,7 @@ const POWER_POOLS = {
   frenzy: ['slow', 'shield', 'double'],
   hunter: ['ghost', 'shrink', 'shield'],
   timed: ['slow', 'shield', 'double', 'ghost'],
-  versus: ['ghost', 'shield', 'slow', 'shrink'],
+  competitive: ['ghost', 'shield', 'slow', 'shrink'],
 };
 
 const base = {
@@ -184,19 +184,19 @@ const MODES = {
     ...base,
     id: 'timed',
     name: 'CONTRARRELOJ',
-    tag: '75 segundos · cada fruta suma 3',
+    tag: '30 segundos · cada fruta suma 3',
     startSpeed: 140,
     minSpeed: 82,
     accelPerFood: 1.4,
-    timeAttack: { start: 75000, perFruit: 3200, max: 150000 },
+    timeAttack: { start: 30000, perFruit: 3200, max: 150000 },
     bonusEvery: 5,
     powerEvery: 7,
     powerPool: POWER_POOLS.timed,
   },
-  versus: {
+  competitive: {
     ...base,
-    id: 'versus',
-    name: 'DUELO',
+    id: 'competitive',
+    name: 'COMPETITIVO',
     tag: 'tres bots en la misma arena · gana el último en pie',
     startSpeed: 138,
     minSpeed: 84,
@@ -210,7 +210,7 @@ const MODES = {
     ],
     bonusEvery: 5,
     powerEvery: 7,
-    powerPool: POWER_POOLS.versus,
+    powerPool: POWER_POOLS.competitive,
   },
 };
 
@@ -288,6 +288,7 @@ const LEVELS = [
   ]),
 
   nivel(7, 'REJILLA', 8, [
+    // modificador: muros que van saliendo durante la partida
     ...hline(1, 3, 3),
     ...hline(9, 3, 3),
     ...hline(17, 3, 3),
@@ -298,7 +299,7 @@ const LEVELS = [
     ...hline(17, 11, 3),
     ...hline(5, 15, 3),
     ...hline(13, 15, 3),
-  ]),
+  ], { mods: ['muros'], wallFrom: 5, wallEvery: 4, wallMax: 10 }),
 
   nivel(8, 'JAULA', 9, [
     ...holes(ring(3, 3, 14, 14), [
@@ -331,6 +332,9 @@ const LEVELS = [
       ...vline(4, 8, 4),
       ...vline(15, 8, 4),
     ],
+    // modificador: sin turbo en este nivel
+    mods: ['turbo'],
+    noTurbo: true,
   }),
 
   nivel(12, 'REJILLA DOBLE', 11, [
@@ -380,7 +384,11 @@ const LEVELS = [
     ...vline(13, 4, 10),
     ...holes(vline(7, 4, 4), [[7, 6]]),
     ...holes(vline(8, 10, 4), [[8, 12]]),
-  ]),
+  ], {
+    // modificador: reloj, 60 s y cada manzana suma 2,5 s
+    mods: ['reloj'],
+    timeAttack: { start: 60000, perFruit: 2500, max: 95000 },
+  }),
 
   nivel(16, 'DIENTES', 13, [
     ...vline(5, 0, 7),
@@ -445,6 +453,11 @@ const LEVELS = [
     ...hline(0, 13, 20),
   ], {
     cut: [[5, 6], [14, 6], [5, 13], [14, 13]],
+    // modificador: los muros salen más a menudo
+    mods: ['muros'],
+    wallFrom: 4,
+    wallEvery: 3,
+    wallMax: 14,
   }),
 
   nivel(21, 'ESQUINAS', 15, [
@@ -481,7 +494,14 @@ const LEVELS = [
     ...hline(5, 7, 15),
     ...hline(0, 11, 15),
     ...hline(5, 15, 15),
-  ]),
+  ], {
+    // modificador: la serpiente roja también sale en campaña
+    mods: ['cazador'],
+    hunter: true,
+    hunterPellets: 2,
+    hunterCap: 14,
+    hunterSight: 4,
+  }),
 
   nivel(26, 'ANILLO CUADRADO', 17, [
     ...holes(ring(4, 4, 12, 12), [
@@ -522,7 +542,14 @@ const LEVELS = [
     ...rect(9, 9, 2, 2),
     ...hline(8, 5, 4),
     ...hline(8, 14, 4),
-  ]),
+  ], {
+    // modificadores finales: reloj y muros que salen
+    mods: ['reloj', 'muros'],
+    timeAttack: { start: 75000, perFruit: 3000, max: 120000 },
+    wallFrom: 8,
+    wallEvery: 5,
+    wallMax: 10,
+  }),
 ];
 
   Object.assign(modulo, { COLS, ROWS, GROUPS, MODE_ORDER, POWER_POOLS, MODES, LEVELS });
@@ -707,7 +734,7 @@ const SONIDOS = {
   locked() {
     tono(120, 0.075, { tipo: 'triangle', vol: 0.09, fin: 95 });
   },
-  // v2.0: contrarreloj y duelo
+  // v2.0: contrarreloj y competitivo
   tick() {
     tono(880, 0.045, { tipo: 'square', vol: 0.06 });
     tono(660, 0.04, { tipo: 'sine', vol: 0.05, delay: 0.05 });
@@ -1128,7 +1155,7 @@ class Game {
         this.acc -= this.interval();
         this.step();
       }
-      // duelo: los rivales se mueven a su ritmo y deciden con el piloto automático
+      // competitivo: los rivales se mueven a su ritmo y deciden con el piloto automático
       for (const r of this.rivals) {
         if (!r.alive || this.state !== 'running') continue;
         for (const k of ['ghost', 'slow', 'shield', 'double']) {
@@ -1211,7 +1238,7 @@ class Game {
     }
 
     if (!ghost && this.wallSet.has(K(hx, hy))) return this.die('muro', hx, hy);
-    // duelo: el cuerpo de un rival es pared para ti; su cabeza es un choque frontal
+    // competitivo: el cuerpo de un rival es pared para ti; su cabeza es un choque frontal
     if (!ghost && this.rivals.length) {
       for (const r of this.rivals) {
         if (!r.alive) continue;
@@ -1352,7 +1379,7 @@ class Game {
     this.emit('power', { kind: p.kind, label: POWER_INFO[p.kind].label });
   }
 
-  /* ---------------------------------------------------------- duelo (v2.0)
+  /* ---------------------------------------------------------- competitivo (v2.0)
      los rivales son serpientes bot en la misma arena: cada uno con su cuerpo,
      su cola de giros y sus propios efectos. el último en pie gana. */
 
@@ -1535,7 +1562,7 @@ class Game {
       y: cy,
       vivos: this.rivals.filter((q) => q.alive).length,
     });
-    // si no queda ningún rival, ganas el duelo
+    // si no queda ningún rival, ganas el competitivo
     if (this.state === 'running' && this.rivals.length && this.rivals.every((q) => !q.alive)) {
       this.state = 'cleared';
       this.emit('win', { fruits: this.fruits, score: this.score });
@@ -1562,7 +1589,7 @@ class Game {
     this.hitStop = 90;
     this.crash = { x: impactox, y: impactoY, t: 0, reason, popped: 0 };
     this.burst(impactox + 0.5, impactoY + 0.5, 22, '#ffffff', 10);
-    // en el duelo dices en qué puesto quedas: por delante van los que siguen vivos
+    // en el competitivo dices en qué puesto quedas: por delante van los que siguen vivos
     if (this.rivals.length) {
       this.rank = 1 + this.rivals.filter((r) => r.alive).length;
     }
@@ -1616,7 +1643,7 @@ class Game {
   }
 
   // piloto automático: una demo clara de cada modo en los menús y el cerebro
-  // de los rivales en el duelo. sin actor, pilota al jugador.
+  // de los rivales en el competitivo. sin actor, pilota al jugador.
   botTurn(actor = null) {
     const yo = actor || this;
     if (yo !== this && !yo.alive) return;
@@ -1673,7 +1700,7 @@ class Game {
         const jefe = this.hunter.body[0];
         puntos += Math.min(20, Math.abs(destino.x - jefe.x) + Math.abs(destino.y - jefe.y)) * 1.5;
       }
-      // en el duelo, huir de las cabezas ajenas es prioridad
+      // en el competitivo, huir de las cabezas ajenas es prioridad
       const cabezasAjenas = [];
       if (yo !== this) cabezasAjenas.push(this.body[0]);
       for (const r of this.rivals) {
@@ -2505,7 +2532,7 @@ class Game {
       }
     }
 
-    // rivales del duelo: grises distintos y con trama para distinguirlos a ti
+    // rivales del competitivo: grises distintos y con trama para distinguirlos a ti
     if (this.rivals.length) {
       const estilos = [
         { relleno: '#cfcfcf', contorno: null },
@@ -2714,7 +2741,7 @@ const KEY = 'snake.language';
 const STRINGS = {
   es: {
     documentTitle: 'Snake — v2.0',
-    description: 'Snake v2.0: campaña de 30 niveles, contrarreloj, duelo contra bots y perfil.',
+    description: 'Snake v2.0: campaña de 30 niveles con modificadores, contrarreloj, competitivo contra bots y perfil.',
     language: 'Idioma',
     sound: 'sonido',
     soundTitleOn: 'sonido activo (M)',
@@ -2736,8 +2763,8 @@ const STRINGS = {
     groupCampaignTag: 'rutas con obstáculos',
     groupEndless: 'infinitos',
     groupEndlessTag: 'puntuación sin final',
-    groupDuel: 'duelo',
-    groupDuelTag: 'contra bots en la misma arena',
+    groupCompetitive: 'competitivo',
+    groupCompetitiveTag: 'contra bots en la misma arena',
     modeClassic: 'clásico',
     modeClassicTag: 'cada fruta acelera · muros al llegar a 30 frutas',
     modeFrenzy: 'frenesí',
@@ -2745,9 +2772,9 @@ const STRINGS = {
     modeHunter: 'cazador',
     modeHunterTag: 'una serpiente roja come puntos azules y crece',
     modeTimed: 'contrarreloj',
-    modeTimedTag: '75 segundos · cada fruta suma 3',
-    modeVersus: 'duelo',
-    modeVersusTag: 'tres bots · gana el último en pie',
+    modeTimedTag: '30 segundos · cada fruta suma 3',
+    modeCompetitive: 'competitivo',
+    modeCompetitiveTag: 'tres bots · gana el último en pie',
     levelNames: {
       LLANO: 'llano', CRUZ: 'cruz', PILARES: 'pilares', ANILLO: 'anillo', ZIGZAG: 'zigzag',
       COLUMNAS: 'columnas', 'DOBLE ANILLO': 'doble anillo', REJILLA: 'rejilla', JAULA: 'jaula',
@@ -2810,8 +2837,9 @@ const STRINGS = {
     ruleCampaign: 'campaña: manzanas, no puntos; la última fruta es dorada.',
     ruleModes: 'frenesí: los bordes dan la vuelta. cazador: come puntos y después te persigue.',
     ruleHunter: 'cazador: su cabeza te mata; su cuerpo y los puntos son seguros.',
-    ruleTimed: 'contrarreloj: 75 s y cada fruta suma 3 s; el tiempo no perdona.',
-    ruleVersus: 'duelo: choca contra un rival y caes; gana el último en pie.',
+    ruleTimed: 'contrarreloj: 30 s y cada fruta suma 3 s; el tiempo no perdona.',
+    ruleCompetitive: 'competitivo: choca contra un rival y caes; gana el último en pie.',
+    ruleMods: 'algunos niveles llevan modificador: muros, reloj, cazador o sin turbo.',
     powerBasics: 'fantasma atraviesa obstáculos; lento baja el ritmo; recorte acorta la cola.',
     powerAdvanced: 'los poderes dependen del modo; el escudo salva un choque y doble dura 7 s.',
     gridMode: 'rejilla',
@@ -2855,16 +2883,20 @@ const STRINGS = {
     locked: 'bloqueado',
     timeLeft: '{s} s',
     timeUp: 'se acabó el tiempo',
-    versusAlive: '{alive} vivos de {total}',
-    versusRank: 'quedaste {rank}º de {total}',
-    versusWin: '¡victoria! · último en pie',
-    versusDown: '{count} rivales caídos',
+    competitiveAlive: '{alive} vivos de {total}',
+    competitiveRank: 'quedaste {rank}º de {total}',
+    competitiveWin: '¡victoria! · último en pie',
+    competitiveDown: '{count} rivales caídos',
+    mod_muros: 'muros que salen',
+    mod_reloj: 'reloj',
+    mod_cazador: 'cazador',
+    mod_turbo: 'sin turbo',
     win: '¡has ganado!',
     profile: 'perfil',
     profileTitle: 'tu perfil',
     profileHint: 'todo lo acumulado en este navegador',
     statsGames: 'partidas jugadas',
-    statsWins: 'victorias en duelo',
+    statsWins: 'victorias en competitivo',
     statsFruits: 'frutas recogidas',
     statsTime: 'tiempo jugado',
     statsChain: 'mejor cadena',
@@ -2878,9 +2910,8 @@ const STRINGS = {
     routeFrenzy: 'frenesí',
     routeHunter: 'cazador',
     routeTimed: 'contrarreloj',
-    routeVersus: 'duelo',
+    routeCompetitive: 'competitivo',
     routeEndless: 'infinitos',
-    routeDuel: 'duelo',
     routeProfile: 'perfil',
     previewCampaign: 'vista previa · nivel {number} {name}',
     campaignAt: 'la campaña sigue por aquí · {cleared} de {total} superados',
@@ -2891,7 +2922,7 @@ const STRINGS = {
   },
   en: {
     documentTitle: 'Snake — v2.0',
-    description: 'Snake v2.0: 30-level campaign, time attack, bot duel, and profile.',
+    description: 'Snake v2.0: 30-level campaign with modifiers, time attack, bot competitive mode, and profile.',
     language: 'Language',
     sound: 'sound',
     soundTitleOn: 'sound on (M)',
@@ -2913,8 +2944,8 @@ const STRINGS = {
     groupCampaignTag: 'obstacle routes',
     groupEndless: 'endless',
     groupEndlessTag: 'chase a high score',
-    groupDuel: 'duel',
-    groupDuelTag: 'against bots in the same arena',
+    groupCompetitive: 'competitive',
+    groupCompetitiveTag: 'against bots in the same arena',
     modeClassic: 'classic',
     modeClassicTag: 'each fruit speeds you up · walls begin at 30 fruits',
     modeFrenzy: 'frenzy',
@@ -2922,9 +2953,9 @@ const STRINGS = {
     modeHunter: 'hunter',
     modeHunterTag: 'a red snake eats blue pellets and grows',
     modeTimed: 'time attack',
-    modeTimedTag: '75 seconds · each fruit adds 3',
-    modeVersus: 'versus',
-    modeVersusTag: 'three bots · last one standing wins',
+    modeTimedTag: '30 seconds · each fruit adds 3',
+    modeCompetitive: 'competitive',
+    modeCompetitiveTag: 'three bots · last one standing wins',
     levelNames: {
       LLANO: 'open field', CRUZ: 'cross', PILARES: 'pillars', ANILLO: 'ring', ZIGZAG: 'zigzag',
       COLUMNAS: 'columns', 'DOBLE ANILLO': 'double ring', REJILLA: 'grid', JAULA: 'cage',
@@ -2987,8 +3018,9 @@ const STRINGS = {
     ruleCampaign: 'campaign: apples, not points; the final fruit is golden.',
     ruleModes: 'frenzy: wrap around the edges. hunter: eat pellets, then stay ahead.',
     ruleHunter: 'hunter: its head is deadly; its body and pellets are safe.',
-    ruleTimed: 'time attack: 75 s and each fruit adds 3 s; time shows no mercy.',
-    ruleVersus: 'versus: crash into a rival and you fall; last one standing wins.',
+    ruleTimed: 'time attack: 30 s and each fruit adds 3 s; time shows no mercy.',
+    ruleCompetitive: 'competitive: crash into a rival and you fall; last one standing wins.',
+    ruleMods: 'some levels add a modifier: walls, clock, hunter, or no boost.',
     powerBasics: 'ghost passes hazards; slow eases the pace; shrink trims your tail.',
     powerAdvanced: 'available powers depend on the mode; shield saves one crash and double lasts 7 s.',
     gridMode: 'grid',
@@ -3032,16 +3064,20 @@ const STRINGS = {
     locked: 'locked',
     timeLeft: '{s} s',
     timeUp: 'time up',
-    versusAlive: '{alive} alive of {total}',
-    versusRank: 'you placed {rank} of {total}',
-    versusWin: 'victory! · last one standing',
-    versusDown: '{count} rivals down',
+    competitiveAlive: '{alive} alive of {total}',
+    competitiveRank: 'you placed {rank} of {total}',
+    competitiveWin: 'victory! · last one standing',
+    competitiveDown: '{count} rivals down',
+    mod_muros: 'walls appear',
+    mod_reloj: 'clock',
+    mod_cazador: 'hunter',
+    mod_turbo: 'no boost',
     win: 'you won!',
     profile: 'profile',
     profileTitle: 'your profile',
     profileHint: 'everything earned in this browser',
     statsGames: 'games played',
-    statsWins: 'duel wins',
+    statsWins: 'competitive wins',
     statsFruits: 'fruits collected',
     statsTime: 'time played',
     statsChain: 'best chain',
@@ -3055,9 +3091,8 @@ const STRINGS = {
     routeFrenzy: 'frenzy',
     routeHunter: 'hunter',
     routeTimed: 'timed',
-    routeVersus: 'versus',
+    routeCompetitive: 'competitive',
     routeEndless: 'endless',
-    routeDuel: 'duel',
     routeProfile: 'profile',
     previewCampaign: 'preview · level {number} {name}',
     campaignAt: 'campaign continues here · {cleared} of {total} cleared',
@@ -3074,17 +3109,17 @@ const MODE_KEYS = {
   frenzy: 'modeFrenzy',
   hunter: 'modeHunter',
   timed: 'modeTimed',
-  versus: 'modeVersus',
+  competitive: 'modeCompetitive',
 };
 const MODE_TAG_KEYS = {
   classic: 'modeClassicTag',
   frenzy: 'modeFrenzyTag',
   hunter: 'modeHunterTag',
   timed: 'modeTimedTag',
-  versus: 'modeVersusTag',
+  competitive: 'modeCompetitiveTag',
 };
-const GROUP_KEYS = ['groupCampaign', 'groupEndless', 'groupDuel'];
-const GROUP_TAG_KEYS = ['groupCampaignTag', 'groupEndlessTag', 'groupDuelTag'];
+const GROUP_KEYS = ['groupCampaign', 'groupEndless', 'groupCompetitive'];
+const GROUP_TAG_KEYS = ['groupCampaignTag', 'groupEndlessTag', 'groupCompetitiveTag'];
 let language = 'es';
 
 try {
@@ -3165,9 +3200,8 @@ function routeWords() {
     frenzy: [STRINGS.es.routeFrenzy, 'frenesi', STRINGS.en.routeFrenzy],
     hunter: [STRINGS.es.routeHunter, STRINGS.en.routeHunter],
     timed: [STRINGS.es.routeTimed, 'contrarreloj', STRINGS.en.routeTimed],
-    versus: [STRINGS.es.routeVersus, 'duelo', STRINGS.en.routeVersus],
+    competitive: [STRINGS.es.routeCompetitive, 'competitivo', STRINGS.en.routeCompetitive],
     endless: [STRINGS.es.routeEndless, STRINGS.en.routeEndless],
-    duel: [STRINGS.es.routeDuel, 'duelo', STRINGS.en.routeDuel],
     profile: [STRINGS.es.routeProfile, STRINGS.en.routeProfile],
   };
 }
@@ -3193,7 +3227,7 @@ function avisar(mensaje) {
 
 function comprobarPiezas() {
   const faltan = [];
-  if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.hunter || !MODES.timed || !MODES.versus) faltan.push('modos');
+  if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.hunter || !MODES.timed || !MODES.competitive) faltan.push('modos');
   if (!Array.isArray(LEVELS) || LEVELS.length !== 30) faltan.push('niveles');
   if (typeof Game !== 'function') faltan.push('motor');
   if (faltan.length) {
@@ -3237,7 +3271,7 @@ function nuevaStats() {
 
 function nuevoRegistro() {
   return {
-    best: { classic: 0, frenzy: 0, hunter: 0, timed: 0, versus: 0 },
+    best: { classic: 0, frenzy: 0, hunter: 0, timed: 0, competitive: 0 },
     campaign: { unlocked: 1 },
     stats: nuevaStats(),
     sound: true,
@@ -3312,7 +3346,12 @@ const app = {
 };
 
 const rutas = { listas: false, restaurando: false };
-const BASE_PATH = '/snake/';
+// Base dinámica: en el dominio propio (Cloudflare Workers) servimos en raíz;
+// /snake/ sólo si la URL viene de un despliegue antiguo en GitHub Pages.
+const BASE_PATH = (() => {
+  if (location.protocol === 'file:') return './';
+  return location.pathname === '/snake' || location.pathname.startsWith('/snake/') ? '/snake/' : '/';
+})();
 
 const vista = { cell: 24, ox: 0, oy: 0, width: 480, height: 480, dpr: 1 };
 const vistaDemo = { cell: 10, ox: 0, oy: 0, width: 200, height: 200, dpr: 1 };
@@ -3330,7 +3369,8 @@ function esTactil() {
 }
 
 function turboPermitido() {
-  return app.pantalla === 'playing' && app.modo !== 'hunter';
+  return app.pantalla === 'playing' && app.modo !== 'hunter'
+    && !(app.juego && app.juego.cfg && app.juego.cfg.noTurbo);
 }
 
 function pararTemporizador() {
@@ -3695,7 +3735,7 @@ function actualizarPista() {
   if (app.pantalla === 'playing') {
     el.hint.textContent = esTactil()
       ? t('hintSwipe')
-      : t(app.modo === 'hunter' ? 'hintGame' : 'hintGameTurbo');
+      : t(turboPermitido() ? 'hintGameTurbo' : 'hintGame');
     return;
   }
   el.hint.textContent = PISTAS[app.pantalla] ? t(PISTAS[app.pantalla]) : '';
@@ -3728,7 +3768,7 @@ function pantallaDeRuta() {
 
   if (coincideRuta(primera, 'modes')) {
     const grupo = coincideRuta(segunda || '', 'campaign') ? 0
-      : coincideRuta(segunda || '', 'duel') ? 2 : 1;
+      : coincideRuta(segunda || '', 'competitive') ? 2 : 1;
     return { tipo: 'modes', grupo };
   }
   if (coincideRuta(primera, 'help')) return { tipo: 'help' };
@@ -3740,18 +3780,18 @@ function pantallaDeRuta() {
       ? { tipo: 'campaign-level', nivel: Number(nivel[1]) - 1 }
       : { tipo: 'levels' };
   }
-  for (const modo of ['classic', 'frenzy', 'hunter', 'timed', 'versus']) {
+  for (const modo of ['classic', 'frenzy', 'hunter', 'timed', 'competitive']) {
     if (coincideRuta(primera, modo)) return { tipo: 'game', modo };
   }
   if (coincideRuta(primera, 'endless')) return { tipo: 'modes', grupo: 1 };
-  if (coincideRuta(primera, 'duel')) return { tipo: 'modes', grupo: 2 };
+  if (coincideRuta(primera, 'competitive')) return { tipo: 'modes', grupo: 2 };
   return { tipo: 'home' };
 }
 
 function rutaDeEstado() {
   if (app.pantalla === 'home') return BASE_PATH;
   if (app.pantalla === 'modes') {
-    const grupo = app.grupo === 0 ? 'campaign' : app.grupo === 2 ? 'duel' : 'endless';
+    const grupo = app.grupo === 0 ? 'campaign' : app.grupo === 2 ? 'competitive' : 'endless';
     return `${BASE_PATH}${routeSlug('modes')}/${routeSlug(grupo)}`;
   }
   if (app.pantalla === 'help') return `${BASE_PATH}${routeSlug('help')}`;
@@ -3837,7 +3877,9 @@ function actualizarMarcador() {
     meta = t('campaignLevel', {
       number: dosDigitos(app.nivel + 1),
       name: levelName(nivel.name),
-    });
+    }) + (nivel.mods && nivel.mods.length
+      ? ' · ' + nivel.mods.map((m) => t('mod_' + m)).join(' + ')
+      : '');
     marca = t('applesRemaining', { count: restantes, unit: appleUnit(restantes) });
     el.mult.textContent = appleUnit(recogidas);
     el.mult.classList.remove('activo');
@@ -3849,14 +3891,14 @@ function actualizarMarcador() {
     el.mult.textContent = mult > 1 ? `×${mult}` : '';
     el.mult.classList.toggle('activo', mult > 1);
     el.chain.style.width = `${((juego.chainTimer / juego.chainWindow) * 100 || 0).toFixed(1)}%`;
-    // v2.0: en contrarreloj la meta es el reloj; en duelo, cuántos quedan vivos
+    // v2.0: en contrarreloj la meta es el reloj; en competitivo, cuántos quedan vivos
     if (app.modo === 'timed') {
       const s = Math.max(0, Math.ceil(juego.timeLeft / 1000));
       meta = t('timeLeft', { s });
       el.meta.classList.toggle('urgente', s <= 10 && juego.state === 'running');
-    } else if (app.modo === 'versus') {
+    } else if (app.modo === 'competitive') {
       const vivos = 1 + juego.rivals.filter((r) => r.alive).length;
-      meta = t('versusAlive', { alive: vivos, total: juego.rivals.length + 1 });
+      meta = t('competitiveAlive', { alive: vivos, total: juego.rivals.length + 1 });
       el.meta.classList.remove('urgente');
     } else {
       meta = t('fruitScore', { mode: modeName(app.modo), fruits: juego.fruits, unit: fruitUnit(juego.fruits) });
@@ -4373,7 +4415,8 @@ function mostrarAyuda() {
       <li>${t('ruleModes')}</li>
       <li>${t('ruleHunter')}</li>
       <li>${t('ruleTimed')}</li>
-      <li>${t('ruleVersus')}</li>
+      <li>${t('ruleCompetitive')}</li>
+      <li>${t('ruleMods')}</li>
       <li>${t('powerBasics')}</li>
       <li>${t('powerAdvanced')}</li>
     </ul>
@@ -4506,6 +4549,21 @@ function configuracion(modo, nivel) {
     powerEvery: datos.powerEvery,
     powerPool: datos.powerPool,
     chainWindow: datos.chainWindow,
+    // modificadores asignados al mapa: muros que salen, reloj, cazador, sin turbo
+    ...(datos.mods ? { mods: datos.mods.slice() } : {}),
+    ...(datos.noTurbo ? { noTurbo: true } : {}),
+    ...(datos.timeAttack ? { timeAttack: datos.timeAttack } : {}),
+    ...(datos.wallFrom ? {
+      wallFrom: datos.wallFrom,
+      wallEvery: datos.wallEvery,
+      wallMax: datos.wallMax,
+    } : {}),
+    ...(datos.hunter ? {
+      hunter: true,
+      hunterPellets: datos.hunterPellets,
+      hunterCap: datos.hunterCap,
+      hunterSight: datos.hunterSight,
+    } : {}),
   };
 }
 
@@ -4650,10 +4708,12 @@ function mostrarFin() {
   const esCampana = app.modo === 'campaign';
   app.record = !esCampana && juego.score > app.marca;
   let meta;
-  if (esCampana) {
+  if (esCampana && app.motivoMuerte === 'tiempo') {
+    meta = `${t('timeUp')} · ${resumenManzanas(juego)}`;
+  } else if (esCampana) {
     meta = resumenManzanas(juego);
-  } else if (app.modo === 'versus') {
-    meta = t('versusRank', { rank: app.rankMuerte || juego.rank || 1, total: app.totalMuerte || juego.rivals.length + 1 });
+  } else if (app.modo === 'competitive') {
+    meta = t('competitiveRank', { rank: app.rankMuerte || juego.rank || 1, total: app.totalMuerte || juego.rivals.length + 1 });
   } else if (app.modo === 'timed' && app.motivoMuerte === 'tiempo') {
     meta = `${t('timeUp')} · ${t('fruits', { count: juego.fruits, unit: fruitUnit(juego.fruits) })}`;
   } else {
@@ -4715,16 +4775,16 @@ function mostrarNivelSuperado() {
   el.prompt.classList.remove('visible');
 }
 
-// v2.0: victoria en el duelo — todos los rivales han caído y tú sigues en pie
+// v2.0: victoria en el competitivo — todos los rivales han caído y tú sigues en pie
 function mostrarVictoria() {
   const juego = app.juego;
   if (!juego || juego.state !== 'cleared') return;
   const caidos = juego.rivals.length;
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
-      <p class="kicker">${t('win')} · ${t('versusWin')}</p>
+      <p class="kicker">${t('win')} · ${t('competitiveWin')}</p>
       <p class="cifra" data-cifra>${puntos(juego.score)}</p>
-      <p class="nota">${t('fruits', { count: juego.fruits, unit: fruitUnit(juego.fruits) })} · ${t('versusDown', { count: caidos })}</p>
+      <p class="nota">${t('fruits', { count: juego.fruits, unit: fruitUnit(juego.fruits) })} · ${t('competitiveDown', { count: caidos })}</p>
     </div>
     <div class="acciones">
       <button class="principal" type="button" data-accion="retry">${t('retry')} <kbd>R</kbd></button>
@@ -5023,7 +5083,7 @@ function ejecutar(nombre) {
 
 function borrarRecords() {
   if (!window.confirm(t('eraseConfirm'))) return;
-  guardado.best = { classic: 0, frenzy: 0, hunter: 0 };
+  guardado.best = { classic: 0, frenzy: 0, hunter: 0, timed: 0, competitive: 0 };
   guardado.campaign = { unlocked: 1 };
   guardar();
   audio.play('ui');

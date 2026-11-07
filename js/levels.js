@@ -38,7 +38,7 @@ const slit = (x, y, alto) => vline(x, y, alto);
 export const GROUPS = [
   { name: 'progreso', tag: 'rutas con obstáculos', modes: ['campaign'] },
   { name: 'infinitos', tag: 'puntuación sin final', modes: ['classic', 'frenzy', 'hunter', 'timed'] },
-  { name: 'duelo', tag: 'contra bots en la misma arena', modes: ['versus'] },
+  { name: 'competitivo', tag: 'contra bots en la misma arena', modes: ['competitive'] },
 ];
 
 export const MODE_ORDER = GROUPS.flatMap((g) => g.modes);
@@ -49,7 +49,7 @@ export const POWER_POOLS = {
   frenzy: ['slow', 'shield', 'double'],
   hunter: ['ghost', 'shrink', 'shield'],
   timed: ['slow', 'shield', 'double', 'ghost'],
-  versus: ['ghost', 'shield', 'slow', 'shrink'],
+  competitive: ['ghost', 'shield', 'slow', 'shrink'],
 };
 
 const base = {
@@ -109,19 +109,19 @@ export const MODES = {
     ...base,
     id: 'timed',
     name: 'CONTRARRELOJ',
-    tag: '75 segundos · cada fruta suma 3',
+    tag: '30 segundos · cada fruta suma 3',
     startSpeed: 140,
     minSpeed: 82,
     accelPerFood: 1.4,
-    timeAttack: { start: 75000, perFruit: 3200, max: 150000 },
+    timeAttack: { start: 30000, perFruit: 3200, max: 150000 },
     bonusEvery: 5,
     powerEvery: 7,
     powerPool: POWER_POOLS.timed,
   },
-  versus: {
+  competitive: {
     ...base,
-    id: 'versus',
-    name: 'DUELO',
+    id: 'competitive',
+    name: 'COMPETITIVO',
     tag: 'tres bots en la misma arena · gana el último en pie',
     startSpeed: 138,
     minSpeed: 84,
@@ -135,7 +135,7 @@ export const MODES = {
     ],
     bonusEvery: 5,
     powerEvery: 7,
-    powerPool: POWER_POOLS.versus,
+    powerPool: POWER_POOLS.competitive,
   },
 };
 
@@ -213,6 +213,7 @@ export const LEVELS = [
   ]),
 
   nivel(7, 'REJILLA', 8, [
+    // modificador: muros que van saliendo durante la partida
     ...hline(1, 3, 3),
     ...hline(9, 3, 3),
     ...hline(17, 3, 3),
@@ -223,7 +224,7 @@ export const LEVELS = [
     ...hline(17, 11, 3),
     ...hline(5, 15, 3),
     ...hline(13, 15, 3),
-  ]),
+  ], { mods: ['muros'], wallFrom: 5, wallEvery: 4, wallMax: 10 }),
 
   nivel(8, 'JAULA', 9, [
     ...holes(ring(3, 3, 14, 14), [
@@ -256,6 +257,9 @@ export const LEVELS = [
       ...vline(4, 8, 4),
       ...vline(15, 8, 4),
     ],
+    // modificador: sin turbo en este nivel
+    mods: ['turbo'],
+    noTurbo: true,
   }),
 
   nivel(12, 'REJILLA DOBLE', 11, [
@@ -305,7 +309,11 @@ export const LEVELS = [
     ...vline(13, 4, 10),
     ...holes(vline(7, 4, 4), [[7, 6]]),
     ...holes(vline(8, 10, 4), [[8, 12]]),
-  ]),
+  ], {
+    // modificador: reloj, 60 s y cada manzana suma 2,5 s
+    mods: ['reloj'],
+    timeAttack: { start: 60000, perFruit: 2500, max: 95000 },
+  }),
 
   nivel(16, 'DIENTES', 13, [
     ...vline(5, 0, 7),
@@ -370,6 +378,11 @@ export const LEVELS = [
     ...hline(0, 13, 20),
   ], {
     cut: [[5, 6], [14, 6], [5, 13], [14, 13]],
+    // modificador: los muros salen más a menudo
+    mods: ['muros'],
+    wallFrom: 4,
+    wallEvery: 3,
+    wallMax: 14,
   }),
 
   nivel(21, 'ESQUINAS', 15, [
@@ -406,7 +419,14 @@ export const LEVELS = [
     ...hline(5, 7, 15),
     ...hline(0, 11, 15),
     ...hline(5, 15, 15),
-  ]),
+  ], {
+    // modificador: la serpiente roja también sale en campaña
+    mods: ['cazador'],
+    hunter: true,
+    hunterPellets: 2,
+    hunterCap: 14,
+    hunterSight: 4,
+  }),
 
   nivel(26, 'ANILLO CUADRADO', 17, [
     ...holes(ring(4, 4, 12, 12), [
@@ -447,5 +467,12 @@ export const LEVELS = [
     ...rect(9, 9, 2, 2),
     ...hline(8, 5, 4),
     ...hline(8, 14, 4),
-  ]),
+  ], {
+    // modificadores finales: reloj y muros que salen
+    mods: ['reloj', 'muros'],
+    timeAttack: { start: 75000, perFruit: 3000, max: 120000 },
+    wallFrom: 8,
+    wallEvery: 5,
+    wallMax: 10,
+  }),
 ];

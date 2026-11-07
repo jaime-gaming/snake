@@ -2,7 +2,7 @@ import { Game, POWER_INFO } from './engine.js?v=3';
 import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS } from './levels.js?v=3';
 import { audio } from './audio.js?v=3';
 import { attachInput } from './input.js?v=3';
-import { t, getLanguage, setLanguage, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, appleUnit, routeSlug, routeWords } from './i18n.js?v=17';
+import { t, getLanguage, setLanguage, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, appleUnit, routeSlug, routeWords } from './i18n.js?v=18';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -13,7 +13,7 @@ function avisar(mensaje) {
 
 function comprobarPiezas() {
   const faltan = [];
-  if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.hunter || !MODES.timed || !MODES.versus) faltan.push('modos');
+  if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.hunter || !MODES.timed || !MODES.competitive) faltan.push('modos');
   if (!Array.isArray(LEVELS) || LEVELS.length !== 30) faltan.push('niveles');
   if (typeof Game !== 'function') faltan.push('motor');
   if (faltan.length) {
@@ -57,7 +57,7 @@ function nuevaStats() {
 
 function nuevoRegistro() {
   return {
-    best: { classic: 0, frenzy: 0, hunter: 0, timed: 0, versus: 0 },
+    best: { classic: 0, frenzy: 0, hunter: 0, timed: 0, competitive: 0 },
     campaign: { unlocked: 1 },
     stats: nuevaStats(),
     sound: true,
@@ -132,7 +132,12 @@ const app = {
 };
 
 const rutas = { listas: false, restaurando: false };
-const BASE_PATH = '/snake/';
+// Base dinámica: en el dominio propio (Cloudflare Workers) servimos en raíz;
+// /snake/ sólo si la URL viene de un despliegue antiguo en GitHub Pages.
+const BASE_PATH = (() => {
+  if (location.protocol === 'file:') return './';
+  return location.pathname === '/snake' || location.pathname.startsWith('/snake/') ? '/snake/' : '/';
+})();
 
 const vista = { cell: 24, ox: 0, oy: 0, width: 480, height: 480, dpr: 1 };
 const vistaDemo = { cell: 10, ox: 0, oy: 0, width: 200, height: 200, dpr: 1 };
@@ -150,7 +155,8 @@ function esTactil() {
 }
 
 function turboPermitido() {
-  return app.pantalla === 'playing' && app.modo !== 'hunter';
+  return app.pantalla === 'playing' && app.modo !== 'hunter'
+    && !(app.juego && app.juego.cfg && app.juego.cfg.noTurbo);
 }
 
 function pararTemporizador() {
@@ -515,7 +521,7 @@ function actualizarPista() {
   if (app.pantalla === 'playing') {
     el.hint.textContent = esTactil()
       ? t('hintSwipe')
-      : t(app.modo === 'hunter' ? 'hintGame' : 'hintGameTurbo');
+      : t(turboPermitido() ? 'hintGameTurbo' : 'hintGame');
     return;
   }
   el.hint.textContent = PISTAS[app.pantalla] ? t(PISTAS[app.pantalla]) : '';
@@ -548,7 +554,7 @@ function pantallaDeRuta() {
 
   if (coincideRuta(primera, 'modes')) {
     const grupo = coincideRuta(segunda || '', 'campaign') ? 0
-      : coincideRuta(segunda || '', 'duel') ? 2 : 1;
+      : coincideRuta(segunda || '', 'competitive') ? 2 : 1;
     return { tipo: 'modes', grupo };
   }
   if (coincideRuta(primera, 'help')) return { tipo: 'help' };
@@ -560,18 +566,18 @@ function pantallaDeRuta() {
       ? { tipo: 'campaign-level', nivel: Number(nivel[1]) - 1 }
       : { tipo: 'levels' };
   }
-  for (const modo of ['classic', 'frenzy', 'hunter', 'timed', 'versus']) {
+  for (const modo of ['classic', 'frenzy', 'hunter', 'timed', 'competitive']) {
     if (coincideRuta(primera, modo)) return { tipo: 'game', modo };
   }
   if (coincideRuta(primera, 'endless')) return { tipo: 'modes', grupo: 1 };
-  if (coincideRuta(primera, 'duel')) return { tipo: 'modes', grupo: 2 };
+  if (coincideRuta(primera, 'competitive')) return { tipo: 'modes', grupo: 2 };
   return { tipo: 'home' };
 }
 
 function rutaDeEstado() {
   if (app.pantalla === 'home') return BASE_PATH;
   if (app.pantalla === 'modes') {
-    const grupo = app.grupo === 0 ? 'campaign' : app.grupo === 2 ? 'duel' : 'endless';
+    const grupo = app.grupo === 0 ? 'campaign' : app.grupo === 2 ? 'competitive' : 'endless';
     return `${BASE_PATH}${routeSlug('modes')}/${routeSlug(grupo)}`;
   }
   if (app.pantalla === 'help') return `${BASE_PATH}${routeSlug('help')}`;
@@ -657,7 +663,9 @@ function actualizarMarcador() {
     meta = t('campaignLevel', {
       number: dosDigitos(app.nivel + 1),
       name: levelName(nivel.name),
-    });
+    }) + (nivel.mods && nivel.mods.length
+      ? ' · ' + nivel.mods.map((m) => t('mod_' + m)).join(' + ')
+      : '');
     marca = t('applesRemaining', { count: restantes, unit: appleUnit(restantes) });
     el.mult.textContent = appleUnit(recogidas);
     el.mult.classList.remove('activo');
@@ -669,14 +677,14 @@ function actualizarMarcador() {
     el.mult.textContent = mult > 1 ? `×${mult}` : '';
     el.mult.classList.toggle('activo', mult > 1);
     el.chain.style.width = `${((juego.chainTimer / juego.chainWindow) * 100 || 0).toFixed(1)}%`;
-    // v2.0: en contrarreloj la meta es el reloj; en duelo, cuántos quedan vivos
+    // v2.0: en contrarreloj la meta es el reloj; en competitivo, cuántos quedan vivos
     if (app.modo === 'timed') {
       const s = Math.max(0, Math.ceil(juego.timeLeft / 1000));
       meta = t('timeLeft', { s });
       el.meta.classList.toggle('urgente', s <= 10 && juego.state === 'running');
-    } else if (app.modo === 'versus') {
+    } else if (app.modo === 'competitive') {
       const vivos = 1 + juego.rivals.filter((r) => r.alive).length;
-      meta = t('versusAlive', { alive: vivos, total: juego.rivals.length + 1 });
+      meta = t('competitiveAlive', { alive: vivos, total: juego.rivals.length + 1 });
       el.meta.classList.remove('urgente');
     } else {
       meta = t('fruitScore', { mode: modeName(app.modo), fruits: juego.fruits, unit: fruitUnit(juego.fruits) });
@@ -1193,7 +1201,8 @@ function mostrarAyuda() {
       <li>${t('ruleModes')}</li>
       <li>${t('ruleHunter')}</li>
       <li>${t('ruleTimed')}</li>
-      <li>${t('ruleVersus')}</li>
+      <li>${t('ruleCompetitive')}</li>
+      <li>${t('ruleMods')}</li>
       <li>${t('powerBasics')}</li>
       <li>${t('powerAdvanced')}</li>
     </ul>
@@ -1326,6 +1335,21 @@ function configuracion(modo, nivel) {
     powerEvery: datos.powerEvery,
     powerPool: datos.powerPool,
     chainWindow: datos.chainWindow,
+    // modificadores asignados al mapa: muros que salen, reloj, cazador, sin turbo
+    ...(datos.mods ? { mods: datos.mods.slice() } : {}),
+    ...(datos.noTurbo ? { noTurbo: true } : {}),
+    ...(datos.timeAttack ? { timeAttack: datos.timeAttack } : {}),
+    ...(datos.wallFrom ? {
+      wallFrom: datos.wallFrom,
+      wallEvery: datos.wallEvery,
+      wallMax: datos.wallMax,
+    } : {}),
+    ...(datos.hunter ? {
+      hunter: true,
+      hunterPellets: datos.hunterPellets,
+      hunterCap: datos.hunterCap,
+      hunterSight: datos.hunterSight,
+    } : {}),
   };
 }
 
@@ -1470,10 +1494,12 @@ function mostrarFin() {
   const esCampana = app.modo === 'campaign';
   app.record = !esCampana && juego.score > app.marca;
   let meta;
-  if (esCampana) {
+  if (esCampana && app.motivoMuerte === 'tiempo') {
+    meta = `${t('timeUp')} · ${resumenManzanas(juego)}`;
+  } else if (esCampana) {
     meta = resumenManzanas(juego);
-  } else if (app.modo === 'versus') {
-    meta = t('versusRank', { rank: app.rankMuerte || juego.rank || 1, total: app.totalMuerte || juego.rivals.length + 1 });
+  } else if (app.modo === 'competitive') {
+    meta = t('competitiveRank', { rank: app.rankMuerte || juego.rank || 1, total: app.totalMuerte || juego.rivals.length + 1 });
   } else if (app.modo === 'timed' && app.motivoMuerte === 'tiempo') {
     meta = `${t('timeUp')} · ${t('fruits', { count: juego.fruits, unit: fruitUnit(juego.fruits) })}`;
   } else {
@@ -1535,16 +1561,16 @@ function mostrarNivelSuperado() {
   el.prompt.classList.remove('visible');
 }
 
-// v2.0: victoria en el duelo — todos los rivales han caído y tú sigues en pie
+// v2.0: victoria en el competitivo — todos los rivales han caído y tú sigues en pie
 function mostrarVictoria() {
   const juego = app.juego;
   if (!juego || juego.state !== 'cleared') return;
   const caidos = juego.rivals.length;
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
-      <p class="kicker">${t('win')} · ${t('versusWin')}</p>
+      <p class="kicker">${t('win')} · ${t('competitiveWin')}</p>
       <p class="cifra" data-cifra>${puntos(juego.score)}</p>
-      <p class="nota">${t('fruits', { count: juego.fruits, unit: fruitUnit(juego.fruits) })} · ${t('versusDown', { count: caidos })}</p>
+      <p class="nota">${t('fruits', { count: juego.fruits, unit: fruitUnit(juego.fruits) })} · ${t('competitiveDown', { count: caidos })}</p>
     </div>
     <div class="acciones">
       <button class="principal" type="button" data-accion="retry">${t('retry')} <kbd>R</kbd></button>
@@ -1843,7 +1869,7 @@ function ejecutar(nombre) {
 
 function borrarRecords() {
   if (!window.confirm(t('eraseConfirm'))) return;
-  guardado.best = { classic: 0, frenzy: 0, hunter: 0 };
+  guardado.best = { classic: 0, frenzy: 0, hunter: 0, timed: 0, competitive: 0 };
   guardado.campaign = { unlocked: 1 };
   guardar();
   audio.play('ui');

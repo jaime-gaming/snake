@@ -223,7 +223,7 @@ export class Game {
         this.acc -= this.interval();
         this.step();
       }
-      // duelo: los rivales se mueven a su ritmo y deciden con el piloto automático
+      // competitivo: los rivales se mueven a su ritmo y deciden con el piloto automático
       for (const r of this.rivals) {
         if (!r.alive || this.state !== 'running') continue;
         for (const k of ['ghost', 'slow', 'shield', 'double']) {
@@ -306,7 +306,7 @@ export class Game {
     }
 
     if (!ghost && this.wallSet.has(K(hx, hy))) return this.die('muro', hx, hy);
-    // duelo: el cuerpo de un rival es pared para ti; su cabeza es un choque frontal
+    // competitivo: el cuerpo de un rival es pared para ti; su cabeza es un choque frontal
     if (!ghost && this.rivals.length) {
       for (const r of this.rivals) {
         if (!r.alive) continue;
@@ -447,7 +447,7 @@ export class Game {
     this.emit('power', { kind: p.kind, label: POWER_INFO[p.kind].label });
   }
 
-  /* ---------------------------------------------------------- duelo (v2.0)
+  /* ---------------------------------------------------------- competitivo (v2.0)
      los rivales son serpientes bot en la misma arena: cada uno con su cuerpo,
      su cola de giros y sus propios efectos. el último en pie gana. */
 
@@ -630,7 +630,7 @@ export class Game {
       y: cy,
       vivos: this.rivals.filter((q) => q.alive).length,
     });
-    // si no queda ningún rival, ganas el duelo
+    // si no queda ningún rival, ganas el competitivo
     if (this.state === 'running' && this.rivals.length && this.rivals.every((q) => !q.alive)) {
       this.state = 'cleared';
       this.emit('win', { fruits: this.fruits, score: this.score });
@@ -657,7 +657,7 @@ export class Game {
     this.hitStop = 90;
     this.crash = { x: impactox, y: impactoY, t: 0, reason, popped: 0 };
     this.burst(impactox + 0.5, impactoY + 0.5, 22, '#ffffff', 10);
-    // en el duelo dices en qué puesto quedas: por delante van los que siguen vivos
+    // en el competitivo dices en qué puesto quedas: por delante van los que siguen vivos
     if (this.rivals.length) {
       this.rank = 1 + this.rivals.filter((r) => r.alive).length;
     }
@@ -711,7 +711,7 @@ export class Game {
   }
 
   // piloto automático: una demo clara de cada modo en los menús y el cerebro
-  // de los rivales en el duelo. sin actor, pilota al jugador.
+  // de los rivales en el competitivo. sin actor, pilota al jugador.
   botTurn(actor = null) {
     const yo = actor || this;
     if (yo !== this && !yo.alive) return;
@@ -768,7 +768,7 @@ export class Game {
         const jefe = this.hunter.body[0];
         puntos += Math.min(20, Math.abs(destino.x - jefe.x) + Math.abs(destino.y - jefe.y)) * 1.5;
       }
-      // en el duelo, huir de las cabezas ajenas es prioridad
+      // en el competitivo, huir de las cabezas ajenas es prioridad
       const cabezasAjenas = [];
       if (yo !== this) cabezasAjenas.push(this.body[0]);
       for (const r of this.rivals) {
@@ -1600,7 +1600,7 @@ export class Game {
       }
     }
 
-    // rivales del duelo: grises distintos y con trama para distinguirlos a ti
+    // rivales del competitivo: grises distintos y con trama para distinguirlos a ti
     if (this.rivals.length) {
       const estilos = [
         { relleno: '#cfcfcf', contorno: null },

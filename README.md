@@ -1,15 +1,15 @@
 # snake — v2.0
 
-A monochrome grid-based Snake game with no external dependencies or network requests. It supports English and Spanish, remembers the selected language in the browser, and works with GitHub Pages, a keyboard, touch controls, and a gamepad.
+A monochrome grid-based Snake game with no external dependencies or network requests. It supports English and Spanish, remembers the selected language in the browser, and works with a keyboard, touch controls, and a gamepad. It is served from its own domain, **https://snake.jaime-gaming.com**, via **Cloudflare Workers**.
 
-v2.0 adds a **time attack** mode, a **bot duel**, ten more campaign levels (30 total), and a **profile** screen with lifetime stats. The competitive mode retired in v1.0 is back, rebuilt as a free-for-all against three bots.
+v2.0 adds a **time attack** mode, a **competitive** mode against three bots, ten more campaign levels (30 total, some of them with rule modifiers), and a **profile** screen with lifetime stats.
 
 ## Controls
 
 | Action | Keyboard | Touch / gamepad |
 | --- | --- | --- |
 | Turn | Arrow keys or WASD | Swipe / D-pad or stick |
-| Boost | Space or Shift | Tap the board / A button; unavailable in Hunter |
+| Boost | Space or Shift | Tap the board / A button; unavailable in Hunter and in no-boost levels |
 | Pause | P or Esc | Pause button / Start |
 | Restart | R | Button |
 | Sound | M | Sound button |
@@ -19,14 +19,14 @@ Group, mode, level, help, profile, and settings navigation all support the keybo
 
 ## Modes
 
-The home screen has three groups: **progress**, **endless**, and **duel**. Switch groups with `←→` on the mode screen.
+The home screen has three groups: **progress**, **endless**, and **competitive**. Switch groups with `←→` on the mode screen.
 
-- **Campaign** — 30 hand-designed levels. Clear each level to unlock the next. There is no score: progress is measured by apples collected and remaining.
+- **Campaign** — 30 hand-designed levels. Clear each level to unlock the next. There is no score: progress is measured by apples collected and remaining. Some levels carry a **modifier** that changes the rules instead of (or besides) the map: level 8 and 21 get *walls that appear*, level 12 is *no boost*, level 16 and 30 have a *clock*, and level 26 brings the *hunter* into the campaign. The HUD shows the active modifier next to the level name.
 - **Classic** — Endless play. Each fruit speeds up the snake; walls begin to appear after 30 fruits.
 - **Frenzy** — The edges wrap around, and the snake gradually speeds up over time.
 - **Hunter** — A red snake eats blue pellets and then pursues you. Its head is dangerous; its body and pellets are safe. If it collides with your body, it disappears and returns smaller. You can eat the blue pellets too.
-- **Time attack** (v2.0) — You start with 75 seconds. Every fruit adds 3 seconds (up to a cap), the HUD clock flashes red under 10 seconds, and when time runs out the run ends.
-- **Duel** (v2.0) — Three bot snakes share the arena with you. Walls, your own body, and any rival's body are deadly; head-on collisions knock out both snakes. The last one standing wins, and if you fall you see your placing (e.g. "3rd of 4").
+- **Time attack** — You start with **30 seconds**. Every fruit adds 3 seconds (up to a cap), the HUD clock flashes red under 10 seconds, and when time runs out the run ends.
+- **Competitive** — Three bot snakes share the arena with you. Walls, your own body, and any rival's body are deadly; head-on collisions knock out both snakes. The last one standing wins, and if you fall you see your placing (e.g. "3rd of 4").
 
 Power-ups vary by mode:
 
@@ -35,13 +35,13 @@ Power-ups vary by mode:
 - **Frenzy:** slow, shield, and double score.
 - **Hunter:** ghost, shrink, and shield.
 - **Time attack:** slow, shield, double, and ghost.
-- **Duel:** ghost, shield, slow, and shrink. Rivals can pick them up too.
+- **Competitive:** ghost, shield, slow, and shrink. Rivals can pick them up too.
 
 Ghost passes through hazards; slow reduces speed; shrink shortens the tail; shield saves you from one collision; double multiplies score.
 
 ## Profile
 
-The home screen has a **profile** link (route `/snake/perfil`, `/snake/profile`). It shows lifetime stats saved in the browser: games played, duel wins, fruits collected, time played, best chain, and best score. Clearing records in settings wipes them too.
+The home screen has a **profile** link (route `/perfil`, `/profile`). It shows lifetime stats saved in the browser: games played, competitive wins, fruits collected, time played, best chain, and best score. Clearing records in settings wipes them too.
 
 ## Home screen
 
@@ -49,31 +49,30 @@ The `snake.` title is drawn as five independent snakes, one per letter. Only the
 
 ## Language and routes
 
-The **EN / ES** selector changes the text and route names, and remembers the preference in the browser. The site uses project paths under `/snake/`, for example:
+The **EN / ES** selector changes the text and route names, and remembers the preference in the browser. The site is served from the domain root, for example:
 
-- `https://<owner>.github.io/snake/`
-- Spanish: `/snake/campaña`, `/snake/clásico`, `/snake/contrarreloj`, `/snake/duelo`, `/snake/perfil`
-- English: `/snake/campaign`, `/snake/classic`, `/snake/timed`, `/snake/versus`, `/snake/profile`
+- `https://snake.jaime-gaming.com/`
+- Spanish: `/campaña`, `/clásico`, `/contrarreloj`, `/competitivo`, `/perfil`
+- English: `/campaign`, `/classic`, `/timed`, `/competitive`, `/profile`
 
-Routes support direct access and reloads. `serve.mjs` falls back to `index.html` locally; `404.html` restores deep routes on GitHub Pages.
+Routes support direct access and reloads: the Worker resolves any extensionless path to `index.html` (SPA fallback). A legacy `/snake/` prefix is still detected automatically, so old links keep working. Locally, `serve.mjs` offers the same behaviour on both `/` and `/snake/`.
 
 ## Project files
 
 ```text
-index.html          document and accessible interface elements
-404.html            GitHub Pages deep-route recovery
-.nojekyll           disables Jekyll processing for branch-based Pages
+index.html          document, canonical domain, and accessible interface elements
+wrangler.toml       Cloudflare Workers config: static assets + SPA fallback
 styles.css          block design, responsive layout, and accessibility
 snake.js            generated classic-script bundle loaded by the page
 js/
-  engine.js         game engine, collisions, powers, bots, clock, and drawing
+  engine.js         game engine, collisions, powers, bots, clock, modifiers, and drawing
   grid.js           BFS and grid utilities
-  levels.js         groups, five modes, and 30 levels
+  levels.js         groups, five modes, and 30 levels with modifiers
   audio.js          synthesized audio; no audio files
   input.js          keyboard, gestures, and gamepad
   i18n.js           English/Spanish strings and localized names
   main.js           screens, routes, progress, profile, title, and game loop
-serve.mjs           local server with no-cache headers and route fallback
+serve.mjs           local server with no-cache headers and SPA route fallback
 tools/build.mjs     bundles js/ into snake.js without dependencies
 tools/check.mjs     level, engine, language, and publishing tests
 .github/workflows/checks.yml   source and game checks; does not deploy the site
@@ -93,10 +92,20 @@ node tools/build.mjs --check  # verify that snake.js is current
 node serve.mjs 8123
 ```
 
-Open `http://localhost:8123/snake/`. The server also handles `http://localhost:8123/` and deep routes such as `http://localhost:8123/snake/campaign`.
+Open `http://localhost:8123/` (root, like the domain) or `http://localhost:8123/snake/` (legacy prefix). The server also handles deep routes such as `http://localhost:8123/competitivo`.
 
-## Publish directly from a branch
+## Publish on Cloudflare Workers (own domain)
 
-The site is laid out for GitHub Pages to publish the repository root directly; no Pages deployment workflow or build step is required. After the changes are on `main`, open **Settings → Pages → Build and deployment**, select **Deploy from a branch**, choose **`main`** and **`/(root)`**, then save. GitHub Pages will serve `index.html`, `404.html`, `styles.css`, and `snake.js` from that branch. The Pages URL is `https://<owner>.github.io/snake/`.
+The site is a plain static bundle, so the Worker only serves the repository files and falls back to `index.html` for game routes:
 
-The workflow in `.github/workflows/checks.yml` only validates the source and bundle; it does not upload or deploy the site. Regenerate the bundle with `node tools/build.mjs` before publishing source changes.
+1. `wrangler.toml` already declares the assets: `directory = "./"` with `not_found_handling = "single-page-application"` — that is the whole SPA fallback, no code needed.
+2. Install the CLI once (`npm install -g wrangler` or use `npx wrangler`) and log in (`npx wrangler login`).
+3. Deploy from the repository root:
+
+   ```sh
+   npx wrangler deploy
+   ```
+
+4. In the Cloudflare dashboard, add the custom domain **snake.jaime-gaming.com** to the `snake` Worker (Workers & Pages → snake → Triggers → Custom Domains). SSL is automatic.
+
+The workflow in `.github/workflows/checks.yml` only validates the source and bundle (`node tools/build.mjs --check` + `node tools/check.mjs`); it never deploys. Regenerate the bundle with `node tools/build.mjs` before running `npx wrangler deploy`.
