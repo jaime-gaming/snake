@@ -63,16 +63,20 @@ function configNivel(nivel) {
   };
 }
 
-// estructura: grupos del menú, 20 niveles y velocidades coherentes
+// estructura: grupos del menú, 30 niveles y velocidades coherentes
 process.stdout.write('estructura\n');
 {
-  comprobar(GROUPS.length === 2, 'grupos: tienen que ser dos');
+  comprobar(GROUPS.length === 3, 'grupos: v2.0 tiene tres grupos (progreso, infinitos, duelo)');
   comprobar(GROUPS[0].modes[0] === 'campaign', 'grupos: la campaña va primero');
+  comprobar(GROUPS[2].modes.includes('versus'), 'grupos: el duelo cuelga del tercer grupo');
   const planos = GROUPS.flatMap((g) => g.modes);
   comprobar(planos.length === MODE_ORDER.length, 'grupos: MODE_ORDER no coincide con los grupos');
   comprobar(new Set(planos).size === planos.length, 'grupos: hay un modo repetido');
-  comprobar(Object.keys(MODES).length === 3, 'modos: la versión 1.0 conserva tres modos');
-  comprobar(!MODES.blind, 'modos: el modo ciego sigue ahí');
+  comprobar(Object.keys(MODES).length === 5, 'modos: v2.0 tiene cinco modos (clásico, frenesí, cazador, contrarreloj, duelo)');
+  comprobar(!!MODES.timed && !!MODES.versus, 'modos: faltan contrarreloj o duelo');
+  comprobar(!!MODES.timed.timeAttack && MODES.timed.timeAttack.start >= 30000
+    && MODES.timed.timeAttack.perFruit >= 1000, 'contrarreloj: la configuración de tiempo no cuadra');
+  comprobar(MODES.versus.bots === 3, 'duelo: deberían ser tres rivales bot');
   const asignados = new Set(Object.values(POWER_POOLS).flat());
   comprobar(Object.keys(POWER_INFO).every((kind) => asignados.has(kind)),
     'potenciadores: hay alguno sin asignar a un modo');
@@ -81,6 +85,8 @@ process.stdout.write('estructura\n');
   comprobar(!POWER_POOLS.classic.includes('shield') && !POWER_POOLS.frenzy.includes('ghost')
     && !POWER_POOLS.hunter.includes('slow') && !POWER_POOLS.campaign.includes('double'),
   'potenciadores: no se respetan las exclusiones por modo');
+  comprobar(POWER_POOLS.timed.length > 0 && POWER_POOLS.versus.length > 0,
+    'potenciadores: contrarreloj y duelo necesitan su propio pool');
   comprobar(
     Object.keys(MODES).every((id) => planos.includes(id)),
     'grupos: algún modo se queda fuera de los grupos',
@@ -88,7 +94,7 @@ process.stdout.write('estructura\n');
   process.stdout.write(`  ${GROUPS.length} grupos · ${planos.length} modos · ${LEVELS.length} niveles\n`);
 }
 {
-  comprobar(LEVELS.length === 20, `campaña: tiene ${LEVELS.length} niveles y deberían ser 20`);
+  comprobar(LEVELS.length === 30, `campaña: tiene ${LEVELS.length} niveles y deberían ser 30`);
   let ultimo = Infinity;
   LEVELS.forEach((nivel, i) => {
     const etiqueta = `nivel ${String(i + 1).padStart(2)}`;
@@ -96,7 +102,7 @@ process.stdout.write('estructura\n');
     comprobar(nivel.minSpeed >= 42, `${etiqueta}: baja del suelo de velocidad`);
     comprobar(nivel.speed <= ultimo, `${etiqueta}: rompe el orden de velocidad`);
     ultimo = nivel.speed;
-    comprobar(nivel.goal >= 4 && nivel.goal <= 16, `${etiqueta}: meta fuera de rango`);
+    comprobar(nivel.goal >= 4 && nivel.goal <= 18, `${etiqueta}: meta fuera de rango`);
     comprobar(configNivel(nivel).scoring === false, `${etiqueta}: la campaña activa la puntuación`);
   });
   for (const [id, modo] of Object.entries(MODES)) {
@@ -209,15 +215,15 @@ process.stdout.write('campaña sin puntuación\n');
 
 // modos infinitos: varias partidas reproducibles para medir estabilidad y ritmo
 process.stdout.write('modos\n');
-// BORRAR-COMPETITIVO · sólo se prueban los modos publicados en v1.0.
-for (const id of ['classic', 'frenzy', 'hunter']) {
+const SEMILLAS = { classic: 101, frenzy: 201, hunter: 301, timed: 401, versus: 501 };
+for (const id of ['classic', 'frenzy', 'hunter', 'timed', 'versus']) {
   let supervivientes = 0;
   let frutasTotales = 0;
   let puntosTotales = 0;
   const randomOriginal = Math.random;
   try {
     for (let intento = 1; intento <= 8; intento++) {
-      let semilla = (id === 'classic' ? 101 : id === 'frenzy' ? 201 : 301) + intento;
+      let semilla = SEMILLAS[id] + intento;
       Math.random = () => {
         semilla = (semilla * 1664525 + 1013904223) >>> 0;
         return semilla / 4294967296;
@@ -1020,9 +1026,9 @@ process.stdout.write('cazador al choque\n');
   process.stdout.write('  cazador: avanza interpolado entre casillas\n');
 }
 /* ═══════════════════════════════════════════════════════════════════════════
-   BORRAR-COMPETITIVO · el modo y sus pruebas se retiraron para v1.0.
+   v2.0: duelo con bots, contrarreloj, perfil, idioma y publicación
    ═══════════════════════════════════════════════════════════════════════════ */
-process.stdout.write('v1.0, idioma y publicación\n');
+process.stdout.write('v2.0, idioma y publicación\n');
 {
   const main = fs.readFileSync(path.join(RAIZ, 'js/main.js'), 'utf8');
   const input = fs.readFileSync(path.join(RAIZ, 'js/input.js'), 'utf8');
@@ -1037,18 +1043,17 @@ process.stdout.write('v1.0, idioma y publicación\n');
   const idiomas = fs.readFileSync(path.join(RAIZ, 'js/i18n.js'), 'utf8');
   const fallback = fs.readFileSync(path.join(RAIZ, '404.html'), 'utf8');
 
-  comprobar(!MODES.competitive && !GROUPS.flatMap((g) => g.modes).includes('competitive'),
-    'v1.0: el modo competitivo sigue disponible');
-  comprobar(!/COMPETITIVE|configCompetitivo|mapaDePartida|modificadorDePartida/.test(niveles),
-    'v1.0: quedan configuraciones competitivas en levels.js');
-  comprobar(!/id="(?:reloj|minis|sorteo|cuenta|festejo)"/.test(pagina),
-    'v1.0: quedan nodos del modo competitivo en index.html');
-  comprobar(!/crearRivales|configCompetitivo|revivir\(|\.revive\(/.test(main + motor),
-    'v1.0: queda una rama funcional del competitivo');
-  comprobar(!/ambienteParar|ambienteIniciar|sorteo\(|cuenta\(/.test(audio),
-    'v1.0: queda audio del competitivo');
-  comprobar(!/comp-barra|#reloj|#minis|#sorteo|#cuenta|#festejo/.test(css),
-    'v1.0: quedan estilos exclusivos del competitivo');
+  comprobar(!!MODES.versus && GROUPS.flatMap((g) => g.modes).includes('versus'),
+    'v2.0: falta el modo duelo en los grupos');
+  comprobar(/nacerRival|stepRival|matarRival/.test(motor),
+    'v2.0: falta la lógica de rivales en el motor');
+  comprobar(/timeAttack/.test(motor) && /timeLeft/.test(motor),
+    'v2.0: falta el reloj de contrarreloj en el motor');
+  comprobar(/mostrarVictoria|mostrarPerfil/.test(main) && /stats/.test(main) && idiomas.includes('statsGames'),
+    'v2.0: falta la pantalla de perfil con estadísticas');
+  const marcaRetirada = 'BORRAR' + '-COMPETITIVO';
+  comprobar(!new RegExp(marcaRetirada).test(main + motor + niveles + audio + pagina + css + idiomas + readme + servidor + fallback),
+    'v2.0: todavía quedan marcadores de retirada en el código');
   comprobar(main.includes("app.modo !== 'hunter'") && input.includes('canTurbo'),
     'turbo: no se desactiva para el cazador');
 
@@ -1063,8 +1068,8 @@ process.stdout.write('v1.0, idioma y publicación\n');
     && main.includes('El cuerpo se extiende de forma continua y lenta'),
   'marca: la e no se aproxima despacio y de forma continua a la manzana');
 
-  comprobar(pagina.includes('snake.js?v=16') && pagina.includes('styles.css?v=16'),
-    'caché: falta la versión v16 en la página');
+  comprobar(pagina.includes('snake.js?v=17') && pagina.includes('styles.css?v=17') && pagina.includes('Snake — v2.0'),
+    'caché: falta la versión v2.0 (v17) en la página');
   comprobar(pagina.includes('id="lang-switch"') && idiomas.includes("en: {")
     && idiomas.includes('export function setLanguage'), 'idioma: falta el selector ES/EN o su traducción');
   setLanguage('en');
@@ -1075,6 +1080,14 @@ process.stdout.write('v1.0, idioma y publicación\n');
     && appleUnit(1) === 'apple' && appleUnit(2) === 'apples'
     && t('applesRemaining', { count: 1, unit: appleUnit(1) }) === '1 apple left',
   'idioma: faltan cadenas inglesas o nombres/rutas localizados');
+  comprobar(t('modeTimed') === 'time attack' && t('modeVersus') === 'versus' && t('profile') === 'profile'
+    && t('versusRank', { rank: 2, total: 4 }) === 'you placed 2 of 4'
+    && t('versusDown', { count: 3 }) === '3 rivals down'
+    && t('timeUp') === 'time up' && t('statsWins') === 'duel wins'
+    && routeSlug('timed') === 'timed' && routeSlug('versus') === 'versus' && routeSlug('profile') === 'profile'
+    && routeWords().timed.includes('contrarreloj') && routeWords().versus.includes('versus')
+    && routeWords().profile.includes('perfil') && levelName('GRAN FINAL') === 'grand finale',
+  'idioma: faltan las cadenas inglesas de v2.0 (contrarreloj, duelo, perfil)');
   setLanguage('es');
   comprobar(t('campaign') === 'campaña' && routeSlug('campaign') === 'campaña'
     && routeSlug('settings') === 'ajustes' && routeWords().settings.includes('settings')
@@ -1082,6 +1095,13 @@ process.stdout.write('v1.0, idioma y publicación\n');
     && appleUnit(1) === 'manzana' && appleUnit(2) === 'manzanas'
     && t('applesRemaining', { count: 1, unit: appleUnit(1) }) === '1 manzana por recoger',
     'idioma: el español no restaura sus textos y rutas');
+  comprobar(t('modeTimed') === 'contrarreloj' && t('modeVersus') === 'duelo' && t('profile') === 'perfil'
+    && t('versusAlive', { alive: 2, total: 4 }) === '2 vivos de 4'
+    && t('versusRank', { rank: 3, total: 4 }) === 'quedaste 3º de 4'
+    && t('timeUp') === 'se acabó el tiempo' && t('statsWins') === 'victorias en duelo'
+    && routeSlug('timed') === 'contrarreloj' && routeSlug('versus') === 'duelo' && routeSlug('profile') === 'perfil'
+    && levelName('TÚNEL') === 'túnel' && levelName('GRAN FINAL') === 'gran final',
+  'idioma: faltan las cadenas españolas de v2.0 (contrarreloj, duelo, perfil)');
   comprobar(main.includes('scoring: false') && main.includes('resumenManzanas(juego)')
     && main.includes("el.mult.textContent = appleUnit(recogidas)")
     && motor.includes('if (this.cfg.scoring === false) return 0;')
@@ -1116,16 +1136,16 @@ process.stdout.write('v1.0, idioma y publicación\n');
   const larga = reglas.find((regla) => regla.length > 80);
   comprobar(!larga, `minimalismo: una regla pasa de 80 letras («${larga}»)`);
 
-  // La marca se conserva como rastro de la retirada, no como funcionalidad.
-  const marcados = [
+  // v2.0 resucita el duelo: ya no debe quedar ningún rastro de la retirada.
+  const vigilados = [
     'js/levels.js', 'js/main.js', 'js/engine.js', 'js/audio.js', 'index.html',
-    'styles.css', 'tools/check.mjs', 'README.md',
+    'styles.css', 'tools/check.mjs', 'README.md', 'serve.mjs', '404.html',
   ];
-  for (const rel of marcados) {
+  for (const rel of vigilados) {
     const texto = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
-    comprobar(texto.includes('BORRAR-COMPETITIVO'), `v1.0: falta BORRAR-COMPETITIVO en ${rel}`);
+    comprobar(!texto.includes('BORRAR' + '-COMPETITIVO'), `v2.0: queda la marca de retirada en ${rel}`);
   }
-  process.stdout.write(`  ${reglas.length} reglas de ayuda · marca de retirada en ${marcados.length} ficheros\n`);
+  process.stdout.write(`  ${reglas.length} reglas de ayuda · retirada limpia en ${vigilados.length} ficheros\n`);
 }
 
 process.stdout.write(fallos ? `\n${fallos} fallos\n` : '\ntodo en orden\n');

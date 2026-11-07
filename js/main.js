@@ -2,7 +2,7 @@ import { Game, POWER_INFO } from './engine.js?v=3';
 import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS } from './levels.js?v=3';
 import { audio } from './audio.js?v=3';
 import { attachInput } from './input.js?v=3';
-import { t, getLanguage, setLanguage, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, appleUnit, routeSlug, routeWords } from './i18n.js?v=16';
+import { t, getLanguage, setLanguage, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, appleUnit, routeSlug, routeWords } from './i18n.js?v=17';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -13,9 +13,8 @@ function avisar(mensaje) {
 
 function comprobarPiezas() {
   const faltan = [];
-  // BORRAR-COMPETITIVO · retirado en v1.0; sólo quedan los modos publicados.
-  if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.hunter || MODES.competitive) faltan.push('modos');
-  if (!Array.isArray(LEVELS) || LEVELS.length !== 20) faltan.push('niveles');
+  if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.hunter || !MODES.timed || !MODES.versus) faltan.push('modos');
+  if (!Array.isArray(LEVELS) || LEVELS.length !== 30) faltan.push('niveles');
   if (typeof Game !== 'function') faltan.push('motor');
   if (faltan.length) {
     avisar(t('missingPieces', { pieces: faltan.join(', ') }));
@@ -52,10 +51,15 @@ const pincel = el.canvas.getContext('2d', { alpha: false });
 
 /* ---------------------------------------------------------- récords */
 
+function nuevaStats() {
+  return { games: 0, wins: 0, fruits: 0, timeMs: 0, bestChain: 0 };
+}
+
 function nuevoRegistro() {
   return {
-    best: { classic: 0, frenzy: 0, hunter: 0 },
+    best: { classic: 0, frenzy: 0, hunter: 0, timed: 0, versus: 0 },
     campaign: { unlocked: 1 },
+    stats: nuevaStats(),
     sound: true,
     crt: true,
   };
@@ -123,6 +127,7 @@ const app = {
   reloj: 0,
   temporizador: 0,
   record: false,
+  statsAcum: 0,
   chips: new Map(),
 };
 
@@ -490,7 +495,6 @@ function pantalla(nombre) {
   app.pantalla = nombre;
   document.body.dataset.screen = nombre;
   if (!app.juego) actualizarEfectos(null);
-  // BORRAR-COMPETITIVO · pantallas y audio del modo retirados para v1.0.
   if (antes !== nombre) taparPantalla();
   actualizarPista();
   if (rutas.listas && !rutas.restaurando) sincronizarRuta(false);
@@ -543,32 +547,36 @@ function pantallaDeRuta() {
   if (!primera) return { tipo: 'home' };
 
   if (coincideRuta(primera, 'modes')) {
-    const grupo = coincideRuta(segunda || '', 'campaign') ? 0 : 1;
+    const grupo = coincideRuta(segunda || '', 'campaign') ? 0
+      : coincideRuta(segunda || '', 'duel') ? 2 : 1;
     return { tipo: 'modes', grupo };
   }
   if (coincideRuta(primera, 'help')) return { tipo: 'help' };
   if (coincideRuta(primera, 'settings')) return { tipo: 'settings' };
+  if (coincideRuta(primera, 'profile')) return { tipo: 'profile' };
   if (coincideRuta(primera, 'campaign')) {
     const nivel = /^(?:nivel|level)-?(\d{1,2})$/.exec(segunda || '');
     return nivel
       ? { tipo: 'campaign-level', nivel: Number(nivel[1]) - 1 }
       : { tipo: 'levels' };
   }
-  for (const modo of ['classic', 'frenzy', 'hunter']) {
+  for (const modo of ['classic', 'frenzy', 'hunter', 'timed', 'versus']) {
     if (coincideRuta(primera, modo)) return { tipo: 'game', modo };
   }
   if (coincideRuta(primera, 'endless')) return { tipo: 'modes', grupo: 1 };
+  if (coincideRuta(primera, 'duel')) return { tipo: 'modes', grupo: 2 };
   return { tipo: 'home' };
 }
 
 function rutaDeEstado() {
   if (app.pantalla === 'home') return BASE_PATH;
   if (app.pantalla === 'modes') {
-    const grupo = app.grupo === 0 ? 'campaign' : 'endless';
+    const grupo = app.grupo === 0 ? 'campaign' : app.grupo === 2 ? 'duel' : 'endless';
     return `${BASE_PATH}${routeSlug('modes')}/${routeSlug(grupo)}`;
   }
   if (app.pantalla === 'help') return `${BASE_PATH}${routeSlug('help')}`;
   if (app.pantalla === 'settings') return `${BASE_PATH}${routeSlug('settings')}`;
+  if (app.pantalla === 'profile') return `${BASE_PATH}${routeSlug('profile')}`;
   if (app.pantalla === 'levels') return `${BASE_PATH}${routeSlug('campaign')}`;
   if (app.modo === 'campaign') {
     return `${BASE_PATH}${routeSlug('campaign')}/nivel-${dosDigitos(app.nivel + 1)}`;
@@ -594,6 +602,8 @@ function mostrarRuta(ruta) {
     mostrarAyuda();
   } else if (ruta.tipo === 'settings') {
     mostrarAjustes('modes');
+  } else if (ruta.tipo === 'profile') {
+    mostrarPerfil();
   } else if (ruta.tipo === 'game') {
     empezarPartida(ruta.modo, 0);
   } else if (ruta.tipo === 'campaign-level') {
@@ -654,13 +664,26 @@ function actualizarMarcador() {
     el.chain.style.width = '0%';
   } else {
     valor = puntos(juego.score);
-    meta = t('fruitScore', { mode: modeName(app.modo), fruits: juego.fruits, unit: fruitUnit(juego.fruits) });
     marca = t('best', { score: mejorActual() });
     const mult = juego.multiplier;
     el.mult.textContent = mult > 1 ? `×${mult}` : '';
     el.mult.classList.toggle('activo', mult > 1);
     el.chain.style.width = `${((juego.chainTimer / juego.chainWindow) * 100 || 0).toFixed(1)}%`;
+    // v2.0: en contrarreloj la meta es el reloj; en duelo, cuántos quedan vivos
+    if (app.modo === 'timed') {
+      const s = Math.max(0, Math.ceil(juego.timeLeft / 1000));
+      meta = t('timeLeft', { s });
+      el.meta.classList.toggle('urgente', s <= 10 && juego.state === 'running');
+    } else if (app.modo === 'versus') {
+      const vivos = 1 + juego.rivals.filter((r) => r.alive).length;
+      meta = t('versusAlive', { alive: vivos, total: juego.rivals.length + 1 });
+      el.meta.classList.remove('urgente');
+    } else {
+      meta = t('fruitScore', { mode: modeName(app.modo), fruits: juego.fruits, unit: fruitUnit(juego.fruits) });
+      el.meta.classList.remove('urgente');
+    }
   }
+  if (app.modo !== 'timed') el.meta.classList.remove('urgente');
 
   if (el.score.textContent !== valor) el.score.textContent = valor;
   if (el.meta.textContent !== meta) el.meta.textContent = meta;
@@ -903,6 +926,7 @@ function mostrarInicio() {
       <nav class="filas" aria-label="${t('groupAria')}">${filas}</nav>
       <p class="pie">
         <button class="link" type="button" data-accion="help">${t('controls')}</button>
+        <button class="link" type="button" data-accion="profile">${t('profile')}</button>
       </p>
     </div>
     <aside class="inicio-demo">
@@ -1168,6 +1192,8 @@ function mostrarAyuda() {
       <li>${t('ruleCampaign')}</li>
       <li>${t('ruleModes')}</li>
       <li>${t('ruleHunter')}</li>
+      <li>${t('ruleTimed')}</li>
+      <li>${t('ruleVersus')}</li>
       <li>${t('powerBasics')}</li>
       <li>${t('powerAdvanced')}</li>
     </ul>
@@ -1227,7 +1253,59 @@ function mostrarAjustes(desde = app.pantalla, focoInicial = 'button[data-accion=
   enfocarPrimero(focoInicial);
 }
 
-// BORRAR-COMPETITIVO · rangos y salas eliminados en v1.0.
+
+/* ---------------------------------------------------------- perfil (v2.0)
+   estadísticas globales de todo lo jugado en este navegador */
+
+function formatoTiempo(ms) {
+  const total = Math.floor(Math.max(0, ms) / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return h > 0 ? `${h}h ${dosDigitos(m)}m` : `${m}m ${dosDigitos(s)}s`;
+}
+
+function mostrarPerfil() {
+  pararTemporizador();
+  app.juego = null;
+  app.demo = null;
+  const s = guardado.stats;
+  const fila = (indice, nombre, valor) => `<div class="row stat">
+    <span class="row-idx">${indice}</span>
+    <span class="row-name">${nombre}</span>
+    <span class="row-right">${valor}</span>
+  </div>`;
+
+  ponerOverlay(`<div class="panel niveles">
+    <div class="niveles-cabeza">
+      <div>
+        <p class="kicker">${t('profileHint')}</p>
+        <h2>${t('profileTitle')}</h2>
+      </div>
+      <button class="ghost" type="button" data-accion="home">${t('back')} <kbd>esc</kbd></button>
+    </div>
+    <div class="filas">
+      ${fila('01', t('statsGames'), puntos(s.games))}
+      ${fila('02', t('statsWins'), puntos(s.wins))}
+      ${fila('03', t('statsFruits'), puntos(s.fruits))}
+      ${fila('04', t('statsTime'), formatoTiempo(s.timeMs))}
+      ${fila('05', t('statsChain'), `×${Math.max(1, s.bestChain)}`)}
+      ${fila('06', t('statsBest'), puntos(mejorGlobal()))}
+    </div>
+  </div>`);
+
+  el.score.textContent = '—';
+  el.meta.textContent = t('profile');
+  el.best.textContent = '';
+  el.mult.textContent = '';
+  el.chain.style.width = '0%';
+  el.pause.disabled = true;
+  el.pause.textContent = t('pause');
+  el.pause.title = t('pauseTitle');
+  el.prompt.classList.remove('visible');
+  pantalla('profile');
+  enfocarPrimero('button[data-accion="home"]');
+}
 
 /* ---------------------------------------------------------- partida */
 
@@ -1258,6 +1336,9 @@ function empezarPartida(modo, nivel = 0) {
   app.modo = modo;
   app.nivel = nivel;
   app.record = false;
+  app.motivoMuerte = null;
+  app.rankMuerte = 0;
+  app.totalMuerte = 0;
   app.juego = new Game(configuracion(modo, nivel), eventosJuego);
   app.marca = mejorActual();
 
@@ -1275,6 +1356,25 @@ function eventosJuego(tipo, datos) {
     case 'eat':
       audio.play('bite', datos);
       parpadear(el.score);
+      guardado.stats.fruits++;
+      break;
+    case 'combo':
+      guardado.stats.bestChain = Math.max(guardado.stats.bestChain, datos.multiplier || 1);
+      break;
+    case 'tick':
+      audio.play('tick');
+      break;
+    case 'botDie':
+      audio.play('botDie');
+      parpadear(el.meta);
+      break;
+    case 'win':
+      audio.play('win');
+      guardarMarca();
+      guardado.stats.games++;
+      guardado.stats.wins++;
+      guardar();
+      app.temporizador = setTimeout(mostrarVictoria, 700);
       break;
     case 'bonus':
       audio.play('bonus');
@@ -1324,11 +1424,17 @@ function eventosJuego(tipo, datos) {
     case 'die':
       audio.play('death');
       guardarMarca();
+      guardado.stats.games++;
+      guardar();
+      app.motivoMuerte = datos.reason;
+      app.rankMuerte = datos.rank || 0;
+      app.totalMuerte = datos.total || 0;
       app.temporizador = setTimeout(mostrarFin, 900);
       break;
     case 'clear':
       audio.play(app.nivel >= LEVELS.length - 1 ? 'campaignComplete' : 'level');
       guardarMarca();
+      guardado.stats.games++;
       guardado.campaign.unlocked = Math.max(
         guardado.campaign.unlocked,
         Math.min(LEVELS.length, app.nivel + 2),
@@ -1363,13 +1469,20 @@ function mostrarFin() {
   if (!juego || juego.state !== 'dead') return;
   const esCampana = app.modo === 'campaign';
   app.record = !esCampana && juego.score > app.marca;
-  const meta = esCampana
-    ? resumenManzanas(juego)
-    : t('recordFruitMeta', {
+  let meta;
+  if (esCampana) {
+    meta = resumenManzanas(juego);
+  } else if (app.modo === 'versus') {
+    meta = t('versusRank', { rank: app.rankMuerte || juego.rank || 1, total: app.totalMuerte || juego.rivals.length + 1 });
+  } else if (app.modo === 'timed' && app.motivoMuerte === 'tiempo') {
+    meta = `${t('timeUp')} · ${t('fruits', { count: juego.fruits, unit: fruitUnit(juego.fruits) })}`;
+  } else {
+    meta = t('recordFruitMeta', {
       record: Math.max(app.marca, juego.score),
       fruits: juego.fruits,
       unit: fruitUnit(juego.fruits),
     });
+  }
   const cifra = esCampana ? puntos(juego.fruits) : puntos(juego.score);
 
   ponerOverlay(`<div class="panel fin">
@@ -1420,6 +1533,30 @@ function mostrarNivelSuperado() {
   enfocarPrimero('button.principal');
   el.pause.disabled = true;
   el.prompt.classList.remove('visible');
+}
+
+// v2.0: victoria en el duelo — todos los rivales han caído y tú sigues en pie
+function mostrarVictoria() {
+  const juego = app.juego;
+  if (!juego || juego.state !== 'cleared') return;
+  const caidos = juego.rivals.length;
+  ponerOverlay(`<div class="panel fin">
+    <div class="fin-cabeza">
+      <p class="kicker">${t('win')} · ${t('versusWin')}</p>
+      <p class="cifra" data-cifra>${puntos(juego.score)}</p>
+      <p class="nota">${t('fruits', { count: juego.fruits, unit: fruitUnit(juego.fruits) })} · ${t('versusDown', { count: caidos })}</p>
+    </div>
+    <div class="acciones">
+      <button class="principal" type="button" data-accion="retry">${t('retry')} <kbd>R</kbd></button>
+      <button type="button" data-accion="home">${t('menu')} <kbd>esc</kbd></button>
+    </div>
+  </div>`);
+  pantalla('won');
+  animarCifra(el.overlay.querySelector('[data-cifra]'), juego.score);
+  enfocarPrimero('button[data-accion="retry"]');
+  el.pause.disabled = true;
+  el.prompt.classList.remove('visible');
+  actualizarMarcador();
 }
 
 // un parpadeo corto para dar feedback sin llenar la pantalla
@@ -1675,6 +1812,9 @@ function ejecutar(nombre) {
       break;
     case 'help':
       mostrarAyuda();
+      break;
+    case 'profile':
+      mostrarPerfil();
       break;
     case 'settings':
       mostrarAjustes(app.pantalla);
@@ -1949,6 +2089,15 @@ function bucle(t) {
     app.juego.update(dt);
     app.juego.draw(pincel, vista);
     actualizarMarcador();
+    // v2.0: el perfil cuenta el tiempo realmente jugado (guardado de vez en cuando)
+    if (app.juego.state === 'running') {
+      guardado.stats.timeMs += dt;
+      app.statsAcum += dt;
+      if (app.statsAcum > 5000) {
+        app.statsAcum = 0;
+        guardar();
+      }
+    }
   }
 
   requestAnimationFrame(bucle);

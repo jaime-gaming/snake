@@ -171,13 +171,22 @@ const SONIDOS = {
   ui() {
     tono(460, 0.028, { tipo: 'square', vol: 0.045 });
   },
-  // BORRAR-COMPETITIVO · sonidos de rangos y sorteo retirados para v1.0.
   locked() {
     tono(120, 0.075, { tipo: 'triangle', vol: 0.09, fin: 95 });
   },
+  // v2.0: contrarreloj y duelo
+  tick() {
+    tono(880, 0.045, { tipo: 'square', vol: 0.06 });
+    tono(660, 0.04, { tipo: 'sine', vol: 0.05, delay: 0.05 });
+  },
+  botDie() {
+    ruido(0.16, { desde: 1800, hasta: 240, vol: 0.16 });
+    tono(196, 0.14, { tipo: 'triangle', vol: 0.12, fin: 98 });
+  },
+  win() {
+    secuencia([523, 659, 784, 1047, 1319], { dur: 0.13, vol: 0.13, salto: 0.075 });
+  },
 };
-
-// BORRAR-COMPETITIVO · el pulso de sala se retiró para v1.0.
 
 export const audio = {
   enabled: true,

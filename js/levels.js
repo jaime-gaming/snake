@@ -35,10 +35,10 @@ const slit = (x, y, alto) => vline(x, y, alto);
 
 
 // grupos del menú: cada uno es una subpágina con sus modos
-// BORRAR-COMPETITIVO · modo retirado en la preparación de v1.0.
 export const GROUPS = [
   { name: 'progreso', tag: 'rutas con obstáculos', modes: ['campaign'] },
-  { name: 'infinitos', tag: 'puntuación sin final', modes: ['classic', 'frenzy', 'hunter'] },
+  { name: 'infinitos', tag: 'puntuación sin final', modes: ['classic', 'frenzy', 'hunter', 'timed'] },
+  { name: 'duelo', tag: 'contra bots en la misma arena', modes: ['versus'] },
 ];
 
 export const MODE_ORDER = GROUPS.flatMap((g) => g.modes);
@@ -48,6 +48,8 @@ export const POWER_POOLS = {
   classic: ['ghost', 'slow', 'shrink', 'double'],
   frenzy: ['slow', 'shield', 'double'],
   hunter: ['ghost', 'shrink', 'shield'],
+  timed: ['slow', 'shield', 'double', 'ghost'],
+  versus: ['ghost', 'shield', 'slow', 'shrink'],
 };
 
 const base = {
@@ -103,7 +105,38 @@ export const MODES = {
     powerEvery: 6,
     powerPool: POWER_POOLS.hunter,
   },
-
+  timed: {
+    ...base,
+    id: 'timed',
+    name: 'CONTRARRELOJ',
+    tag: '75 segundos · cada fruta suma 3',
+    startSpeed: 140,
+    minSpeed: 82,
+    accelPerFood: 1.4,
+    timeAttack: { start: 75000, perFruit: 3200, max: 150000 },
+    bonusEvery: 5,
+    powerEvery: 7,
+    powerPool: POWER_POOLS.timed,
+  },
+  versus: {
+    ...base,
+    id: 'versus',
+    name: 'DUELO',
+    tag: 'tres bots en la misma arena · gana el último en pie',
+    startSpeed: 138,
+    minSpeed: 84,
+    accelPerFood: 1.1,
+    bots: 3,
+    walls: [
+      ...rect(9, 4, 2, 2),
+      ...rect(9, 14, 2, 2),
+      ...rect(4, 9, 2, 2),
+      ...rect(14, 9, 2, 2),
+    ],
+    bonusEvery: 5,
+    powerEvery: 7,
+    powerPool: POWER_POOLS.versus,
+  },
 };
 
 // campaña: 20 niveles. empieza lento y acaba a 104 ms por casilla
@@ -329,7 +362,90 @@ export const LEVELS = [
     ...holes(vline(2, 7, 6), [[2, 9], [2, 10]]),
     ...holes(vline(17, 7, 6), [[17, 9], [17, 10]]),
   ]),
+
+  // ---- v2.0: diez niveles más, de 15 a 18 manzanas ----
+
+  nivel(20, 'TÚNEL', 15, [
+    ...hline(0, 6, 20),
+    ...hline(0, 13, 20),
+  ], {
+    cut: [[5, 6], [14, 6], [5, 13], [14, 13]],
+  }),
+
+  nivel(21, 'ESQUINAS', 15, [
+    ...rect(0, 0, 7, 3),
+    ...rect(13, 0, 7, 3),
+    ...rect(0, 17, 7, 3),
+    ...rect(13, 17, 7, 3),
+  ]),
+
+  nivel(22, 'TRES ANILLOS', 15, [
+    ...holes(ring(2, 2, 6, 6), [[2, 4], [7, 5], [4, 2], [5, 7]]),
+    ...holes(ring(12, 2, 6, 6), [[12, 4], [17, 3], [14, 2], [15, 7]]),
+    ...holes(ring(7, 12, 6, 6), [[7, 14], [12, 15], [9, 12], [10, 17]]),
+  ]),
+
+  nivel(23, 'CUATRO CAJAS', 16, [
+    ...holes(rect(3, 3, 4, 4), [[3, 4], [6, 4], [4, 3]]),
+    ...holes(rect(13, 3, 4, 4), [[13, 4], [16, 4], [15, 3]]),
+    ...holes(rect(3, 13, 4, 4), [[3, 14], [6, 14], [5, 16]]),
+    ...holes(rect(13, 13, 4, 4), [[13, 14], [16, 14], [14, 16]]),
+  ]),
+
+  nivel(24, 'DIENTES DOBLES', 16, [
+    ...vline(4, 0, 8),
+    ...vline(4, 12, 8),
+    ...vline(10, 4, 4),
+    ...vline(10, 12, 4),
+    ...vline(15, 0, 8),
+    ...vline(15, 12, 8),
+  ]),
+
+  nivel(25, 'ZIGZAG TRIPLE', 16, [
+    ...hline(0, 3, 15),
+    ...hline(5, 7, 15),
+    ...hline(0, 11, 15),
+    ...hline(5, 15, 15),
+  ]),
+
+  nivel(26, 'ANILLO CUADRADO', 17, [
+    ...holes(ring(4, 4, 12, 12), [
+      [4, 9], [4, 10], [15, 9], [15, 10],
+      [9, 4], [10, 4], [9, 15], [10, 15],
+    ]),
+    ...rect(9, 9, 2, 2),
+  ]),
+
+  nivel(27, 'OCHO PILARES', 17, [
+    ...rect(3, 3, 2, 2),
+    ...rect(9, 3, 2, 2),
+    ...rect(15, 3, 2, 2),
+    ...rect(3, 9, 2, 2),
+    ...rect(15, 9, 2, 2),
+    ...rect(3, 15, 2, 2),
+    ...rect(9, 15, 2, 2),
+    ...rect(15, 15, 2, 2),
+  ]),
+
+  nivel(28, 'LABERINTO II', 17, [
+    ...vline(4, 0, 16),
+    ...vline(9, 4, 16),
+    ...vline(14, 0, 16),
+  ], {
+    cut: [
+      [4, 5], [4, 14],
+      [9, 8], [9, 17],
+      [14, 3], [14, 12],
+    ],
+  }),
+
+  nivel(29, 'GRAN FINAL', 18, [
+    ...holes(ring(2, 2, 16, 16), [
+      [2, 9], [2, 10], [17, 9], [17, 10],
+      [9, 2], [10, 2], [9, 17], [10, 17],
+    ]),
+    ...rect(9, 9, 2, 2),
+    ...hline(8, 5, 4),
+    ...hline(8, 14, 4),
+  ]),
 ];
-
-
-// BORRAR-COMPETITIVO · los rangos, arenas y modificadores se retiraron para v1.0.

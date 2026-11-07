@@ -1098,7 +1098,6 @@ button.foco {
   }
 }
 
-/* BORRAR-COMPETITIVO · estilos de salas, rangos y minis retirados para v1.0. */
 
 /* ═══════════════════════════════════════════════════════════════════════════
    transición de bloques entre pantallas
@@ -1113,4 +1112,32 @@ button.foco {
   image-rendering: pixelated;
 }
 
-/* BORRAR-COMPETITIVO · efectos de ascenso retirados para v1.0. */
+
+/* v2.0 · reloj de contrarreloj cuando apura el tiempo */
+.meta.urgente {
+  color: #ff2b2b;
+  font-weight: 700;
+  animation: pulso-urgente 0.5s steps(2, jump-none) infinite;
+}
+
+@keyframes pulso-urgente {
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .meta.urgente {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/* v2.0 · filas de solo lectura del perfil */
+.row.stat {
+  cursor: default;
+  pointer-events: none;
+}
+
+.row.stat .row-right {
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
