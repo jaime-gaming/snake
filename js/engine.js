@@ -48,6 +48,7 @@ export class Game {
     this.fruits = 0;
     this.chain = 0;
     this.chainTimer = 0;
+    this.mejorRacha = 1;
     this.chainWindow = cfg.chainWindow || 3200;
     this.hitStop = 0;
     this.crash = null;
@@ -139,7 +140,8 @@ export class Game {
 
   get scoreFactor() {
     if (this.cfg.scoring === false) return 0;
-    return this.fx.double > 0 ? 2 : 1;
+    const doble = this.fx.double > 0 ? 2 : 1;
+    return doble * (Number(this.cfg.scoreBoost) || 1);
   }
 
   interval() {
@@ -483,6 +485,7 @@ export class Game {
     const rapido = this.chainTimer > this.chainWindow * 0.62;
     this.chain = Math.min(this.chain + 1, 30);
     this.chainTimer = this.chainWindow;
+    this.mejorRacha = Math.max(this.mejorRacha, this.chain);
     this.score += (10 * this.multiplier + (rapido ? 5 * this.multiplier : 0)) * this.scoreFactor;
     this.speed = Math.max(cfg.minSpeed, this.speed - (cfg.accelPerFood || 0));
     this.shake = 2.6;
@@ -534,6 +537,7 @@ export class Game {
     this.grow += 1;
     this.chain = Math.min(this.chain + 1, 30);
     this.chainTimer = this.chainWindow;
+    this.mejorRacha = Math.max(this.mejorRacha, this.chain);
     this.score += 15 * this.multiplier * this.scoreFactor;
     // la fruta de la ola también aprieta, pero la mitad que la de siempre
     this.speed = Math.max(cfg.minSpeed, this.speed - (cfg.accelPerFood || 0) * 0.5);
@@ -554,6 +558,7 @@ export class Game {
     this.score += 15 * this.multiplier * this.scoreFactor;
     this.chain = Math.min(this.chain + 1, 30);
     this.chainTimer = this.chainWindow;
+    this.mejorRacha = Math.max(this.mejorRacha, this.chain);
     this.shake = 3;
     this.chomp = 1;
     this.burst(this.body[0].x + 0.5, this.body[0].y + 0.5, 12, '#3d7bff', 6);
@@ -567,6 +572,7 @@ export class Game {
     this.grow += 2;
     this.chain = Math.min(this.chain + 2, 30);
     this.chainTimer = this.chainWindow;
+    this.mejorRacha = Math.max(this.mejorRacha, this.chain);
     this.score += 50 * this.multiplier * this.scoreFactor;
     this.shake = 5;
     this.flash = Math.max(this.flash, 0.24);
@@ -1469,27 +1475,19 @@ export class Game {
       ctx.setLineDash([]);
     }
 
-    // la envenenada es idéntica salvo un punto diminuto casi invisible
+    // la envenenada es casi idéntica: sólo cambia el tono y una esquina
     if (this.veneno) {
       // la misma respiración que la fruta: late al mismo ritmo
       const pulso = Math.floor((0.5 + 0.5 * Math.sin(this.time / 220)) * 3);
       const m = Math.round(cell * 0.16) + pulso;
       const [px, py, w] = caja(this.veneno.x, this.veneno.y, m, lado - m * 2);
-      ctx.fillStyle = '#ff2b2b';
+      // un rojo un punto más oscuro que la fruta buena
+      ctx.fillStyle = '#df1f1f';
       ctx.fillRect(px, py, w, w);
-      // se distingue de un vistazo: una muesca negra en la esquina superior derecha
-      const muesca = Math.max(2, Math.round(w * 0.36));
-      ctx.fillStyle = '#000';
-      ctx.fillRect(px + w - muesca, py, muesca, muesca);
-      // y un segundo punto oscuro dentro, para que no parezca un fallo de dibujo
-      const punto = Math.max(2, Math.round(w * 0.2));
-      ctx.fillStyle = 'rgba(0,0,0,0.85)';
-      ctx.fillRect(
-        px + Math.round(w * 0.22),
-        py + Math.round(w * 0.52),
-        punto,
-        punto,
-      );
+      // y una esquina mordida, pequeña: hay diferencia, pero no grita
+      const muesca = Math.max(2, Math.round(w * 0.17));
+      ctx.fillStyle = 'rgba(0,0,0,0.92)';
+      ctx.fillRect(px + w - muesca, py + w - muesca, muesca, muesca);
     }
 
     // comida: cubo rojo que respira. la que cierra el nivel va en amarillo

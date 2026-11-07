@@ -76,7 +76,6 @@ export const MODES = {
     wallFrom: 30,
     wallEvery: 6,
     wallMax: 18,
-    veneno: { chance: 0.16, puntos: 15 },
     powerPool: POWER_POOLS.classic,
   },
   frenzy: {
@@ -113,7 +112,6 @@ export const MODES = {
     hunterSight: 4,
     bonusEvery: 6,
     powerEvery: 6,
-    veneno: { chance: 0.14, puntos: 15 },
     powerPool: POWER_POOLS.hunter,
   },
   timed: {
@@ -134,14 +132,13 @@ export const MODES = {
     ...base,
     id: 'competitive',
     name: 'COMPETITIVO',
-    tag: 'cuatro tableros · mapa y modificador al azar · aguanta más que los demás',
+    tag: 'cuatro tableros · tres actos · el sprint final vale doble',
     startSpeed: 132,
     minSpeed: 78,
     accelPerFood: 0.9,
     rampPerSec: 0.16,
     bonusEvery: 5,
     powerEvery: 6,
-    veneno: { chance: 0.12, puntos: 20 },
     powerPool: POWER_POOLS.competitive,
   },
 };

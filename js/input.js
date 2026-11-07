@@ -27,7 +27,7 @@ const TECLAS = {
 const BOTONES = { 12: 'up', 13: 'down', 14: 'left', 15: 'right' };
 
 export function attachInput({ stage, actions, canTurbo = () => true }) {
-  const fire = (accion) => actions(accion);
+  const fire = (accion, repetido = false) => actions(accion, repetido);
   const turboActivo = () => typeof canTurbo === 'function' && canTurbo();
 
   window.addEventListener('keydown', (e) => {
@@ -38,9 +38,12 @@ export function attachInput({ stage, actions, canTurbo = () => true }) {
     if (!accion) return;
     if (e.code === 'Space' || e.code === 'Enter' || e.code.startsWith('Arrow')
       || e.code === 'PageUp' || e.code === 'PageDown' || e.code === 'Home' || e.code === 'End') e.preventDefault();
-    if (e.repeat) return;
+    // las direcciones y el scroll sí se repiten al mantener pulsado:
+    // sin esto, una pantalla larga sólo avanzaba una vez por pulsación
+    const repetible = ['up', 'down', 'left', 'right', 'scrollUp', 'scrollDown', 'scrollTop', 'scrollBottom'].includes(accion);
+    if (e.repeat && !repetible) return;
     if (accion === 'turbo' && !turboActivo()) return;
-    fire(accion === 'turbo' ? 'turboOn' : accion);
+    fire(accion === 'turbo' ? 'turboOn' : accion, e.repeat);
   });
 
   window.addEventListener('keyup', (e) => {

@@ -534,6 +534,49 @@ button:disabled {
 }
 
 /* los tres rivales de la partida, en una línea */
+.comp-fases {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.comp-fases span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 4px;
+  border: 1px solid var(--line);
+  text-align: center;
+}
+
+.comp-fases b {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.comp-fases i {
+  font-style: normal;
+  font-size: 6px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.comp-fases span:nth-child(2) {
+  border-color: var(--line2);
+}
+
+.comp-fases span:nth-child(3) {
+  border-color: var(--accent);
+}
+
+.comp-fases span:nth-child(3) b {
+  color: var(--accent);
+}
+
 .comp-rivales {
   display: flex;
   justify-content: space-between;
@@ -752,6 +795,7 @@ button:disabled {
 }
 
 .tablero {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -779,9 +823,33 @@ button:disabled {
   white-space: nowrap;
 }
 
+.tablero-puesto {
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
 .tablero-datos {
   color: var(--dim);
   font-variant-numeric: tabular-nums;
+}
+
+.tablero-gap {
+  color: var(--accent);
+  font-size: 7px;
+  letter-spacing: 0.1em;
+}
+
+.tablero-gap:empty {
+  display: none;
+}
+
+.tablero.lider canvas {
+  border-color: var(--fg);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 0 18px rgba(255, 255, 255, 0.12);
+}
+
+.tablero.lider .tablero-puesto {
+  color: var(--fg);
 }
 
 .tablero.mio canvas {
@@ -848,6 +916,86 @@ button:disabled {
   text-shadow: 0 0 24px rgba(255, 255, 255, 0.35);
 }
 
+#aviso {
+  position: absolute;
+  top: clamp(64px, 17%, 150px);
+  left: 50%;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 9px 16px 10px;
+  border: 1px solid var(--line2);
+  background: rgba(0, 0, 0, 0.86);
+  text-align: center;
+  pointer-events: none;
+  transform: translateX(-50%);
+  opacity: 0;
+}
+
+#aviso[hidden] {
+  display: none;
+}
+
+#aviso.visible {
+  animation: aviso-golpe 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+#aviso b {
+  font-size: clamp(24px, 5.2vmin, 50px);
+  font-weight: 600;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+}
+
+#aviso span {
+  font-size: 8px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+#aviso[data-tono="sprint"],
+#aviso[data-tono="final"],
+#aviso[data-tono="remontada"] {
+  border-color: var(--accent);
+}
+
+#aviso[data-tono="sprint"] b,
+#aviso[data-tono="final"] b,
+#aviso[data-tono="remontada"] b {
+  color: var(--accent);
+}
+
+#aviso[data-tono="lider"] {
+  border-color: var(--fg);
+  background: var(--fg);
+  color: #000;
+}
+
+#aviso[data-tono="lider"] span {
+  color: #333;
+}
+
+@keyframes aviso-golpe {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -10px) scale(0.96);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  72% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 /* contrarreloj: el tiempo en grande encima del tablero, sin tapar el juego */
 #stage.con-reloj {
   /* el hueco del reloj lo pone main.js según su altura real */
@@ -884,6 +1032,17 @@ button:disabled {
   color: var(--muted);
 }
 
+#reloj em {
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+}
+
+#reloj.sprint em {
+  color: var(--accent);
+}
+
 #reloj.urgente {
   border-color: var(--accent);
 }
@@ -912,6 +1071,11 @@ button:disabled {
   #reloj.urgente b {
     animation: none;
   }
+
+  #aviso.visible {
+    animation: none;
+    opacity: 1;
+  }
 }
 
 /* capa de menús */
@@ -921,6 +1085,10 @@ button:disabled {
   inset: 0;
   z-index: 40;
   display: flex;
+  /* en columna, el margen auto se resuelve a 0 cuando el panel es más
+     alto que la pantalla y el contenido se puede recorrer desde arriba */
+  flex-direction: column;
+  align-items: center;
   padding:
     max(58px, calc(env(safe-area-inset-top) + 52px))
     max(14px, env(safe-area-inset-right))
@@ -931,7 +1099,6 @@ button:disabled {
   visibility: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scroll-behavior: smooth;
   scroll-padding-block: 64px 24px;
   scrollbar-width: thin;
   scrollbar-color: var(--line2) transparent;
@@ -960,9 +1127,10 @@ button:disabled {
 }
 
 .panel {
+  flex: 0 0 auto;
   width: 100%;
   max-width: 760px;
-  margin: auto;
+  margin: auto 0;
   animation: aparecer 130ms ease-out;
 }
 
@@ -1453,6 +1621,56 @@ button.foco {
   gap: clamp(14px, 2.4vh, 20px);
   padding: clamp(16px, 4vw, 24px);
   border: 1px solid var(--line2);
+}
+
+.podio {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 0;
+  list-style: none;
+}
+
+.podio li {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.podio li b {
+  font-weight: 600;
+  color: var(--dim);
+}
+
+.podio li em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.podio li.tu {
+  border-color: var(--fg);
+  background: #0c0c0c;
+  color: var(--fg);
+}
+
+.podio li:first-child b {
+  color: var(--fg);
+}
+
+.comp-resumen {
+  color: var(--dim);
 }
 
 .fin-cabeza {

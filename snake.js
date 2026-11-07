@@ -1,4 +1,4 @@
-/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-11-07 · v24).
+/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-11-07 · v25).
    no lo edites a mano: cambia js/*.js y vuelve a ejecutar node tools/build.mjs */
 (function () {
 'use strict';
@@ -151,7 +151,6 @@ const MODES = {
     wallFrom: 30,
     wallEvery: 6,
     wallMax: 18,
-    veneno: { chance: 0.16, puntos: 15 },
     powerPool: POWER_POOLS.classic,
   },
   frenzy: {
@@ -188,7 +187,6 @@ const MODES = {
     hunterSight: 4,
     bonusEvery: 6,
     powerEvery: 6,
-    veneno: { chance: 0.14, puntos: 15 },
     powerPool: POWER_POOLS.hunter,
   },
   timed: {
@@ -209,14 +207,13 @@ const MODES = {
     ...base,
     id: 'competitive',
     name: 'COMPETITIVO',
-    tag: 'cuatro tableros · mapa y modificador al azar · aguanta más que los demás',
+    tag: 'cuatro tableros · tres actos · el sprint final vale doble',
     startSpeed: 132,
     minSpeed: 78,
     accelPerFood: 0.9,
     rampPerSec: 0.16,
     bonusEvery: 5,
     powerEvery: 6,
-    veneno: { chance: 0.12, puntos: 20 },
     powerPool: POWER_POOLS.competitive,
   },
 };
@@ -835,7 +832,7 @@ const TECLAS = {
 const BOTONES = { 12: 'up', 13: 'down', 14: 'left', 15: 'right' };
 
 function attachInput({ stage, actions, canTurbo = () => true }) {
-  const fire = (accion) => actions(accion);
+  const fire = (accion, repetido = false) => actions(accion, repetido);
   const turboActivo = () => typeof canTurbo === 'function' && canTurbo();
 
   window.addEventListener('keydown', (e) => {
@@ -846,9 +843,12 @@ function attachInput({ stage, actions, canTurbo = () => true }) {
     if (!accion) return;
     if (e.code === 'Space' || e.code === 'Enter' || e.code.startsWith('Arrow')
       || e.code === 'PageUp' || e.code === 'PageDown' || e.code === 'Home' || e.code === 'End') e.preventDefault();
-    if (e.repeat) return;
+    // las direcciones y el scroll sí se repiten al mantener pulsado:
+    // sin esto, una pantalla larga sólo avanzaba una vez por pulsación
+    const repetible = ['up', 'down', 'left', 'right', 'scrollUp', 'scrollDown', 'scrollTop', 'scrollBottom'].includes(accion);
+    if (e.repeat && !repetible) return;
     if (accion === 'turbo' && !turboActivo()) return;
-    fire(accion === 'turbo' ? 'turboOn' : accion);
+    fire(accion === 'turbo' ? 'turboOn' : accion, e.repeat);
   });
 
   window.addEventListener('keyup', (e) => {
@@ -996,6 +996,7 @@ class Game {
     this.fruits = 0;
     this.chain = 0;
     this.chainTimer = 0;
+    this.mejorRacha = 1;
     this.chainWindow = cfg.chainWindow || 3200;
     this.hitStop = 0;
     this.crash = null;
@@ -1087,7 +1088,8 @@ class Game {
 
   get scoreFactor() {
     if (this.cfg.scoring === false) return 0;
-    return this.fx.double > 0 ? 2 : 1;
+    const doble = this.fx.double > 0 ? 2 : 1;
+    return doble * (Number(this.cfg.scoreBoost) || 1);
   }
 
   interval() {
@@ -1431,6 +1433,7 @@ class Game {
     const rapido = this.chainTimer > this.chainWindow * 0.62;
     this.chain = Math.min(this.chain + 1, 30);
     this.chainTimer = this.chainWindow;
+    this.mejorRacha = Math.max(this.mejorRacha, this.chain);
     this.score += (10 * this.multiplier + (rapido ? 5 * this.multiplier : 0)) * this.scoreFactor;
     this.speed = Math.max(cfg.minSpeed, this.speed - (cfg.accelPerFood || 0));
     this.shake = 2.6;
@@ -1482,6 +1485,7 @@ class Game {
     this.grow += 1;
     this.chain = Math.min(this.chain + 1, 30);
     this.chainTimer = this.chainWindow;
+    this.mejorRacha = Math.max(this.mejorRacha, this.chain);
     this.score += 15 * this.multiplier * this.scoreFactor;
     // la fruta de la ola también aprieta, pero la mitad que la de siempre
     this.speed = Math.max(cfg.minSpeed, this.speed - (cfg.accelPerFood || 0) * 0.5);
@@ -1502,6 +1506,7 @@ class Game {
     this.score += 15 * this.multiplier * this.scoreFactor;
     this.chain = Math.min(this.chain + 1, 30);
     this.chainTimer = this.chainWindow;
+    this.mejorRacha = Math.max(this.mejorRacha, this.chain);
     this.shake = 3;
     this.chomp = 1;
     this.burst(this.body[0].x + 0.5, this.body[0].y + 0.5, 12, '#3d7bff', 6);
@@ -1515,6 +1520,7 @@ class Game {
     this.grow += 2;
     this.chain = Math.min(this.chain + 2, 30);
     this.chainTimer = this.chainWindow;
+    this.mejorRacha = Math.max(this.mejorRacha, this.chain);
     this.score += 50 * this.multiplier * this.scoreFactor;
     this.shake = 5;
     this.flash = Math.max(this.flash, 0.24);
@@ -2417,27 +2423,19 @@ class Game {
       ctx.setLineDash([]);
     }
 
-    // la envenenada es idéntica salvo un punto diminuto casi invisible
+    // la envenenada es casi idéntica: sólo cambia el tono y una esquina
     if (this.veneno) {
       // la misma respiración que la fruta: late al mismo ritmo
       const pulso = Math.floor((0.5 + 0.5 * Math.sin(this.time / 220)) * 3);
       const m = Math.round(cell * 0.16) + pulso;
       const [px, py, w] = caja(this.veneno.x, this.veneno.y, m, lado - m * 2);
-      ctx.fillStyle = '#ff2b2b';
+      // un rojo un punto más oscuro que la fruta buena
+      ctx.fillStyle = '#df1f1f';
       ctx.fillRect(px, py, w, w);
-      // se distingue de un vistazo: una muesca negra en la esquina superior derecha
-      const muesca = Math.max(2, Math.round(w * 0.36));
-      ctx.fillStyle = '#000';
-      ctx.fillRect(px + w - muesca, py, muesca, muesca);
-      // y un segundo punto oscuro dentro, para que no parezca un fallo de dibujo
-      const punto = Math.max(2, Math.round(w * 0.2));
-      ctx.fillStyle = 'rgba(0,0,0,0.85)';
-      ctx.fillRect(
-        px + Math.round(w * 0.22),
-        py + Math.round(w * 0.52),
-        punto,
-        punto,
-      );
+      // y una esquina mordida, pequeña: hay diferencia, pero no grita
+      const muesca = Math.max(2, Math.round(w * 0.17));
+      ctx.fillStyle = 'rgba(0,0,0,0.92)';
+      ctx.fillRect(px + w - muesca, py + w - muesca, muesca, muesca);
     }
 
     // comida: cubo rojo que respira. la que cierra el nivel va en amarillo
@@ -2805,15 +2803,15 @@ const STRINGS = {
     groupCompetitive: 'competitivo',
     groupCompetitiveTag: 'cuatro tableros · puntos y rangos',
     modeClassic: 'clásico',
-    modeClassicTag: 'cada fruta acelera · muros a las 30 · veneno',
+    modeClassicTag: 'cada fruta acelera · muros a las 30 frutas',
     modeFrenzy: 'frenesí',
     modeFrenzyTag: 'bordes abiertos · olas y picos · veneno',
     modeHunter: 'cazador',
-    modeHunterTag: 'una serpiente roja come puntos azules · veneno',
+    modeHunterTag: 'una serpiente roja come puntos azules y crece',
     modeTimed: 'contrarreloj',
     modeTimedTag: '30 segundos · cada fruta suma 3 · veneno',
     modeCompetitive: 'competitivo',
-    modeCompetitiveTag: 'cuatro tableros · 60 s · rangos',
+    modeCompetitiveTag: 'cuatro tableros · tres actos · sprint ×2',
     levelNames: {
       LLANO: 'llano', CRUZ: 'cruz', PILARES: 'pilares', ANILLO: 'anillo', ZIGZAG: 'zigzag',
       COLUMNAS: 'columnas', 'DOBLE ANILLO': 'doble anillo', REJILLA: 'rejilla', JAULA: 'jaula',
@@ -2928,6 +2926,7 @@ const STRINGS = {
     mod_muros: 'muros que salen',
     mod_reloj: 'reloj',
     mod_cazador: 'cazador',
+    mod_veneno: 'veneno',
     mod_turbo: 'sin turbo',
     mod_ninguno: 'sin modificador',
     pointsWon: '+{count} puntos',
@@ -2941,9 +2940,28 @@ const STRINGS = {
     compYourRank: 'tu rango',
     compRivals: 'rivales',
     compBoards: '4 tableros',
+    compActs: 'tres actos',
     compDrop: '−10 al caer',
     compProtected: 'protegido',
-    rulePoison: 'manzana envenenada: la muesca negra de la esquina la delata.',
+    phaseOpening: 'apertura',
+    phasePressure: 'presión',
+    phaseSprint: 'sprint',
+    phaseFinal: 'recta final',
+    phaseGo: '¡ya!',
+    phaseGoSub: '60 segundos',
+    phasePressureSub: '×1.5 puntos',
+    phaseSprintSub: '×2 puntos',
+    phaseFinalSub: 'últimos 10 s',
+    compLead: 'lideras',
+    compLeadSub: 'mantén el ritmo',
+    compLostLead: 'te han adelantado',
+    compLostLeadSub: 'recupera el primer puesto',
+    compUp: 'subes',
+    compGap: 'a {count} del {place}',
+    compTied: 'empate',
+    compChain: 'racha ×{count}',
+    compFalls: '{count} caídas',
+    rulePoison: 'manzana envenenada: rojo más oscuro y una esquina mordida.',
     statsRank: 'rango',
     you: 'tú',
     play: 'jugar',
@@ -3010,15 +3028,15 @@ const STRINGS = {
     groupCompetitive: 'competitive',
     groupCompetitiveTag: 'four boards · points and ranks',
     modeClassic: 'classic',
-    modeClassicTag: 'each fruit speeds you up · walls at 30 · poison',
+    modeClassicTag: 'each fruit speeds you up · walls at 30 fruits',
     modeFrenzy: 'frenzy',
     modeFrenzyTag: 'open edges · waves and pulses · poison',
     modeHunter: 'hunter',
-    modeHunterTag: 'a red snake eats blue pellets · poison',
+    modeHunterTag: 'a red snake eats blue pellets and grows',
     modeTimed: 'time attack',
     modeTimedTag: '30 seconds · each fruit adds 3 · poison',
     modeCompetitive: 'competitive',
-    modeCompetitiveTag: 'four boards · 60 s · ranks',
+    modeCompetitiveTag: 'four boards · three acts · sprint ×2',
     levelNames: {
       LLANO: 'open field', CRUZ: 'cross', PILARES: 'pillars', ANILLO: 'ring', ZIGZAG: 'zigzag',
       COLUMNAS: 'columns', 'DOBLE ANILLO': 'double ring', REJILLA: 'grid', JAULA: 'cage',
@@ -3133,6 +3151,7 @@ const STRINGS = {
     mod_muros: 'walls appear',
     mod_reloj: 'clock',
     mod_cazador: 'hunter',
+    mod_veneno: 'poison',
     mod_turbo: 'no boost',
     mod_ninguno: 'no modifier',
     pointsWon: '+{count} points',
@@ -3146,9 +3165,28 @@ const STRINGS = {
     compYourRank: 'your rank',
     compRivals: 'rivals',
     compBoards: '4 boards',
+    compActs: 'three acts',
     compDrop: '−10 on crash',
     compProtected: 'protected',
-    rulePoison: 'poisoned apple: the black corner notch gives it away.',
+    phaseOpening: 'opening',
+    phasePressure: 'pressure',
+    phaseSprint: 'sprint',
+    phaseFinal: 'final stretch',
+    phaseGo: 'go!',
+    phaseGoSub: '60 seconds',
+    phasePressureSub: '×1.5 points',
+    phaseSprintSub: '×2 points',
+    phaseFinalSub: 'last 10 s',
+    compLead: 'you lead',
+    compLeadSub: 'keep the pace',
+    compLostLead: 'overtaken',
+    compLostLeadSub: 'take the lead back',
+    compUp: 'moving up',
+    compGap: '{count} behind {place}',
+    compTied: 'tied',
+    compChain: 'chain ×{count}',
+    compFalls: '{count} crashes',
+    rulePoison: 'poisoned apple: a darker red with one bitten corner.',
     statsRank: 'rank',
     you: 'you',
     play: 'play',
@@ -3369,8 +3407,10 @@ const el = {
   overlay: $('#overlay'),
   prompt: $('#prompt'),
   reloj: $('#reloj'),
+  relojFase: $('#reloj-fase'),
   arena: $('#arena'),
   cuenta: $('#cuenta'),
+  aviso: $('#aviso'),
   tableros: [...document.querySelectorAll('#arena .tablero')],
   meta: $('#hud-meta'),
   score: $('#hud-score'),
@@ -3484,6 +3524,11 @@ const app = {
   tableros: [], // un tablero por serpiente en el competitivo
   cuenta: 0, // cuenta atrás de 3 s antes de salir
   puestoMuerte: 0,
+  fase: null, // apertura, presión o sprint
+  liderAnterior: null,
+  puestoJugador: 0,
+  finalAnunciado: false,
+  avisoTimer: 0,
 };
 
 const rutas = { listas: false, restaurando: false };
@@ -3522,6 +3567,10 @@ function pararTemporizador() {
   if (app.sorteoRuleta) {
     clearInterval(app.sorteoRuleta);
     app.sorteoRuleta = 0;
+  }
+  if (app.avisoTimer) {
+    clearTimeout(app.avisoTimer);
+    app.avisoTimer = 0;
   }
 }
 
@@ -4147,6 +4196,12 @@ function actualizarReloj(juego) {
     : Math.max(0, Math.ceil(juego.timeLeft / 1000));
   const cifra = nodo.querySelector('b');
   if (cifra && cifra.textContent !== String(s)) cifra.textContent = String(s);
+  const fase = faseDeRonda();
+  nodo.classList.toggle('sprint', ronda && fase.id === 'sprint');
+  if (el.relojFase) {
+    const texto = ronda ? `×${fase.boost}` : '';
+    if (el.relojFase.textContent !== texto) el.relojFase.textContent = texto;
+  }
   nodo.classList.toggle('urgente', s <= 10 && juego.state === 'running');
   nodo.classList.toggle('parado', juego.state !== 'running');
 }
@@ -4217,10 +4272,12 @@ function marcar(boton) {
 }
 
 // desplaza la capa abierta: las flechas también mueven la UI en zonas de scroll
-function desplazarUI(paso) {
+function desplazarUI(paso, repetido = false) {
   const caja = el.overlay;
   if (!caja || !caja.classList.contains('abierto')) return false;
-  const salto = Math.max(60, Math.round((caja.clientHeight || 480) * 0.32));
+  const salto = repetido
+    ? Math.max(18, Math.round((caja.clientHeight || 480) * 0.07))
+    : Math.max(60, Math.round((caja.clientHeight || 480) * 0.32));
   const antes = caja.scrollTop;
   const tope = Math.max(0, caja.scrollHeight - caja.clientHeight);
   caja.scrollTop = Math.max(0, Math.min(tope, antes + paso * salto));
@@ -4303,11 +4360,11 @@ function fijarFoco(boton) {
 }
 
 // flechas: recorren el anillo de la pantalla; en la rejilla, ↑↓ saltan de fila
-function moverFoco(dx, dy) {
+function moverFoco(dx, dy, repetido = false) {
   const anillo = anilloFoco();
   if (!anillo.length) return;
   // con un solo botón (ayuda, perfil) las flechas mueven la propia capa
-  if (anillo.length === 1 && desplazarUI(dy || dx)) return;
+  if (anillo.length === 1 && desplazarUI(dy || dx, repetido)) return;
   const actual = botonesUI()[foco.indice];
   let i = anillo.indexOf(actual);
   if (i < 0) {
@@ -4795,7 +4852,7 @@ function mostrarPerfil() {
 
 // índices de campaña con muros suficientes para que la arena tenga forma
 const ARENAS_COMPETITIVO = LEVELS.map((_, i) => i).filter((i) => i >= 2);
-const MODS_COMPETITIVO = ['muros', 'reloj', 'cazador', 'turbo'];
+const MODS_COMPETITIVO = ['muros', 'reloj', 'cazador', 'turbo', 'veneno'];
 const COPAS_POR_PUESTO = [25, 10, 5, 0];
 const CUADROS_ARENA = { wallFrom: 4, wallEvery: 5, wallMax: 12 };
 
@@ -4825,6 +4882,8 @@ function configuracionArena() {
     Object.assign(cfg, { hunter: true, hunterPellets: 2, hunterCap: 12, hunterSight: 4 });
   }
   if (app.arena.mods.includes('turbo')) cfg.noTurbo = true;
+  // el veneno no está por defecto: entra como modificador sorteado
+  if (app.arena.mods.includes('veneno')) cfg.veneno = { chance: 0.18, puntos: 20 };
   return cfg;
 }
 
@@ -4878,6 +4937,92 @@ const TOTAL_TABLEROS = 4;
 const DURACION_RONDA = 60000; // 60 s por partida
 const CASTIGO_CAIDA = 10; // puntos que se pierden al chocar
 const GRACIA_MS = 1800; // protección al volver de una caída
+
+// tres actos de 20 s: la recta final paga el doble, así que hay que elegir
+// cuándo arriesgar la racha y cuándo guardarla
+const FASES_RONDA = [
+  { id: 'apertura', boost: 1 },
+  { id: 'presion', boost: 1.5 },
+  { id: 'sprint', boost: 2 },
+];
+
+function faseDeRonda() {
+  const restante = Number(app.tiempoPartida) || 0;
+  if (restante > 40000) return FASES_RONDA[0];
+  if (restante > 20000) return FASES_RONDA[1];
+  return FASES_RONDA[2];
+}
+
+function mostrarAviso(titulo, subtitulo, tono = '') {
+  const nodo = el.aviso;
+  if (!nodo) return;
+  const grande = nodo.querySelector('b');
+  const pequeno = nodo.querySelector('span');
+  if (grande) grande.textContent = titulo;
+  if (pequeno) pequeno.textContent = subtitulo;
+  nodo.dataset.tono = tono;
+  nodo.hidden = false;
+  nodo.classList.remove('visible');
+  void nodo.offsetWidth;
+  nodo.classList.add('visible');
+  clearTimeout(app.avisoTimer);
+  app.avisoTimer = setTimeout(() => {
+    nodo.hidden = true;
+    nodo.classList.remove('visible');
+    app.avisoTimer = 0;
+  }, 1500);
+}
+
+function ocultarAviso() {
+  if (app.avisoTimer) {
+    clearTimeout(app.avisoTimer);
+    app.avisoTimer = 0;
+  }
+  if (el.aviso) {
+    el.aviso.hidden = true;
+    el.aviso.classList.remove('visible');
+  }
+}
+
+function aplicarFase(anunciar = false) {
+  const fase = faseDeRonda();
+  const cambio = app.fase !== fase.id;
+  app.fase = fase.id;
+  for (const tab of app.tableros) tab.juego.cfg.scoreBoost = fase.boost;
+  if (el.relojFase) el.relojFase.textContent = `×${fase.boost}`;
+  if (cambio && anunciar) {
+    if (fase.id === 'sprint') {
+      mostrarAviso(t('phaseSprint'), t('phaseSprintSub'), 'sprint');
+      audio.play('turbo');
+    } else if (fase.id === 'presion') {
+      mostrarAviso(t('phasePressure'), t('phasePressureSub'), 'presion');
+      audio.play('power');
+    } else {
+      mostrarAviso(t('phaseGo'), t('phaseGoSub'), 'inicio');
+      audio.play('start');
+    }
+  }
+}
+
+function ordenCompetitivo() {
+  return [...app.tableros].sort((a, b) => b.juego.score - a.juego.score || a.i - b.i);
+}
+
+function textoVentaja(jugador, orden) {
+  if (!jugador || !orden.length) return '';
+  if (!orden.some((tab) => tab.juego.score > 0)) return '';
+  const puesto = jugador.puesto || orden.length;
+  if (puesto === 1) {
+    const segundo = orden[1];
+    if (segundo && Math.abs(segundo.juego.score - jugador.juego.score) < 0.5) return t('compTied');
+    return t('compLead');
+  }
+  const delante = orden[puesto - 2];
+  if (!delante) return '';
+  const diferencia = Math.max(0, Math.round(delante.juego.score - jugador.juego.score));
+  if (diferencia < 1) return t('compTied');
+  return t('compGap', { count: diferencia, place: `#${puesto - 1}` });
+}
 
 // variable interna: con el rango suben la reacción y la puntería, pero la
 // velocidad es exactamente la misma que la tuya. no se enseña en el menú.
@@ -4956,6 +5101,11 @@ function menuCompetitivo() {
       ${dato(puntos(guardado.stats.wins), t('labelWins'))}
       ${dato('60<small>s</small>', t('labelRound'))}
     </div>
+    <div class="comp-fases" aria-label="${t('compActs')}">
+      <span><b>×1</b><i>20 s · ${t('phaseOpening')}</i></span>
+      <span><b>×1.5</b><i>20 s · ${t('phasePressure')}</i></span>
+      <span><b>×2</b><i>20 s · ${t('phaseSprint')}</i></span>
+    </div>
     <p class="comp-rivales"><span>${t('compRivals')}</span><span>${RIVAL_NAMES.join(' · ')}</span></p>
     <p class="comp-reglas"><span>60 s</span><span>${t('compDrop')}</span><span>${t('compProtected')}</span></p>
     <div class="acciones">
@@ -4998,7 +5148,7 @@ function prepararCompetitivo() {
       <p class="sorteo-mod girando" id="sorteo-mod">${t('mod_' + azar(MODS_COMPETITIVO))}</p>
     </div>
     <div class="sorteo-linea" aria-hidden="true"><i></i></div>
-    <p class="sorteo-pie">${t('compBoards')} · 60 s</p>
+    <p class="sorteo-pie">${t('compBoards')} · ${t('compActs')} · 60 s</p>
   </div>`);
 
   el.meta.textContent = t('modeCompetitive');
@@ -5070,6 +5220,12 @@ function empezarCompetitivo() {
   app.motivoMuerte = null;
   app.record = false;
   app.tableros = [];
+  app.fase = null;
+  app.liderAnterior = null;
+  app.puestoJugador = 0;
+  app.finalAnunciado = false;
+  app.ultimoAviso = 0;
+  ocultarAviso();
   ponerOverlay(null);
 
   const nivelRivales = rankInfo(guardado.competitive.points).nivel;
@@ -5095,14 +5251,15 @@ function empezarCompetitivo() {
   }
   app.juego = app.tableros[0].juego;
   app.marca = mejorActual();
+  app.cuenta = 3000;
+  app.tiempoPartida = DURACION_RONDA;
+  aplicarFase(false);
 
   el.arena.hidden = false;
   pantalla('countdown');
   ajustarLienzo();
   actualizarTableros();
   actualizarMarcador();
-  app.cuenta = 3000;
-  app.tiempoPartida = DURACION_RONDA;
   for (const tab of app.tableros) tab.revivirEn = 0;
 }
 
@@ -5122,6 +5279,8 @@ function pasoCuenta(dt) {
   if (app.cuenta <= 0) {
     if (el.cuenta) el.cuenta.hidden = true;
     for (const tab of app.tableros) tab.juego.start();
+    app.fase = null;
+    aplicarFase(true);
     pantalla('playing');
     actualizarMarcador();
   }
@@ -5149,6 +5308,12 @@ function pasoCompetitivo(dt) {
   if (app.pantalla !== 'playing') return;
 
   app.tiempoPartida = Math.max(0, app.tiempoPartida - dt);
+  aplicarFase(true);
+  if (app.tiempoPartida <= 10000 && !app.finalAnunciado) {
+    app.finalAnunciado = true;
+    mostrarAviso(t('phaseFinal'), t('phaseFinalSub'), 'final');
+    audio.play('alerta');
+  }
   if (app.tiempoPartida <= 0) {
     dibujarArena();
     actualizarTableros();
@@ -5174,6 +5339,7 @@ function pasoCompetitivo(dt) {
   }
   dibujarArena();
   actualizarTableros();
+  revisarPuesto();
   actualizarMarcador();
   if (app.tableros[0].juego.state === 'running') {
     guardado.stats.timeMs += dt;
@@ -5196,6 +5362,9 @@ function dibujarArena() {
 }
 
 function actualizarTableros() {
+  const orden = ordenCompetitivo();
+  orden.forEach((tab, k) => { tab.puesto = k + 1; });
+
   app.tableros.forEach((tab) => {
     const fig = el.tableros[tab.i];
     if (!fig) return;
@@ -5206,11 +5375,21 @@ function actualizarTableros() {
     }
     fig.classList.toggle('mio', tab.esJugador);
     fig.classList.toggle('caido', !tab.vivo);
+    fig.classList.toggle('lider', tab.puesto === 1 && tab.juego.score > 0);
+
+    const puesto = fig.querySelector('.tablero-puesto');
+    if (puesto) {
+      const texto = `#${tab.puesto}`;
+      if (puesto.textContent !== texto) puesto.textContent = texto;
+    }
+
     const datos = fig.querySelector('.tablero-datos');
-    if (!datos) return;
-    const texto = String(Math.round(tab.juego.score));
-    if (datos.textContent !== texto) datos.textContent = texto;
+    if (datos) {
+      const texto = String(Math.round(tab.juego.score));
+      if (datos.textContent !== texto) datos.textContent = texto;
+    }
     fig.classList.toggle('revive', tab.juego.state === 'dead');
+
     const protegido = tab.juego.gracia > 0;
     fig.classList.toggle('protegido', protegido);
     const estado = fig.querySelector('.tablero-estado');
@@ -5218,7 +5397,55 @@ function actualizarTableros() {
       const texto = protegido ? t('compProtected') : '';
       if (estado.textContent !== texto) estado.textContent = texto;
     }
+
+    if (tab.esJugador) {
+      const hueco = fig.querySelector('.tablero-gap');
+      if (hueco) {
+        const texto = textoVentaja(tab, orden);
+        if (hueco.textContent !== texto) hueco.textContent = texto;
+      }
+    }
   });
+}
+
+// un adelantamiento se celebra una vez; no queremos un aviso en cada frame
+function revisarPuesto() {
+  if (app.pantalla !== 'playing' || !app.tableros.length) return;
+  const orden = ordenCompetitivo();
+  if (!(orden[0].juego.score > 0)) return;
+  const lider = orden[0].i;
+  const jugador = app.tableros[0];
+  const puesto = jugador.puesto || TOTAL_TABLEROS;
+
+  if (app.liderAnterior === null) {
+    app.liderAnterior = lider;
+    app.puestoJugador = puesto;
+    return;
+  }
+
+  const ahora = performance.now();
+  const puedeAvisar = ahora - (app.ultimoAviso || 0) > 900;
+
+  if (lider !== app.liderAnterior) {
+    if (puedeAvisar) {
+      if (lider === 0) {
+        mostrarAviso(t('compLead'), t('compLeadSub'), 'lider');
+        audio.play('combo');
+      } else if (app.liderAnterior === 0) {
+        mostrarAviso(t('compLostLead'), t('compLostLeadSub'), 'remontada');
+        audio.play('alerta');
+      }
+      app.ultimoAviso = ahora;
+    }
+    app.liderAnterior = lider;
+  }
+
+  if (app.puestoJugador && puesto < app.puestoJugador && puesto > 1 && puedeAvisar) {
+    mostrarAviso(`#${puesto}`, t('compUp'), 'sube');
+    audio.play('power');
+    app.ultimoAviso = ahora;
+  }
+  app.puestoJugador = puesto;
 }
 
 function vivosCompetitivo() {
@@ -5239,6 +5466,7 @@ function terminarCompetitivo() {
   const orden = [...app.tableros].sort((a, b) => b.juego.score - a.juego.score);
   app.puestoMuerte = orden.findIndex((tab) => tab.esJugador) + 1;
   app.totalMuerte = TOTAL_TABLEROS;
+  ocultarAviso();
   guardarMarca();
   guardado.stats.games++;
   guardar();
@@ -5493,12 +5721,22 @@ function mostrarFinCompetitivo() {
     rankName(copas.total),
   ];
   if (copas.subio) notas.push(t('newRank', { name: copas.subio }));
+  const orden = ordenCompetitivo();
+  const podio = orden.map((tab, i) => `<li class="${tab.esJugador ? 'tu' : ''}"><b>#${i + 1}</b><span>${tab.nombre}</span><em>${puntos(tab.juego.score)}</em></li>`).join('');
+  const caidas = (app.tableros[0] && app.tableros[0].caidas) || 0;
+  const resumen = [
+    t('fruits', { count: juego.fruits, unit: fruitUnit(juego.fruits) }),
+    t('compChain', { count: juego.mejorRacha || 1 }),
+    t('compFalls', { count: caidas }),
+  ].join(' · ');
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
       <p class="kicker">${t('end')}</p>
       <p class="cifra" data-cifra>${puntos(juego.score)}</p>
       <p class="nota">${notas.join(' · ')}</p>
     </div>
+    <ol class="podio">${podio}</ol>
+    <p class="nota comp-resumen">${resumen}</p>
     <div class="acciones">
       <button class="principal" type="button" data-accion="retry">${t('retry')} <kbd>R</kbd></button>
       <button type="button" data-accion="jugarCompetitivo">${t('redraw')}</button>
@@ -5609,6 +5847,7 @@ function pausar() {
   app.juego.pause();
   if (app.juego.state !== 'paused') return;
   audio.play('ui');
+  ocultarAviso();
   pantalla('paused');
   mostrarPausa();
 }
@@ -5637,7 +5876,7 @@ function soltarFoco() {
   if (activo && activo !== document.body && activo.blur) activo.blur();
 }
 
-function accion(nombre) {
+function accion(nombre, repetido = false) {
   if (nombre === 'mute') {
     alternarSonido();
     return;
@@ -5668,15 +5907,20 @@ function accion(nombre) {
     if (!caja || !caja.classList.contains('abierto')) return;
     if (nombre === 'scrollTop') caja.scrollTop = 0;
     else if (nombre === 'scrollBottom') caja.scrollTop = caja.scrollHeight;
-    else caja.scrollTop += (nombre === 'scrollUp' ? -1 : 1) * Math.max(120, Math.round(caja.clientHeight * 0.8));
+    else {
+      const salto = repetido
+        ? Math.max(28, Math.round(caja.clientHeight * 0.1))
+        : Math.max(120, Math.round(caja.clientHeight * 0.8));
+      caja.scrollTop += (nombre === 'scrollUp' ? -1 : 1) * salto;
+    }
     return;
   }
 
   const esDireccion = ['up', 'down', 'left', 'right'].includes(nombre);
 
   if (app.pantalla === 'home') {
-    if (nombre === 'up') moverFoco(0, -1);
-    else if (nombre === 'down') moverFoco(0, 1);
+    if (nombre === 'up') moverFoco(0, -1, repetido);
+    else if (nombre === 'down') moverFoco(0, 1, repetido);
     else if (nombre === 'left' || nombre === 'right') {
       const paso = nombre === 'left' ? -1 : 1;
       const total = GROUPS.length;
@@ -5693,8 +5937,8 @@ function accion(nombre) {
   }
 
   if (app.pantalla === 'modes') {
-    if (nombre === 'up') moverFoco(0, -1);
-    else if (nombre === 'down') moverFoco(0, 1);
+    if (nombre === 'up') moverFoco(0, -1, repetido);
+    else if (nombre === 'down') moverFoco(0, 1, repetido);
     else if (nombre === 'left' || nombre === 'right') {
       audio.play('ui');
       mostrarModos(app.grupo + (nombre === 'left' ? -1 : 1));
@@ -5715,10 +5959,10 @@ function accion(nombre) {
   }
 
   if (app.pantalla === 'levels') {
-    if (nombre === 'up') moverFoco(0, -1);
-    else if (nombre === 'down') moverFoco(0, 1);
-    else if (nombre === 'left') moverFoco(-1, 0);
-    else if (nombre === 'right') moverFoco(1, 0);
+    if (nombre === 'up') moverFoco(0, -1, repetido);
+    else if (nombre === 'down') moverFoco(0, 1, repetido);
+    else if (nombre === 'left') moverFoco(-1, 0, repetido);
+    else if (nombre === 'right') moverFoco(1, 0, repetido);
     else if (nombre === 'confirm') {
       audio.play('ui');
       const lista = botonesUI();
@@ -5731,14 +5975,14 @@ function accion(nombre) {
 
   if (app.pantalla === 'help') {
     if (nombre === 'up' || nombre === 'down' || nombre === 'left' || nombre === 'right') {
-      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0, repetido);
     } else if (nombre === 'back' || nombre === 'pause' || nombre === 'confirm') mostrarInicio();
     return;
   }
 
   if (app.pantalla === 'settings') {
     if (nombre === 'up' || nombre === 'down' || nombre === 'left' || nombre === 'right') {
-      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0, repetido);
     } else if (nombre === 'confirm') activarFoco();
     else if (nombre === 'back' || nombre === 'pause') ajustesDesde();
     return;
@@ -5746,7 +5990,7 @@ function accion(nombre) {
 
   if (app.pantalla === 'compmenu' || app.pantalla === 'preview') {
     if (esDireccion) {
-      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0, repetido);
       return;
     }
     if (app.pantalla === 'compmenu') {
@@ -5763,7 +6007,7 @@ function accion(nombre) {
 
   if (app.pantalla === 'won') {
     if (esDireccion) {
-      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0, repetido);
       return;
     }
     if (nombre === 'confirm') activarFoco();
@@ -5774,7 +6018,7 @@ function accion(nombre) {
 
   if (app.pantalla === 'paused' || app.pantalla === 'dead' || app.pantalla === 'cleared') {
     if (esDireccion) {
-      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0, repetido);
       return;
     }
     if (nombre === 'confirm') {
