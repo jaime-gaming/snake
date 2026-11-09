@@ -534,14 +534,15 @@ export function rankInfo(cups) {
   const pos = idx < 0 ? CLAVES_RANGO.length - 1 : idx;
   const nombre = t(CLAVES_RANGO[pos]);
   const nivel = CLAVES_RANGO.length - 1 - pos; // 0 bronce … 5 maestro
-  if (idx <= 0) return { nombre, nivel, copas: n, siguiente: null, falta: 0, tramo: 0 };
+  // el siguiente peldaño siempre existe salvo en maestro; bronce también tiene barra
+  const haySiguiente = idx > 0;
   return {
     nombre,
     nivel,
     copas: n,
-    siguiente: t(CLAVES_RANGO[idx - 1]),
-    falta: UMBRALES_RANGO[idx - 1] - n,
-    tramo: UMBRALES_RANGO[idx - 1] - UMBRALES_RANGO[idx],
+    siguiente: haySiguiente ? t(CLAVES_RANGO[idx - 1]) : null,
+    falta: haySiguiente ? UMBRALES_RANGO[idx - 1] - n : 0,
+    tramo: haySiguiente ? UMBRALES_RANGO[idx - 1] - UMBRALES_RANGO[idx] : 0,
   };
 }
 

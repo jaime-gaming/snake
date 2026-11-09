@@ -40,11 +40,11 @@ Los potenciadores cambian según el modo:
 - **Contrarreloj:** lento, escudo, doble y fantasma.
 - **Competitivo:** fantasma, escudo, lento y encoger. Los rivales también los recogen.
 
-El fantasma atraviesa peligros; el lento baja la velocidad; encoger acorta la cola; el escudo perdona un choque; el doble multiplica los puntos.
+El fantasma atraviesa peligros; el lento baja la velocidad y tiñe la serpiente de azul, un color que se apaga solo mientras dura el efecto; encoger acorta la cola; el escudo perdona un choque; el doble multiplica los puntos. Al comer la manzana envenenada el cuerpo se vuelve verde unos segundos y después recupera su blanco.
 
 ## Competitivo
 
-Una partida de **sesenta segundos** en **cuatro tableros separados**, uno por serpiente: tú y tres rivales. No comparten casillas ni fruta. Tu tablero es el más grande y va enmarcado en blanco; cada tablero lleva su nombre, sus puntos, su puesto y la diferencia con el rival inmediato. El líder lleva un marco propio. El acto y la ventaja se leen en los huecos libres de la barra superior y en el rótulo de cada tablero: no hay carteles que tapen la partida ni avisos repetidos por cada adelantamiento.
+Una partida de **sesenta segundos** en **cuatro tableros separados**, uno por serpiente: tú y tres rivales. No comparten casillas ni fruta. Tu tablero es el más grande y va enmarcado en blanco; cada tablero lleva su nombre, sus puntos, su puesto y la diferencia con el rival inmediato. El líder lleva un marco propio y un pulso lento; tu marco queda encendido todo el rato y un choque lo enciende en rojo un instante. El acto y la ventaja se leen en dos recuadros de la barra superior y en el rótulo de cada tablero: no hay carteles que tapen la partida ni avisos repetidos por cada adelantamiento. La luz del escenario sube con los actos, de un halo blanco tenue a un borde rojo en la recta final.
 
 La partida tiene **tres actos de veinte segundos**: apertura a ×1, presión a ×1.5 y sprint final a ×2. El cambio de acto se marca con un destello breve en la barra, no con un cartel sobre el juego. Guardar los riesgos para el último acto es una decisión real. Al chocar se pierden diez puntos y la serpiente vuelve a los 0,8 segundos con 1,8 segundos de gracia: durante ese tiempo atraviesa muros y cuerpos, y el borde da la vuelta en vez de matar. Cuatro bloques sobre su cabeza cuentan la gracia que queda.
 
@@ -63,7 +63,7 @@ El puesto reparte puntos: 1.º +25, 2.º +10, 3.º +5, 4.º +0. Además, el marc
 | Diamante | 700 | Entra el veneno y los mapas cerrados |
 | Maestro | 1200 | El repertorio completo, en su versión más dura |
 
-La escalera no es sólo una cifra: **los mapas y los modificadores suben contigo**. En bronce se juega en mapas abiertos y con muros; al ascender se abren laberintos más cerrados, entran el reloj, el cazador, la ausencia de turbo y el veneno, el reloj arranca con menos margen, el cazador ve más lejos y los muros salen antes y con más frecuencia. Los cuatro tableros reciben siempre el mismo mapa, el mismo modificador y la misma velocidad.
+Cada peldaño tiene su propia figura de bloques; al subir de rango, el resultado la muestra con una animación breve, una sola vez. La escalera no es sólo una cifra: **los mapas y los modificadores suben contigo**. En bronce se juega en mapas abiertos y con muros; al ascender se abren laberintos más cerrados, entran el reloj, el cazador, la ausencia de turbo y el veneno, el reloj arranca con menos margen, el cazador ve más lejos y los muros salen antes y con más frecuencia. Los cuatro tableros reciben siempre el mismo mapa, el mismo modificador y la misma velocidad.
 
 ## Perfil
 

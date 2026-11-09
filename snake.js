@@ -1,4 +1,4 @@
-/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-11-09 · v26).
+/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-11-09 · v27).
    no lo edites a mano: cambia js/*.js y vuelve a ejecutar node tools/build.mjs */
 (function () {
 'use strict';
@@ -949,6 +949,30 @@ function attachInput({ stage, actions, canTurbo = () => true }) {
 const { K, DIRS, bfsStep } = modulos['grid'];
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+
+// color del cuerpo: el lento entra azul y se va apagando; el veneno, verde
+const TINTE_VENENO_MS = 2800;
+const COLOR_LENTO = '#2f6fe0';
+const COLOR_LENTO_CABEZA = '#6fa8ff';
+const COLOR_VENENO = '#2f9e44';
+const COLOR_VENENO_CABEZA = '#6ede8a';
+
+function hexRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function mezclaColor(a, b, t) {
+  const ca = hexRgb(a);
+  const cb = hexRgb(b);
+  const k = clamp(t, 0, 1);
+  const c = ca.map((v, i) => Math.round(v + (cb[i] - v) * k));
+  return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function rgbaColor(hex, alpha) {
+  return `rgba(${hexRgb(hex).join(',')},${clamp(alpha, 0, 1).toFixed(3)})`;
+}
 const rand = (n) => Math.floor(Math.random() * n);
 
 // cuánto le apetece cada potenciador a una serpiente que juega sola
@@ -1001,7 +1025,7 @@ class Game {
     this.hitStop = 0;
     this.crash = null;
     this.wallTicks = 0;
-    this.fx = { ghost: 0, slow: 0, shield: 0, double: 0 };
+    this.fx = { ghost: 0, slow: 0, shield: 0, double: 0, veneno: 0 };
     this.bonus = null;
     this.power = null;
     this.hunter = null;
@@ -1134,7 +1158,7 @@ class Game {
     this.speed = this.cfg.startSpeed;
     this.chain = 0;
     this.chainTimer = 0;
-    this.fx = { ghost: 0, slow: 0, shield: 0, double: 0 };
+    this.fx = { ghost: 0, slow: 0, shield: 0, double: 0, veneno: 0 };
     this.turbo = false;
     this.acc = 0;
     this.queue = [];
@@ -1235,7 +1259,7 @@ class Game {
       this.updateFx(dt * 0.25);
       return;
     }
-    for (const k of ['ghost', 'slow', 'shield', 'double']) {
+    for (const k of ['ghost', 'slow', 'shield', 'double', 'veneno']) {
       if (this.fx[k] > 0) this.fx[k] = Math.max(0, this.fx[k] - dt);
     }
     if (this.state === 'running') {
@@ -1837,6 +1861,8 @@ class Game {
     }
     this.chain = 0;
     this.chainTimer = 0;
+    // el cuerpo se tiñe de verde y se le pasa el color mientras el veneno se va
+    this.fx.veneno = TINTE_VENENO_MS;
     this.flash = Math.max(this.flash, 0.58);
     this.shake = Math.max(this.shake, 7);
     this.burst(x + 0.5, y + 0.5, 18, '#7a0d0d', 8);
@@ -2614,6 +2640,23 @@ class Game {
     const pasoFantasma = this.ghostPaso;
     const rellenoFantasma = (1 - pasoFantasma) * 0.82;
     const contornoFantasma = 0.9;
+    // el lento deja un azul que se recupera solo; el veneno manda mientras dura
+    const tinteLento = clamp((this.fx.slow || 0) / POWER_INFO.slow.ms, 0, 1);
+    const tinteVeneno = clamp((this.fx.veneno || 0) / TINTE_VENENO_MS, 0, 1);
+    const colorCuerpo = mezclaColor(
+      mezclaColor('#e8e8e8', COLOR_LENTO, tinteLento),
+      COLOR_VENENO,
+      tinteVeneno,
+    );
+    const colorCabeza = mezclaColor(
+      mezclaColor('#ffffff', COLOR_LENTO_CABEZA, tinteLento),
+      COLOR_VENENO_CABEZA,
+      tinteVeneno,
+    );
+    const rellenoCuerpo = rgbaColor(colorCuerpo, rellenoFantasma);
+    const rellenoCabeza = rgbaColor(colorCabeza, rellenoFantasma);
+    const contornoCuerpo = rgbaColor(colorCuerpo, contornoFantasma);
+    const contornoCabeza = rgbaColor(colorCabeza, contornoFantasma + 0.05);
     const visibles = this.crash ? Math.max(0, this.body.length - this.crash.popped) : this.body.length;
 
     ctx.save();
@@ -2625,14 +2668,14 @@ class Game {
       const y0 = Math.round(oy + p.y * cell) + hueco;
       if (fantasma) {
         if (rellenoFantasma > 0) {
-          ctx.fillStyle = `rgba(255,255,255,${rellenoFantasma.toFixed(3)})`;
+          ctx.fillStyle = rellenoCuerpo;
           ctx.fillRect(x0, y0, tamano, tamano);
         }
-        ctx.strokeStyle = `rgba(255,255,255,${contornoFantasma.toFixed(3)})`;
+        ctx.strokeStyle = contornoCuerpo;
         ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
         ctx.strokeRect(x0 + 0.5, y0 + 0.5, tamano - 1, tamano - 1);
       } else {
-        ctx.fillStyle = i === 0 ? '#ffffff' : '#e8e8e8';
+        ctx.fillStyle = i === 0 ? colorCabeza : colorCuerpo;
         ctx.fillRect(x0, y0, tamano, tamano);
       }
       if (protegida) {
@@ -2651,14 +2694,14 @@ class Game {
       const y0 = Math.round(oy + punta.y * cell) + huecoCabeza;
       if (fantasma) {
         if (rellenoFantasma > 0) {
-          ctx.fillStyle = `rgba(255,255,255,${rellenoFantasma.toFixed(3)})`;
+          ctx.fillStyle = rellenoCabeza;
           ctx.fillRect(x0, y0, tamanoCabeza, tamanoCabeza);
         }
-        ctx.strokeStyle = `rgba(255,255,255,${(contornoFantasma + 0.05).toFixed(3)})`;
+        ctx.strokeStyle = contornoCabeza;
         ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
         ctx.strokeRect(x0 + 0.5, y0 + 0.5, tamanoCabeza - 1, tamanoCabeza - 1);
       } else {
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = colorCabeza;
         ctx.fillRect(x0, y0, tamanoCabeza, tamanoCabeza);
       }
       if (protegida) {
@@ -3308,14 +3351,15 @@ function rankInfo(cups) {
   const pos = idx < 0 ? CLAVES_RANGO.length - 1 : idx;
   const nombre = t(CLAVES_RANGO[pos]);
   const nivel = CLAVES_RANGO.length - 1 - pos; // 0 bronce … 5 maestro
-  if (idx <= 0) return { nombre, nivel, copas: n, siguiente: null, falta: 0, tramo: 0 };
+  // el siguiente peldaño siempre existe salvo en maestro; bronce también tiene barra
+  const haySiguiente = idx > 0;
   return {
     nombre,
     nivel,
     copas: n,
-    siguiente: t(CLAVES_RANGO[idx - 1]),
-    falta: UMBRALES_RANGO[idx - 1] - n,
-    tramo: UMBRALES_RANGO[idx - 1] - UMBRALES_RANGO[idx],
+    siguiente: haySiguiente ? t(CLAVES_RANGO[idx - 1]) : null,
+    falta: haySiguiente ? UMBRALES_RANGO[idx - 1] - n : 0,
+    tramo: haySiguiente ? UMBRALES_RANGO[idx - 1] - UMBRALES_RANGO[idx] : 0,
   };
 }
 
@@ -3390,6 +3434,7 @@ const CLAVE_ANTIGUA = 'snake.frenzy.v1';
 
 const el = {
   stage: $('#stage'),
+  topbar: $('#topbar'),
   canvas: $('#board'),
   overlay: $('#overlay'),
   senal: $('#senal'),
@@ -3916,9 +3961,14 @@ function pantalla(nombre) {
   const antes = app.pantalla;
   app.pantalla = nombre;
   document.body.dataset.screen = nombre;
+  // en partida competitiva la barra lleva el acto y la ventaja en dos recuadros;
+  // fuera de la partida vuelve a su aspecto normal
+  const enArena = app.modo === 'competitive' && ['playing', 'paused', 'countdown'].includes(nombre);
+  if (el.topbar) el.topbar.classList.toggle('competitivo', enArena);
+  if (el.stage && !enArena) delete el.stage.dataset.fase;
   if (!app.juego) actualizarEfectos(null);
   if (el.arena) {
-    el.arena.hidden = !(app.modo === 'competitive' && ['playing', 'paused', 'countdown'].includes(nombre));
+    el.arena.hidden = !enArena;
     if (!el.arena.hidden) ajustarArena();
   }
   // el lienzo de un solo tablero sólo se aparta cuando manda la arena
@@ -4952,6 +5002,16 @@ function bonoPuntosCompetitivo() {
 }
 
 // copas de la partida: se suman una vez, al cerrar el resultado
+// la subida de rango se celebra una vez, con el icono nuevo y sin llenar la pantalla
+function bloqueSubidaRango(copas) {
+  if (!copas || !copas.subio) return '';
+  const info = rankInfo(copas.total);
+  return `<div class="subida-rango" role="status">
+      ${iconoRango(info.nivel)}
+      <span>${t('newRank', { name: copas.subio })}</span>
+    </div>`;
+}
+
 function copasDePartida(puesto) {
   if (!app.copas) {
     const antes = guardado.competitive.points;
@@ -5003,6 +5063,8 @@ function aplicarFase() {
   app.fase = fase.id;
   for (const tab of app.tableros) tab.juego.cfg.scoreBoost = fase.boost;
   if (el.relojFase) el.relojFase.textContent = `×${fase.boost}`;
+  // la luz del escenario sigue al acto: blanco tenue, presión y recta final roja
+  if (el.stage) el.stage.dataset.fase = app.tiempoPartida <= 10000 ? 'final' : fase.id;
   // el cambio de acto se marca en la barra de arriba, sin tapar ningún tablero;
   // el aviso de verdad vive en el marcador en vivo de cada tablero
   if (cambio && app.pantalla === 'playing') {
@@ -5048,12 +5110,23 @@ function dificultadRivales(nivel) {
   return DIFICULTAD_RIVALES[i];
 }
 
-// el icono del rango: una barra más por cada nivel, todo a bloques
+// el icono del rango: una figura de bloques distinta por cada peldaño
+const DIBUJOS_RANGO = [
+  ['.....', '.....', '.###.', '.###.', '.....'], // bronce
+  ['.....', '..#..', '.###.', '..#..', '.....'], // plata
+  ['..#..', '.###.', '#####', '.###.', '..#..'], // oro
+  ['#...#', '.#.#.', '..#..', '.#.#.', '#...#'], // platino
+  ['.###.', '#...#', '#...#', '#...#', '.###.'], // diamante
+  ['#.#.#', '#####', '#####', '.###.', '..#..'], // maestro
+];
+
 function iconoRango(nivel) {
-  const barras = [1, 2, 3, 4, 5, 6][Math.max(0, Math.min(5, nivel || 0))];
+  const n = Math.max(0, Math.min(DIBUJOS_RANGO.length - 1, Number(nivel) || 0));
   let celdas = '';
-  for (let i = 0; i < 6; i++) celdas += `<i${i < barras ? ' class="lleno"' : ''}></i>`;
-  return `<span class="rango-icono" data-rango="${nivel || 0}" aria-hidden="true">${celdas}</span>`;
+  for (const fila of DIBUJOS_RANGO[n]) {
+    for (const celda of fila) celdas += `<i${celda === '#' ? ' class="lleno"' : ''}></i>`;
+  }
+  return `<span class="rango-icono" data-rango="${n}" aria-hidden="true">${celdas}</span>`;
 }
 
 function nombreTablero(i) {
@@ -5296,6 +5369,7 @@ function eventoRival(i, tipo, datos) {
   if (tipo === 'die') {
     perderPuntos(tab);
     audio.play('rivalDie');
+    parpadear(el.tableros[i]);
     actualizarTableros();
   }
 }
@@ -5565,6 +5639,7 @@ function eventosJuego(tipo, datos) {
       if (app.modo === 'competitive') {
         perderPuntos(app.tableros[0]);
         parpadear(el.score);
+        parpadear(el.tableros[0]);
         break;
       }
       app.temporizador = setTimeout(mostrarFin, 900);
@@ -5677,7 +5752,6 @@ function mostrarFinCompetitivo() {
     rankName(copas.total),
   ];
   if (copas.bono > 0) notas.push(t('pointsBonus', { count: copas.bono }));
-  if (copas.subio) notas.push(t('newRank', { name: copas.subio }));
   const orden = ordenCompetitivo();
   const podio = orden.map((tab, i) => `<li class="${tab.esJugador ? 'tu' : ''}"><b>#${i + 1}</b><span>${tab.nombre}</span><em>${puntos(tab.juego.score)}</em></li>`).join('');
   const caidas = (app.tableros[0] && app.tableros[0].caidas) || 0;
@@ -5692,6 +5766,7 @@ function mostrarFinCompetitivo() {
       <p class="cifra" data-cifra>${puntos(juego.score)}</p>
       <p class="nota">${notas.join(' · ')}</p>
     </div>
+    ${bloqueSubidaRango(copas)}
     <ol class="podio">${podio}</ol>
     <p class="nota comp-resumen">${resumen}</p>
     <div class="acciones">
@@ -5713,7 +5788,7 @@ function mostrarVictoria() {
   if (!juego || juego.state !== 'running') return;
   const caidos = TOTAL_TABLEROS - 1;
   const copas = copasDePartida(1);
-  const copasTexto = `${t('pointsWon', { count: copas.ganadas })}${copas.bono > 0 ? ` · ${t('pointsBonus', { count: copas.bono })}` : ''} · ${rankName(copas.total)}${copas.subio ? ` · ${t('newRank', { name: copas.subio })}` : ''}`;
+  const copasTexto = `${t('pointsWon', { count: copas.ganadas })}${copas.bono > 0 ? ` · ${t('pointsBonus', { count: copas.bono })}` : ''} · ${rankName(copas.total)}`;
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
       <p class="kicker">${t('win')} · ${t('competitiveWin')}</p>
@@ -5721,6 +5796,7 @@ function mostrarVictoria() {
       <p class="nota">${t('fruits', { count: juego.fruits, unit: fruitUnit(juego.fruits) })} · ${t('competitiveDown', { count: caidos })}</p>
       <p class="nota">${copasTexto}</p>
     </div>
+    ${bloqueSubidaRango(copas)}
     <div class="acciones">
       <button class="principal" type="button" data-accion="retry">${t('retry')} <kbd>R</kbd></button>
       <button type="button" data-accion="home">${t('menu')} <kbd>esc</kbd></button>

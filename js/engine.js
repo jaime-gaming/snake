@@ -1,6 +1,30 @@
 import { K, DIRS, bfsStep } from './grid.js?v=3';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+
+// color del cuerpo: el lento entra azul y se va apagando; el veneno, verde
+const TINTE_VENENO_MS = 2800;
+const COLOR_LENTO = '#2f6fe0';
+const COLOR_LENTO_CABEZA = '#6fa8ff';
+const COLOR_VENENO = '#2f9e44';
+const COLOR_VENENO_CABEZA = '#6ede8a';
+
+function hexRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function mezclaColor(a, b, t) {
+  const ca = hexRgb(a);
+  const cb = hexRgb(b);
+  const k = clamp(t, 0, 1);
+  const c = ca.map((v, i) => Math.round(v + (cb[i] - v) * k));
+  return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function rgbaColor(hex, alpha) {
+  return `rgba(${hexRgb(hex).join(',')},${clamp(alpha, 0, 1).toFixed(3)})`;
+}
 const rand = (n) => Math.floor(Math.random() * n);
 
 // cuánto le apetece cada potenciador a una serpiente que juega sola
@@ -53,7 +77,7 @@ export class Game {
     this.hitStop = 0;
     this.crash = null;
     this.wallTicks = 0;
-    this.fx = { ghost: 0, slow: 0, shield: 0, double: 0 };
+    this.fx = { ghost: 0, slow: 0, shield: 0, double: 0, veneno: 0 };
     this.bonus = null;
     this.power = null;
     this.hunter = null;
@@ -186,7 +210,7 @@ export class Game {
     this.speed = this.cfg.startSpeed;
     this.chain = 0;
     this.chainTimer = 0;
-    this.fx = { ghost: 0, slow: 0, shield: 0, double: 0 };
+    this.fx = { ghost: 0, slow: 0, shield: 0, double: 0, veneno: 0 };
     this.turbo = false;
     this.acc = 0;
     this.queue = [];
@@ -287,7 +311,7 @@ export class Game {
       this.updateFx(dt * 0.25);
       return;
     }
-    for (const k of ['ghost', 'slow', 'shield', 'double']) {
+    for (const k of ['ghost', 'slow', 'shield', 'double', 'veneno']) {
       if (this.fx[k] > 0) this.fx[k] = Math.max(0, this.fx[k] - dt);
     }
     if (this.state === 'running') {
@@ -889,6 +913,8 @@ export class Game {
     }
     this.chain = 0;
     this.chainTimer = 0;
+    // el cuerpo se tiñe de verde y se le pasa el color mientras el veneno se va
+    this.fx.veneno = TINTE_VENENO_MS;
     this.flash = Math.max(this.flash, 0.58);
     this.shake = Math.max(this.shake, 7);
     this.burst(x + 0.5, y + 0.5, 18, '#7a0d0d', 8);
@@ -1666,6 +1692,23 @@ export class Game {
     const pasoFantasma = this.ghostPaso;
     const rellenoFantasma = (1 - pasoFantasma) * 0.82;
     const contornoFantasma = 0.9;
+    // el lento deja un azul que se recupera solo; el veneno manda mientras dura
+    const tinteLento = clamp((this.fx.slow || 0) / POWER_INFO.slow.ms, 0, 1);
+    const tinteVeneno = clamp((this.fx.veneno || 0) / TINTE_VENENO_MS, 0, 1);
+    const colorCuerpo = mezclaColor(
+      mezclaColor('#e8e8e8', COLOR_LENTO, tinteLento),
+      COLOR_VENENO,
+      tinteVeneno,
+    );
+    const colorCabeza = mezclaColor(
+      mezclaColor('#ffffff', COLOR_LENTO_CABEZA, tinteLento),
+      COLOR_VENENO_CABEZA,
+      tinteVeneno,
+    );
+    const rellenoCuerpo = rgbaColor(colorCuerpo, rellenoFantasma);
+    const rellenoCabeza = rgbaColor(colorCabeza, rellenoFantasma);
+    const contornoCuerpo = rgbaColor(colorCuerpo, contornoFantasma);
+    const contornoCabeza = rgbaColor(colorCabeza, contornoFantasma + 0.05);
     const visibles = this.crash ? Math.max(0, this.body.length - this.crash.popped) : this.body.length;
 
     ctx.save();
@@ -1677,14 +1720,14 @@ export class Game {
       const y0 = Math.round(oy + p.y * cell) + hueco;
       if (fantasma) {
         if (rellenoFantasma > 0) {
-          ctx.fillStyle = `rgba(255,255,255,${rellenoFantasma.toFixed(3)})`;
+          ctx.fillStyle = rellenoCuerpo;
           ctx.fillRect(x0, y0, tamano, tamano);
         }
-        ctx.strokeStyle = `rgba(255,255,255,${contornoFantasma.toFixed(3)})`;
+        ctx.strokeStyle = contornoCuerpo;
         ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
         ctx.strokeRect(x0 + 0.5, y0 + 0.5, tamano - 1, tamano - 1);
       } else {
-        ctx.fillStyle = i === 0 ? '#ffffff' : '#e8e8e8';
+        ctx.fillStyle = i === 0 ? colorCabeza : colorCuerpo;
         ctx.fillRect(x0, y0, tamano, tamano);
       }
       if (protegida) {
@@ -1703,14 +1746,14 @@ export class Game {
       const y0 = Math.round(oy + punta.y * cell) + huecoCabeza;
       if (fantasma) {
         if (rellenoFantasma > 0) {
-          ctx.fillStyle = `rgba(255,255,255,${rellenoFantasma.toFixed(3)})`;
+          ctx.fillStyle = rellenoCabeza;
           ctx.fillRect(x0, y0, tamanoCabeza, tamanoCabeza);
         }
-        ctx.strokeStyle = `rgba(255,255,255,${(contornoFantasma + 0.05).toFixed(3)})`;
+        ctx.strokeStyle = contornoCabeza;
         ctx.lineWidth = Math.max(1, Math.round(cell * 0.06));
         ctx.strokeRect(x0 + 0.5, y0 + 0.5, tamanoCabeza - 1, tamanoCabeza - 1);
       } else {
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = colorCabeza;
         ctx.fillRect(x0, y0, tamanoCabeza, tamanoCabeza);
       }
       if (protegida) {

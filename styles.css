@@ -215,6 +215,47 @@ button:disabled {
   min-width: 0;
 }
 
+/* En competitivo el acto y la ventaja se leen como dos recuadros de la barra. */
+#topbar.competitivo .stats {
+  align-items: center;
+  gap: 7px;
+}
+
+#topbar.competitivo .meta,
+#topbar.competitivo .best {
+  flex: 0 1 auto;
+  padding: 2px 7px;
+  border: 1px solid var(--line2);
+  background: #080808;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--fg);
+  line-height: 1.35;
+}
+
+#topbar.competitivo .best {
+  margin-left: auto;
+  padding-left: 6px;
+}
+
+#topbar.competitivo .meta:empty,
+#topbar.competitivo .best:empty {
+  display: none;
+}
+
+#topbar.competitivo .meta[data-fase="sprint"],
+#topbar.competitivo .meta[data-fase="final"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+#topbar.competitivo .meta.golpe,
+#topbar.competitivo .best.golpe {
+  background: var(--fg);
+  color: #000;
+  border-color: var(--fg);
+}
+
 .tools {
   display: flex;
   gap: 5px;
@@ -265,6 +306,44 @@ button:disabled {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+/* la luz de la arena cambia con el acto: un halo tenue que no tapa los tableros */
+#stage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  background: radial-gradient(ellipse at center, transparent 44%, rgba(255, 255, 255, 0.055) 100%);
+}
+
+#stage[data-fase="apertura"]::after {
+  opacity: 0.45;
+}
+
+#stage[data-fase="presion"]::after {
+  opacity: 0.8;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(255, 255, 255, 0.09) 100%);
+}
+
+#stage[data-fase="sprint"]::after {
+  opacity: 1;
+  background: radial-gradient(ellipse at center, transparent 36%, rgba(255, 43, 43, 0.12) 100%);
+}
+
+#stage[data-fase="final"]::after {
+  opacity: 1;
+  background: radial-gradient(ellipse at center, transparent 30%, rgba(255, 43, 43, 0.2) 100%);
+  animation: final-late 1.6s steps(2, end) infinite;
+}
+
+@keyframes final-late {
+  50% {
+    opacity: 0.55;
+  }
 }
 
 /* el marco lo dibuja el motor a bloques: aquí no hay borde fijo */
@@ -415,15 +494,17 @@ button:disabled {
 /* barra de progreso del rango: bloques, sin adornos */
 .comp-barra {
   position: relative;
-  height: 7px;
+  height: 8px;
   width: 100%;
-  background: #161616;
+  background: #101010;
+  border: 1px solid var(--line2);
   display: flex;
 }
 
 .comp-barra i {
   display: block;
   height: 100%;
+  min-width: 2px;
   background: var(--fg);
   transition: width 0.3s ease;
 }
@@ -514,6 +595,10 @@ button:disabled {
 
 .escalon.aqui .rango-icono[data-rango="5"] i.lleno {
   background: var(--accent);
+}
+
+.rango-icono[data-rango="5"] {
+  border: 1px solid var(--accent);
 }
 
 /* tres datos cortos, en fila */
@@ -634,8 +719,9 @@ button:disabled {
 
 .rango-icono {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 3px;
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(5, 1fr);
+  gap: 2px;
   width: 64px;
   height: 64px;
   flex: none;
@@ -643,6 +729,8 @@ button:disabled {
 
 .rango-icono i {
   display: block;
+  min-width: 0;
+  min-height: 0;
   background: #191919;
 }
 
@@ -785,6 +873,64 @@ button:disabled {
   }
 }
 
+/* subida de rango: un solo momento, con el icono nuevo a bloques */
+.subida-rango {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--fg);
+  background: #080808;
+  color: var(--fg);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  animation: subida-rango 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.subida-rango .rango-icono {
+  width: 34px;
+  height: 34px;
+  gap: 1px;
+  flex: none;
+}
+
+.subida-rango .rango-icono i.lleno {
+  animation: subida-bloque 0.55s ease-out both;
+}
+
+.subida-rango > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes subida-rango {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.94);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.02);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes subida-bloque {
+  0% {
+    opacity: 0.15;
+    transform: scale(0.25);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* nivel superado: el aviso, en grande */
 .fin-cabeza .cifra.superado {
   font-size: clamp(26px, 6.4vmin, 54px);
@@ -798,6 +944,7 @@ button:disabled {
 /* competitivo: cuatro tableros separados, cada uno con su serpiente */
 #arena {
   /* tu tablero ocupa la columna ancha y las tres filas; los rivales van en fila */
+  background: radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.035), transparent 62%);
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
   grid-template-rows: repeat(3, minmax(0, 1fr));
@@ -864,6 +1011,13 @@ button:disabled {
 .tablero.lider canvas {
   border-color: var(--fg);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 0 18px rgba(255, 255, 255, 0.12);
+  animation: lider-latido 1.9s ease-in-out infinite;
+}
+
+@keyframes lider-latido {
+  50% {
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6), 0 0 28px rgba(255, 255, 255, 0.2);
+  }
 }
 
 .tablero.lider .tablero-puesto {
@@ -872,6 +1026,11 @@ button:disabled {
 
 .tablero.mio canvas {
   border-color: var(--fg);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 0 20px rgba(255, 255, 255, 0.07);
+}
+
+.tablero.lider.mio canvas {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6), 0 0 32px rgba(255, 255, 255, 0.24);
 }
 
 .tablero.mio figcaption {
@@ -881,6 +1040,22 @@ button:disabled {
 .tablero.caido,
 .tablero.revive canvas {
   opacity: 0.4;
+}
+
+/* un choque enciende el marco del tablero un instante */
+.tablero.golpe canvas {
+  border-color: var(--accent);
+  animation: tablero-golpe 0.3s steps(2, end);
+}
+
+.tablero.golpe figcaption {
+  color: var(--accent);
+}
+
+@keyframes tablero-golpe {
+  50% {
+    box-shadow: 0 0 0 2px var(--accent), 0 0 34px rgba(255, 43, 43, 0.4);
+  }
 }
 
 .tablero.revive figcaption {
@@ -1919,7 +2094,12 @@ button.foco {
     opacity: 1;
   }
 
-  .tablero.protegido canvas {
+  .tablero.protegido canvas,
+  .tablero.lider canvas,
+  .tablero.golpe canvas,
+  #stage[data-fase="final"]::after,
+  .subida-rango,
+  .subida-rango .rango-icono i.lleno {
     animation: none;
   }
 }

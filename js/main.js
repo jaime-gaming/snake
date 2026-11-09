@@ -29,6 +29,7 @@ const CLAVE_ANTIGUA = 'snake.frenzy.v1';
 
 const el = {
   stage: $('#stage'),
+  topbar: $('#topbar'),
   canvas: $('#board'),
   overlay: $('#overlay'),
   senal: $('#senal'),
@@ -555,9 +556,14 @@ function pantalla(nombre) {
   const antes = app.pantalla;
   app.pantalla = nombre;
   document.body.dataset.screen = nombre;
+  // en partida competitiva la barra lleva el acto y la ventaja en dos recuadros;
+  // fuera de la partida vuelve a su aspecto normal
+  const enArena = app.modo === 'competitive' && ['playing', 'paused', 'countdown'].includes(nombre);
+  if (el.topbar) el.topbar.classList.toggle('competitivo', enArena);
+  if (el.stage && !enArena) delete el.stage.dataset.fase;
   if (!app.juego) actualizarEfectos(null);
   if (el.arena) {
-    el.arena.hidden = !(app.modo === 'competitive' && ['playing', 'paused', 'countdown'].includes(nombre));
+    el.arena.hidden = !enArena;
     if (!el.arena.hidden) ajustarArena();
   }
   // el lienzo de un solo tablero sólo se aparta cuando manda la arena
@@ -1591,6 +1597,16 @@ function bonoPuntosCompetitivo() {
 }
 
 // copas de la partida: se suman una vez, al cerrar el resultado
+// la subida de rango se celebra una vez, con el icono nuevo y sin llenar la pantalla
+function bloqueSubidaRango(copas) {
+  if (!copas || !copas.subio) return '';
+  const info = rankInfo(copas.total);
+  return `<div class="subida-rango" role="status">
+      ${iconoRango(info.nivel)}
+      <span>${t('newRank', { name: copas.subio })}</span>
+    </div>`;
+}
+
 function copasDePartida(puesto) {
   if (!app.copas) {
     const antes = guardado.competitive.points;
@@ -1642,6 +1658,8 @@ function aplicarFase() {
   app.fase = fase.id;
   for (const tab of app.tableros) tab.juego.cfg.scoreBoost = fase.boost;
   if (el.relojFase) el.relojFase.textContent = `×${fase.boost}`;
+  // la luz del escenario sigue al acto: blanco tenue, presión y recta final roja
+  if (el.stage) el.stage.dataset.fase = app.tiempoPartida <= 10000 ? 'final' : fase.id;
   // el cambio de acto se marca en la barra de arriba, sin tapar ningún tablero;
   // el aviso de verdad vive en el marcador en vivo de cada tablero
   if (cambio && app.pantalla === 'playing') {
@@ -1687,12 +1705,23 @@ function dificultadRivales(nivel) {
   return DIFICULTAD_RIVALES[i];
 }
 
-// el icono del rango: una barra más por cada nivel, todo a bloques
+// el icono del rango: una figura de bloques distinta por cada peldaño
+const DIBUJOS_RANGO = [
+  ['.....', '.....', '.###.', '.###.', '.....'], // bronce
+  ['.....', '..#..', '.###.', '..#..', '.....'], // plata
+  ['..#..', '.###.', '#####', '.###.', '..#..'], // oro
+  ['#...#', '.#.#.', '..#..', '.#.#.', '#...#'], // platino
+  ['.###.', '#...#', '#...#', '#...#', '.###.'], // diamante
+  ['#.#.#', '#####', '#####', '.###.', '..#..'], // maestro
+];
+
 function iconoRango(nivel) {
-  const barras = [1, 2, 3, 4, 5, 6][Math.max(0, Math.min(5, nivel || 0))];
+  const n = Math.max(0, Math.min(DIBUJOS_RANGO.length - 1, Number(nivel) || 0));
   let celdas = '';
-  for (let i = 0; i < 6; i++) celdas += `<i${i < barras ? ' class="lleno"' : ''}></i>`;
-  return `<span class="rango-icono" data-rango="${nivel || 0}" aria-hidden="true">${celdas}</span>`;
+  for (const fila of DIBUJOS_RANGO[n]) {
+    for (const celda of fila) celdas += `<i${celda === '#' ? ' class="lleno"' : ''}></i>`;
+  }
+  return `<span class="rango-icono" data-rango="${n}" aria-hidden="true">${celdas}</span>`;
 }
 
 function nombreTablero(i) {
@@ -1935,6 +1964,7 @@ function eventoRival(i, tipo, datos) {
   if (tipo === 'die') {
     perderPuntos(tab);
     audio.play('rivalDie');
+    parpadear(el.tableros[i]);
     actualizarTableros();
   }
 }
@@ -2204,6 +2234,7 @@ function eventosJuego(tipo, datos) {
       if (app.modo === 'competitive') {
         perderPuntos(app.tableros[0]);
         parpadear(el.score);
+        parpadear(el.tableros[0]);
         break;
       }
       app.temporizador = setTimeout(mostrarFin, 900);
@@ -2316,7 +2347,6 @@ function mostrarFinCompetitivo() {
     rankName(copas.total),
   ];
   if (copas.bono > 0) notas.push(t('pointsBonus', { count: copas.bono }));
-  if (copas.subio) notas.push(t('newRank', { name: copas.subio }));
   const orden = ordenCompetitivo();
   const podio = orden.map((tab, i) => `<li class="${tab.esJugador ? 'tu' : ''}"><b>#${i + 1}</b><span>${tab.nombre}</span><em>${puntos(tab.juego.score)}</em></li>`).join('');
   const caidas = (app.tableros[0] && app.tableros[0].caidas) || 0;
@@ -2331,6 +2361,7 @@ function mostrarFinCompetitivo() {
       <p class="cifra" data-cifra>${puntos(juego.score)}</p>
       <p class="nota">${notas.join(' · ')}</p>
     </div>
+    ${bloqueSubidaRango(copas)}
     <ol class="podio">${podio}</ol>
     <p class="nota comp-resumen">${resumen}</p>
     <div class="acciones">
@@ -2352,7 +2383,7 @@ function mostrarVictoria() {
   if (!juego || juego.state !== 'running') return;
   const caidos = TOTAL_TABLEROS - 1;
   const copas = copasDePartida(1);
-  const copasTexto = `${t('pointsWon', { count: copas.ganadas })}${copas.bono > 0 ? ` · ${t('pointsBonus', { count: copas.bono })}` : ''} · ${rankName(copas.total)}${copas.subio ? ` · ${t('newRank', { name: copas.subio })}` : ''}`;
+  const copasTexto = `${t('pointsWon', { count: copas.ganadas })}${copas.bono > 0 ? ` · ${t('pointsBonus', { count: copas.bono })}` : ''} · ${rankName(copas.total)}`;
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
       <p class="kicker">${t('win')} · ${t('competitiveWin')}</p>
@@ -2360,6 +2391,7 @@ function mostrarVictoria() {
       <p class="nota">${t('fruits', { count: juego.fruits, unit: fruitUnit(juego.fruits) })} · ${t('competitiveDown', { count: caidos })}</p>
       <p class="nota">${copasTexto}</p>
     </div>
+    ${bloqueSubidaRango(copas)}
     <div class="acciones">
       <button class="principal" type="button" data-accion="retry">${t('retry')} <kbd>R</kbd></button>
       <button type="button" data-accion="home">${t('menu')} <kbd>esc</kbd></button>

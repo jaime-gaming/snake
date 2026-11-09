@@ -1114,6 +1114,10 @@ process.stdout.write('arte, idioma y tableros\n');
   const idiomas = fs.readFileSync(path.join(RAIZ, 'js/i18n.js'), 'utf8');
   const wrangler = fs.readFileSync(path.join(RAIZ, 'wrangler.toml'), 'utf8');
 
+  comprobar(motor.includes("COLOR_LENTO = '#2f6fe0'")
+    && motor.includes('this.fx.veneno = TINTE_VENENO_MS')
+    && motor.includes('const colorCuerpo = mezclaColor('),
+  'potenciadores: el lento y el veneno no tiñen la serpiente');
   comprobar(!!MODES.competitive && GROUPS.flatMap((g) => g.modes).includes('competitive'),
     'falta el modo competitivo en los grupos');
   comprobar(/\n  start\(\) \{/.test(motor) && /\n  decidir\(opciones = \{\}\) \{/.test(motor),
@@ -1139,8 +1143,8 @@ process.stdout.write('arte, idioma y tableros\n');
     && main.includes('El cuerpo se extiende de forma continua y lenta'),
   'marca: la e no se aproxima despacio y de forma continua a la manzana');
 
-  comprobar(pagina.includes('snake.js?v=26') && pagina.includes('styles.css?v=26') && pagina.includes('<title>Snake</title>'),
-    'caché: falta el sello de la página (v26)');
+  comprobar(pagina.includes('snake.js?v=27') && pagina.includes('styles.css?v=27') && pagina.includes('<title>Snake</title>'),
+    'caché: falta el sello de la página (v27)');
   comprobar(pagina.includes('id="lang-switch"') && idiomas.includes("en: {")
     && idiomas.includes('export function setLanguage'), 'idioma: falta el selector ES/EN o su traducción');
   setLanguage('en');
@@ -1282,6 +1286,11 @@ process.stdout.write('cuatro tableros, sorteo y cuenta atrás\n');
   'competitivo: la dificultad interna de los rivales sigue a la vista');
   comprobar(main.includes('iconoRango(info.nivel)') && css.includes('.rango-icono[data-rango="5"]'),
     'competitivo: falta el icono de rango a bloques');
+  comprobar(main.includes('const DIBUJOS_RANGO') && css.includes('grid-template-columns: repeat(5, 1fr)'),
+    'competitivo: los iconos de rango no tienen una figura propia por peldaño');
+  comprobar(main.includes('bloqueSubidaRango(copas)') && css.includes('.subida-rango')
+    && css.includes('@keyframes subida-rango'),
+  'competitivo: falta la animación de subida de rango');
   comprobar(main.includes('function dibujarArena()') && main.includes('function actualizarTableros()')
     && main.includes('vivosCompetitivo()'),
   'competitivo: faltan el dibujo y los rótulos de los cuatro tableros');
@@ -1316,6 +1325,9 @@ process.stdout.write('cuatro tableros, sorteo y cuenta atrás\n');
     && css.includes('.comp-fases') && css.includes('.podio')
     && pagina.includes('id="reloj-fase"'),
   'competitivo: faltan los tres actos, el marcador en vivo o el aviso dentro de la barra');
+  comprobar(main.includes('el.topbar.classList.toggle') && css.includes('#topbar.competitivo .meta')
+    && main.includes('el.stage.dataset.fase') && css.includes('#stage[data-fase="sprint"]'),
+  'competitivo: la barra o la luz del escenario no siguen el acto');
   comprobar(css.includes('flex-direction: column') && css.includes('flex: 0 0 auto') && css.includes('margin: auto 0')
     && input.includes('scrollUp') && input.includes('repetible') && main.includes('repetido = false'),
   'interfaz: la capa de menús no se puede recorrer entera o el teclado no repite el scroll');
