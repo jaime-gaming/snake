@@ -5,8 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta http-equiv="Cache-Control" content="no-store">
 <meta name="theme-color" content="#000000">
-<meta id="meta-description" name="description" content="Snake v1.0: campaña, modos infinitos y una serpiente cazadora.">
-<title>Snake — v1.0</title>
+<link rel="canonical" href="https://snake.jaime-gaming.com/">
+<meta id="meta-description" name="description" content="Snake: serpientes de bloques en blanco y negro. Campaña, infinitos, contrarreloj y un competitivo con más rivales en cada rango.">
+<title>Snake</title>
+<script>
+  // las URLs antiguas del despliegue bajo /snake/ vuelven a la raíz; así los
+  // assets nunca se piden en /snake/styles.css (donde el fallback SPA podía
+  // devolver el HTML y dejar la página sin estilos).
+  (function () {
+    if (location.protocol === 'file:') return;
+    var ruta = location.pathname;
+    if (ruta !== '/snake' && ruta.indexOf('/snake/') !== 0) return;
+    var resto = ruta.replace(/^\/snake/, '') || '/';
+    location.replace(resto + location.search + location.hash);
+  })();
+</script>
 <script>
   (function () {
     var route = new URLSearchParams(location.search).get('route');
@@ -19,16 +32,21 @@
     }
   })();
 </script>
-<script>document.write('<base href="' + (location.protocol === 'file:' ? './' : '/snake/') + '">');</script>
+<script>
+  (function () {
+    var base = location.protocol === 'file:' ? './' : '/';
+    document.write('<base href="' + base + '">');
+  })();
+</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Crect x='2' y='7' width='4' height='4' fill='%23fff'/%3E%3Crect x='6' y='7' width='4' height='4' fill='%23fff'/%3E%3Crect x='10' y='7' width='2' height='4' fill='%23fff'/%3E%3Crect x='13' y='2' width='3' height='3' fill='%23ff2b2b'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="styles.css?v=16">
+<link rel="stylesheet" href="styles.css?v=29">
 </head>
 <body data-screen="home">
   <div id="app">
     <header id="topbar">
-      <span class="brand">snake<span class="dot">.</span><span class="version">v1.0</span></span>
+      <span class="brand">snake<span class="dot">.</span></span>
       <div class="stats">
-        <span id="hud-meta" class="meta" data-i18n="loading">cargando…</span>
+        <span id="hud-meta" class="meta">cargando…</span>
         <span id="hud-score" class="score">—</span>
         <span id="hud-mult" class="mult"></span>
         <span id="hud-best" class="best"></span>
@@ -41,21 +59,29 @@
             <option value="en">EN</option>
           </select>
         </label>
-        <button id="btn-mute" class="tool" type="button" aria-pressed="true" data-i18n-title="soundTitleOn" title="sonido activo (M)">
-          <i class="led" aria-hidden="true"></i><span data-i18n="sound">sonido</span>
-        </button>
-        <button id="btn-pause" class="tool" type="button" disabled data-i18n-title="pauseTitle" title="pausa (P)" data-i18n="pause">pausa</button>
+      </div>
+      <div id="comp-ventaja" hidden aria-live="polite">
+        <b id="comp-ventaja-texto"></b>
+        <span id="comp-ventaja-detalle"></span>
+        <span id="comp-publico" role="img" aria-label=""></span>
       </div>
     </header>
 
     <main id="stage">
-      <!-- BORRAR-COMPETITIVO · reloj, sorteo y rivales retirados para v1.0. -->
       <canvas id="board" data-i18n-aria="board" aria-label="tablero"></canvas>
-      <div id="prompt" data-i18n="startPrompt">pulsa una dirección</div>
+      <div id="arena" hidden>
+        <figure class="tablero"><canvas></canvas><figcaption><span class="tablero-puesto"></span><span class="tablero-nombre">tú</span><span class="tablero-datos">0</span><span class="tablero-estado"></span></figcaption></figure>
+        <figure class="tablero"><canvas></canvas><figcaption><span class="tablero-puesto"></span><span class="tablero-nombre">kobra</span><span class="tablero-datos">0</span><span class="tablero-estado"></span></figcaption></figure>
+        <figure class="tablero"><canvas></canvas><figcaption><span class="tablero-puesto"></span><span class="tablero-nombre">víbora</span><span class="tablero-datos">0</span><span class="tablero-estado"></span></figcaption></figure>
+        <figure class="tablero"><canvas></canvas><figcaption><span class="tablero-puesto"></span><span class="tablero-nombre">mamba</span><span class="tablero-datos">0</span><span class="tablero-estado"></span></figcaption></figure>
+      </div>
+      <div id="cuenta" hidden aria-hidden="true"><b>3</b></div>
+      <div id="reloj" hidden aria-hidden="true"><b>30</b><span>s</span><em id="reloj-fase"></em></div>
+      <div id="senal" data-i18n="startSignal">pulsa una dirección</div>
       <div id="overlay"></div>
     </main>
 
-    <p id="aviso-foco" data-i18n="focusHint" hidden>haz clic en el tablero para que responda el teclado</p>
+    <p id="aviso-foco" data-i18n="focusHint" hidden>toca el tablero para despertar el teclado</p>
 
     <footer id="footer">
       <div id="combo" aria-hidden="true"><div id="chain-bar"></div></div>
@@ -66,7 +92,6 @@
     </footer>
   </div>
 
-  <!-- BORRAR-COMPETITIVO · solo se conserva el barrido de pantalla. -->
   <canvas id="barrido" hidden aria-hidden="true"></canvas>
 
   <div id="fatal" hidden role="alert">
@@ -78,7 +103,7 @@
   </div>
 
   <noscript>
-    <div id="sin-js" data-i18n="noScript">este juego necesita javascript activado.</div>
+    <div id="sin-js" data-i18n="noScript">este juego necesita su motor en marcha.</div>
   </noscript>
 
   <script>
@@ -103,16 +128,15 @@
       window.addEventListener('error', function (evento) {
         var objetivo = evento.target || {};
         if (objetivo.tagName === 'SCRIPT' || objetivo.tagName === 'LINK') {
-          fallo('no se pudo cargar ' + (objetivo.src || objetivo.href));
+          fallo('no se pudo colocar una pieza del tablero.');
           return;
         }
-        var archivo = (evento.filename || '').split('/').pop();
-        fallo((evento.message || 'error de javascript') + (archivo ? ' · ' + archivo + ':' + (evento.lineno || '?') : ''));
+        fallo(evento.message || 'el tablero ha perdido el trazo.');
       }, true);
 
       window.addEventListener('unhandledrejection', function (evento) {
         var motivo = evento.reason;
-        fallo('promesa rechazada: ' + ((motivo && motivo.message) || motivo));
+        fallo('el tablero ha hecho un movimiento imposible.');
       });
 
       document.getElementById('fatal-reload').addEventListener('click', function () {
@@ -121,12 +145,12 @@
 
       setTimeout(function () {
         if (!document.documentElement.dataset.booted) {
-          fallo('el juego no ha arrancado en 4 s. si acabas de actualizar, recarga limpio: puede haber una versión vieja en caché.');
+          fallo('el tablero no ha despertado en 4 s. vuelve a abrirlo.');
         }
       }, 4000);
     })();
   </script>
 
-  <script src="snake.js?v=16"></script>
+  <script src="snake.js?v=29"></script>
 </body>
 </html>

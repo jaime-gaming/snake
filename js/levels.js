@@ -34,11 +34,14 @@ const cut = (...celdas) => celdas;
 const slit = (x, y, alto) => vline(x, y, alto);
 
 
+// rivales del competitivo: cada uno juega en su propio tablero
+export const RIVAL_NAMES = ['KOBRA', 'VÍBORA', 'MAMBA', 'BOA', 'PITÓN', 'ANACONDA', 'SIERPE'];
+
 // grupos del menú: cada uno es una subpágina con sus modos
-// BORRAR-COMPETITIVO · modo retirado en la preparación de v1.0.
 export const GROUPS = [
   { name: 'progreso', tag: 'rutas con obstáculos', modes: ['campaign'] },
-  { name: 'infinitos', tag: 'puntuación sin final', modes: ['classic', 'frenzy', 'hunter'] },
+  { name: 'infinitos', tag: 'puntuación sin final', modes: ['classic', 'frenzy', 'hunter', 'timed'] },
+  { name: 'competitivo', tag: 'rivales por rango a la vez', modes: ['competitive'] },
 ];
 
 export const MODE_ORDER = GROUPS.flatMap((g) => g.modes);
@@ -48,6 +51,8 @@ export const POWER_POOLS = {
   classic: ['ghost', 'slow', 'shrink', 'double'],
   frenzy: ['slow', 'shield', 'double'],
   hunter: ['ghost', 'shrink', 'shield'],
+  timed: ['slow', 'shield', 'double', 'ghost'],
+  competitive: ['ghost', 'shield', 'slow', 'shrink'],
 };
 
 const base = {
@@ -77,14 +82,20 @@ export const MODES = {
     ...base,
     id: 'frenzy',
     name: 'FRENESÍ',
-    tag: 'bordes abiertos y la velocidad sube sola',
+    tag: 'bordes abiertos · olas de fruta y picos de velocidad',
     startSpeed: 132,
     minSpeed: 68,
     accelPerFood: 0.55,
     rampPerSec: 0.28,
     wrap: true,
+    waveEvery: 16000,
+    waveFruits: 3,
+    waveTtl: 9000,
+    pulseEvery: 11000,
+    pulseMs: 1600,
     bonusEvery: 4,
-    powerEvery: 6,
+    powerEvery: 5,
+    veneno: { chance: 0.2, puntos: 20 },
     powerPool: POWER_POOLS.frenzy,
   },
   hunter: {
@@ -103,7 +114,33 @@ export const MODES = {
     powerEvery: 6,
     powerPool: POWER_POOLS.hunter,
   },
-
+  timed: {
+    ...base,
+    id: 'timed',
+    name: 'CONTRARRELOJ',
+    tag: '30 segundos que aceleran · una manzana va envenenada',
+    startSpeed: 140,
+    minSpeed: 82,
+    accelPerFood: 1.4,
+    timeAttack: { start: 30000, perFruit: 3200, max: 150000, rampMs: 60000 },
+    veneno: { ms: 5000, chance: 0.4 },
+    bonusEvery: 5,
+    powerEvery: 7,
+    powerPool: POWER_POOLS.timed,
+  },
+  competitive: {
+    ...base,
+    id: 'competitive',
+    name: 'COMPETITIVO',
+    tag: 'rivales por rango · tres actos · el sprint final vale doble',
+    startSpeed: 132,
+    minSpeed: 78,
+    accelPerFood: 0.9,
+    rampPerSec: 0.16,
+    bonusEvery: 5,
+    powerEvery: 6,
+    powerPool: POWER_POOLS.competitive,
+  },
 };
 
 // campaña: 20 niveles. empieza lento y acaba a 104 ms por casilla
@@ -122,22 +159,25 @@ const level = (name, goal, speed, walls, extra = {}) => {
     goal,
     speed,
     walls: limpios,
-    minSpeed: Math.max(72, speed - 32),
-    accelPerFood: 1.2,
+    minSpeed: Math.max(120, speed - 16),
+    accelPerFood: 1.1,
     bonusEvery: 4,
     powerEvery: 6,
     powerPool: POWER_POOLS.campaign,
-    chainWindow: 3400,
+    chainWindow: 3600,
     ...resto,
   };
 };
 
-const nivel = (i, name, goal, walls, extra = {}) =>
-  level(name, goal, Math.round(155 - i * 2.6), walls, {
-    accelPerFood: Number((1.2 + i * 0.055).toFixed(2)),
-    chainWindow: Math.max(2600, 3400 - i * 32),
+const nivel = (i, name, goal, walls, extra = {}) => {
+  // la meta crece despacio al final: menos tiempo expuesto en los mapas cerrados
+  const objetivo = i <= 15 ? goal : Math.min(goal, 13 + Math.floor((i - 16) / 6));
+  return level(name, objetivo, Math.round(155 - i * 0.72), walls, {
+    accelPerFood: Number((1.1 + i * 0.02).toFixed(2)),
+    chainWindow: Math.max(2900, 3600 - i * 24),
     ...extra,
   });
+};
 
 export const LEVELS = [
   nivel(0, 'LLANO', 4, []),
@@ -180,6 +220,7 @@ export const LEVELS = [
   ]),
 
   nivel(7, 'REJILLA', 8, [
+    // modificador: muros que van saliendo durante la partida
     ...hline(1, 3, 3),
     ...hline(9, 3, 3),
     ...hline(17, 3, 3),
@@ -190,7 +231,7 @@ export const LEVELS = [
     ...hline(17, 11, 3),
     ...hline(5, 15, 3),
     ...hline(13, 15, 3),
-  ]),
+  ], { mods: ['muros'], wallFrom: 5, wallEvery: 4, wallMax: 10 }),
 
   nivel(8, 'JAULA', 9, [
     ...holes(ring(3, 3, 14, 14), [
@@ -223,6 +264,9 @@ export const LEVELS = [
       ...vline(4, 8, 4),
       ...vline(15, 8, 4),
     ],
+    // modificador: sin turbo en este nivel
+    mods: ['turbo'],
+    noTurbo: true,
   }),
 
   nivel(12, 'REJILLA DOBLE', 11, [
@@ -272,7 +316,11 @@ export const LEVELS = [
     ...vline(13, 4, 10),
     ...holes(vline(7, 4, 4), [[7, 6]]),
     ...holes(vline(8, 10, 4), [[8, 12]]),
-  ]),
+  ], {
+    // modificador: reloj, 60 s y cada manzana suma 2,5 s
+    mods: ['reloj'],
+    timeAttack: { start: 60000, perFruit: 2500, max: 95000 },
+  }),
 
   nivel(16, 'DIENTES', 13, [
     ...vline(5, 0, 7),
@@ -329,7 +377,110 @@ export const LEVELS = [
     ...holes(vline(2, 7, 6), [[2, 9], [2, 10]]),
     ...holes(vline(17, 7, 6), [[17, 9], [17, 10]]),
   ]),
+
+  // ---- diez niveles más, de 15 a 18 manzanas ----
+
+  nivel(20, 'TÚNEL', 15, [
+    ...hline(0, 6, 20),
+    ...hline(0, 13, 20),
+  ], {
+    cut: [[5, 6], [14, 6], [5, 13], [14, 13]],
+    // modificador: los muros salen más a menudo
+    mods: ['muros'],
+    wallFrom: 4,
+    wallEvery: 3,
+    wallMax: 14,
+  }),
+
+  nivel(21, 'ESQUINAS', 15, [
+    ...rect(0, 0, 7, 3),
+    ...rect(13, 0, 7, 3),
+    ...rect(0, 17, 7, 3),
+    ...rect(13, 17, 7, 3),
+  ]),
+
+  nivel(22, 'TRES ANILLOS', 15, [
+    ...holes(ring(2, 2, 6, 6), [[2, 4], [7, 5], [4, 2], [5, 7]]),
+    ...holes(ring(12, 2, 6, 6), [[12, 4], [17, 3], [14, 2], [15, 7]]),
+    ...holes(ring(7, 12, 6, 6), [[7, 14], [12, 15], [9, 12], [10, 17]]),
+  ]),
+
+  nivel(23, 'CUATRO CAJAS', 16, [
+    // cajas huecas con cuatro bocas: se cruzan por dentro, sin callejones de una casilla
+    ...holes(ring(3, 3, 4, 4), [[3, 4], [6, 4], [4, 3], [4, 6]]),
+    ...holes(ring(13, 3, 4, 4), [[13, 4], [16, 4], [15, 3], [15, 6]]),
+    ...holes(ring(3, 13, 4, 4), [[3, 14], [6, 14], [5, 16], [4, 13]]),
+    ...holes(ring(13, 13, 4, 4), [[13, 14], [16, 14], [14, 16], [15, 13]]),
+  ]),
+
+  nivel(24, 'DIENTES DOBLES', 16, [
+    ...vline(4, 0, 8),
+    ...vline(4, 12, 8),
+    ...vline(10, 4, 4),
+    ...vline(10, 12, 4),
+    ...vline(15, 0, 8),
+    ...vline(15, 12, 8),
+  ]),
+
+  nivel(25, 'ZIGZAG TRIPLE', 16, [
+    ...hline(0, 3, 15),
+    ...hline(5, 7, 15),
+    ...hline(0, 11, 15),
+    ...hline(5, 15, 15),
+  ], {
+    // modificador: la serpiente roja también sale en campaña
+    mods: ['cazador'],
+    hunter: true,
+    hunterPellets: 2,
+    hunterCap: 12,
+    hunterSight: 3,
+  }),
+
+  nivel(26, 'ANILLO CUADRADO', 17, [
+    ...holes(ring(4, 4, 12, 12), [
+      [4, 9], [4, 10], [15, 9], [15, 10],
+      [9, 4], [10, 4], [9, 15], [10, 15],
+    ]),
+    ...rect(9, 9, 2, 2),
+  ]),
+
+  nivel(27, 'OCHO PILARES', 17, [
+    ...rect(3, 3, 2, 2),
+    ...rect(9, 3, 2, 2),
+    ...rect(15, 3, 2, 2),
+    ...rect(3, 9, 2, 2),
+    ...rect(15, 9, 2, 2),
+    ...rect(3, 15, 2, 2),
+    ...rect(9, 15, 2, 2),
+    ...rect(15, 15, 2, 2),
+  ]),
+
+  nivel(28, 'LABERINTO II', 17, [
+    ...vline(4, 0, 16),
+    ...vline(9, 4, 16),
+    ...vline(14, 0, 16),
+  ], {
+    cut: [
+      [4, 5], [4, 14],
+      [9, 8], [9, 17],
+      [14, 3], [14, 12],
+    ],
+  }),
+
+  nivel(29, 'GRAN FINAL', 18, [
+    ...holes(ring(2, 2, 16, 16), [
+      [2, 9], [2, 10], [17, 9], [17, 10],
+      [9, 2], [10, 2], [9, 17], [10, 17],
+    ]),
+    ...rect(9, 9, 2, 2),
+    ...hline(8, 5, 4),
+    ...hline(8, 14, 4),
+  ], {
+    // modificadores finales: reloj y muros que salen
+    mods: ['reloj', 'muros'],
+    timeAttack: { start: 75000, perFruit: 3000, max: 120000 },
+    wallFrom: 8,
+    wallEvery: 5,
+    wallMax: 10,
+  }),
 ];
-
-
-// BORRAR-COMPETITIVO · los rangos, arenas y modificadores se retiraron para v1.0.

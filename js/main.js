@@ -1,8 +1,8 @@
-import { Game, POWER_INFO } from './engine.js?v=3';
-import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS } from './levels.js?v=3';
+import { Game, POWER_INFO } from './engine.js?v=6';
+import { MODES, LEVELS, GROUPS, MODE_ORDER, COLS, ROWS, RIVAL_NAMES } from './levels.js?v=6';
 import { audio } from './audio.js?v=3';
-import { attachInput } from './input.js?v=3';
-import { t, getLanguage, setLanguage, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, appleUnit, routeSlug, routeWords } from './i18n.js?v=16';
+import { attachInput } from './input.js?v=5';
+import { t, getLanguage, setLanguage, modeName, modeTag, groupName, groupTag, levelName, fruitUnit, appleUnit, routeSlug, routeWords, rankName, rankInfo, rankList } from './i18n.js?v=21';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -13,9 +13,8 @@ function avisar(mensaje) {
 
 function comprobarPiezas() {
   const faltan = [];
-  // BORRAR-COMPETITIVO · retirado en v1.0; sólo quedan los modos publicados.
-  if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.hunter || MODES.competitive) faltan.push('modos');
-  if (!Array.isArray(LEVELS) || LEVELS.length !== 20) faltan.push('niveles');
+  if (!MODES || !MODES.classic || !MODES.frenzy || !MODES.hunter || !MODES.timed || !MODES.competitive) faltan.push('modos');
+  if (!Array.isArray(LEVELS) || LEVELS.length !== 30) faltan.push('niveles');
   if (typeof Game !== 'function') faltan.push('motor');
   if (faltan.length) {
     avisar(t('missingPieces', { pieces: faltan.join(', ') }));
@@ -28,34 +27,64 @@ const ORDEN = MODE_ORDER;
 const CLAVE = 'snake.v2';
 const CLAVE_ANTIGUA = 'snake.frenzy.v1';
 
+// los controles de sonido y pausa ya no viven en la barra: siguen
+// existiendo como disparadores internos para M/P y para el menú de ajustes.
+function controlOculto(id, texto) {
+  const boton = document.createElement('button');
+  boton.id = id;
+  boton.type = 'button';
+  boton.hidden = true;
+  boton.tabIndex = -1;
+  boton.setAttribute('aria-hidden', 'true');
+  boton.textContent = texto;
+  return boton;
+}
+
 const el = {
   stage: $('#stage'),
+  topbar: $('#topbar'),
   canvas: $('#board'),
   overlay: $('#overlay'),
-  prompt: $('#prompt'),
+  senal: $('#senal'),
+  reloj: $('#reloj'),
+  relojFase: $('#reloj-fase'),
+  arena: $('#arena'),
+  cuenta: $('#cuenta'),
+  tableros: [...document.querySelectorAll('#arena .tablero')],
   meta: $('#hud-meta'),
   score: $('#hud-score'),
   best: $('#hud-best'),
+  compVentaja: $('#comp-ventaja'),
+  compVentajaTexto: $('#comp-ventaja-texto'),
+  compVentajaDetalle: $('#comp-ventaja-detalle'),
+  compPublico: $('#comp-publico'),
   mult: $('#hud-mult'),
   chain: $('#chain-bar'),
   combo: $('#combo'),
   effects: $('#effects'),
-  mute: $('#btn-mute'),
-  pause: $('#btn-pause'),
+  mute: controlOculto('btn-mute', 'sonido'),
+  pause: controlOculto('btn-pause', 'pausa'),
   lang: $('#lang-switch'),
   hint: $('#hint'),
   avisoFoco: $('#aviso-foco'),
   barrido: $('#barrido'), // transición de bloques entre pantallas
 };
 
+el.pause.disabled = true;
 const pincel = el.canvas.getContext('2d', { alpha: false });
 
 /* ---------------------------------------------------------- récords */
 
+function nuevaStats() {
+  return { games: 0, wins: 0, fruits: 0, timeMs: 0, bestChain: 0 };
+}
+
 function nuevoRegistro() {
   return {
-    best: { classic: 0, frenzy: 0, hunter: 0 },
+    best: { classic: 0, frenzy: 0, hunter: 0, timed: 0, competitive: 0 },
     campaign: { unlocked: 1 },
+    competitive: { points: 0 },
+    stats: nuevaStats(),
     sound: true,
     crt: true,
   };
@@ -89,6 +118,14 @@ function leerGuardado() {
     LEVELS.length,
     Math.max(1, parseInt(camp.unlocked, 10) || 1),
   );
+  const comp = bruto.competitive || {};
+  // «cups» era el nombre antiguo: se sigue leyendo para no perder el progreso
+  datos.competitive.points = Math.max(0, parseInt(comp.points ?? comp.cups, 10) || 0);
+  // las estadísticas del perfil también vuelven al recargar
+  const st = bruto.stats || {};
+  for (const campo of ['games', 'wins', 'fruits', 'timeMs', 'bestChain']) {
+    datos.stats[campo] = Math.max(0, parseInt(st[campo], 10) || 0);
+  }
   if (typeof bruto.sound === 'boolean') datos.sound = bruto.sound;
   if (typeof bruto.crt === 'boolean') datos.crt = bruto.crt;
   return datos;
@@ -122,12 +159,26 @@ const app = {
   marca: 0,
   reloj: 0,
   temporizador: 0,
+  sorteoRuleta: 0,
   record: false,
+  statsAcum: 0,
   chips: new Map(),
+  arena: null, // mapa + modificador sorteados en la partida competitiva
+  copas: null, // resultado de copas al cerrar la partida
+  tableros: [], // un tablero por serpiente en el competitivo
+  cuenta: 0, // cuenta atrás de 3 s antes de salir
+  puestoMuerte: 0,
+  totalJugadores: 4, // competitivo: tú + rivales, según el rango
+  arenaColumnas: 1, // columnas de rivales en la rejilla
+  arenaFilas: 3,
+  fase: null, // apertura, presión o sprint
 };
 
 const rutas = { listas: false, restaurando: false };
-const BASE_PATH = '/snake/';
+// la base es siempre la raíz del dominio: las rutas se resuelven con
+// history.pushState y los assets viven en /styles.css y /snake.js. Las URLs
+// antiguas bajo /snake/ se redirigen a su sitio antes de cargar nada.
+const BASE_PATH = location.protocol === 'file:' ? './' : '/';
 
 const vista = { cell: 24, ox: 0, oy: 0, width: 480, height: 480, dpr: 1 };
 const vistaDemo = { cell: 10, ox: 0, oy: 0, width: 200, height: 200, dpr: 1 };
@@ -145,13 +196,18 @@ function esTactil() {
 }
 
 function turboPermitido() {
-  return app.pantalla === 'playing' && app.modo !== 'hunter';
+  return app.pantalla === 'playing' && app.modo !== 'hunter' && app.modo !== 'timed'
+    && !(app.juego && app.juego.cfg && app.juego.cfg.noTurbo);
 }
 
 function pararTemporizador() {
   if (app.temporizador) {
     clearTimeout(app.temporizador);
     app.temporizador = 0;
+  }
+  if (app.sorteoRuleta) {
+    clearInterval(app.sorteoRuleta);
+    app.sorteoRuleta = 0;
   }
 }
 
@@ -345,13 +401,97 @@ function dibujarMarca(dt) {
 
 /* ---------------------------------------------------------- lienzo */
 
+// los tableros del competitivo: cada uno en su celda de la rejilla
+// la rejilla crece con el número de serpientes: una columna de rivales en
+// bronce, dos a partir de oro y tres en diamante/maestro. tu tablero siempre
+// ocupa la columna ancha y todas las filas.
+function rejillaArena(total) {
+  const rivales = Math.max(1, total - 1);
+  const columnas = rivales <= 4 ? 1 : rivales <= 6 ? 2 : 3;
+  const filas = Math.max(1, Math.ceil(rivales / columnas));
+  app.totalJugadores = total;
+  app.arenaColumnas = columnas;
+  app.arenaFilas = filas;
+  el.arena.style.gridTemplateColumns = `minmax(0, 1.7fr) repeat(${columnas}, minmax(0, 1fr))`;
+  el.arena.style.gridTemplateRows = `repeat(${filas}, minmax(0, 1fr))`;
+  el.arena.dataset.jugadores = String(total);
+  return { columnas, filas };
+}
+
+// crea un tablero por serpiente reutilizando la figura de la página; así el
+// número de rivales puede cambiar sin tocar el HTML ni el motor.
+function prepararTableros(total) {
+  const modelo = el.arena && el.arena.querySelector('.tablero');
+  if (!modelo) return;
+  const { columnas } = rejillaArena(total);
+  const patron = modelo.cloneNode(true);
+  el.arena.replaceChildren();
+  for (let i = 0; i < total; i++) {
+    const fig = patron.cloneNode(true);
+    fig.classList.remove('mio', 'lider', 'caido', 'revive', 'protegido', 'golpe');
+    if (i === 0) fig.classList.add('mio');
+    fig.dataset.indice = String(i);
+    fig.removeAttribute('data-nombre');
+    if (i === 0) {
+      fig.style.gridColumn = '1';
+      fig.style.gridRow = '1 / -1';
+    } else {
+      const k = i - 1;
+      fig.style.gridColumn = String(2 + (k % columnas));
+      fig.style.gridRow = String(1 + Math.floor(k / columnas));
+    }
+    const nombre = fig.querySelector('.tablero-nombre');
+    if (nombre) nombre.textContent = nombreTablero(i);
+    const puesto = fig.querySelector('.tablero-puesto');
+    if (puesto) puesto.textContent = '';
+    const datos = fig.querySelector('.tablero-datos');
+    if (datos) datos.textContent = '0';
+    const estado = fig.querySelector('.tablero-estado');
+    if (estado) estado.textContent = '';
+    el.arena.appendChild(fig);
+  }
+  el.tableros.length = 0;
+  el.tableros.push(...el.arena.querySelectorAll('.tablero'));
+}
+
+function ajustarArena() {
+  if (!el.arena || !app.tableros.length) return;
+  const caja = el.arena.getBoundingClientRect();
+  const ancho = caja.width || el.stage.getBoundingClientRect().width || 480;
+  const alto = caja.height || el.stage.getBoundingClientRect().height || 480;
+  const hueco = 6;
+  const columnas = Math.max(1, app.arenaColumnas || 1);
+  const filas = Math.max(1, app.arenaFilas || 3);
+  // la rejilla da más sitio a tu tablero: 1.7 partes frente a 1 de cada rival
+  const anchoMio = ((ancho - hueco * columnas) * 1.7) / (1.7 + columnas);
+  const anchoRival = ((ancho - hueco * columnas) * 1.0) / (1.7 + columnas);
+  const altoRival = (alto - hueco * (filas - 1)) / filas;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  for (const tab of app.tableros) {
+    const fig = el.tableros[tab.i];
+    if (!fig) continue;
+    const disponible = tab.esJugador
+      ? Math.min(anchoMio, alto - 16)
+      : Math.min(anchoRival, altoRival - 16);
+    const lado = Math.max(70, disponible);
+    const lienzo = fig.querySelector('canvas');
+    if (!lienzo) continue;
+    lienzo.style.width = `${lado}px`;
+    lienzo.style.height = `${lado}px`;
+    lienzo.width = Math.round(lado * dpr);
+    lienzo.height = Math.round(lado * dpr);
+    tab.pincel = lienzo.getContext('2d', { alpha: false });
+    tab.vista = { cell: lado / Math.max(COLS, ROWS), ox: 0, oy: 0, width: lado, height: lado, dpr };
+  }
+}
+
 function ajustarLienzo() {
   const caja = el.stage.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
   // si el contenedor aún no tiene tamaño (pestaña oculta, iframe recién creado),
   // tiramos de la ventana para no quedarnos con un tablero de 0 px
   const anchoCaja = caja.width || window.innerWidth || 480;
-  const altoCaja = caja.height || Math.max(240, (window.innerHeight || 720) * 0.6);
+  const altoCaja = (caja.height || Math.max(240, (window.innerHeight || 720) * 0.6)) - reservaReloj;
   // el tablero ocupa todo el hueco: celdas fraccionarias, sin bordes muertos
   const lado = Math.max(160, Math.min(anchoCaja, altoCaja) - 2);
   const celda = lado / Math.max(COLS, ROWS);
@@ -365,6 +505,7 @@ function ajustarLienzo() {
   Object.assign(vista, { cell: celda, ox: 0, oy: 0, width: ancho, height: alto, dpr });
 
   ajustarMarca();
+  if (!el.arena.hidden) ajustarArena();
 
   const lienzoDemo = document.getElementById('demo');
   if (lienzoDemo) {
@@ -464,7 +605,7 @@ function pintarBarrido(quitado) {
 }
 
 // se llama al cambiar de pantalla: la cortina ya está pintada antes de que el
-// navegador dibuje, así que nunca se ve la pantalla nueva a medio montar
+// tablero se pinte, así que nunca se ve la pantalla nueva a medio montar
 function taparPantalla() {
   if (!el.barrido || sinMovimiento()) return;
   if (!ajustarBarrido()) return;
@@ -489,8 +630,24 @@ function pantalla(nombre) {
   const antes = app.pantalla;
   app.pantalla = nombre;
   document.body.dataset.screen = nombre;
+  // en partida competitiva la barra lleva el acto y la ventaja en dos recuadros;
+  // fuera de la partida vuelve a su aspecto normal
+  const enArena = app.modo === 'competitive' && ['playing', 'paused', 'countdown'].includes(nombre);
+  if (el.topbar) el.topbar.classList.toggle('competitivo', enArena);
+  if (el.compVentaja) el.compVentaja.hidden = !enArena;
+  if (el.stage && !enArena) {
+    delete el.stage.dataset.fase;
+    delete el.stage.dataset.rango;
+  }
   if (!app.juego) actualizarEfectos(null);
-  // BORRAR-COMPETITIVO · pantallas y audio del modo retirados para v1.0.
+  if (el.arena) {
+    el.arena.hidden = !enArena;
+    if (!el.arena.hidden) ajustarArena();
+  }
+  // el lienzo de un solo tablero sólo se aparta cuando manda la arena
+  if (el.canvas) el.canvas.hidden = !el.arena.hidden;
+  if (el.cuenta && nombre !== 'countdown') el.cuenta.hidden = true;
+  actualizarReloj(app.juego);
   if (antes !== nombre) taparPantalla();
   actualizarPista();
   if (rutas.listas && !rutas.restaurando) sincronizarRuta(false);
@@ -511,7 +668,7 @@ function actualizarPista() {
   if (app.pantalla === 'playing') {
     el.hint.textContent = esTactil()
       ? t('hintSwipe')
-      : t(app.modo === 'hunter' ? 'hintGame' : 'hintGameTurbo');
+      : t(turboPermitido() ? 'hintGameTurbo' : 'hintGame');
     return;
   }
   el.hint.textContent = PISTAS[app.pantalla] ? t(PISTAS[app.pantalla]) : '';
@@ -543,33 +700,41 @@ function pantallaDeRuta() {
   if (!primera) return { tipo: 'home' };
 
   if (coincideRuta(primera, 'modes')) {
-    const grupo = coincideRuta(segunda || '', 'campaign') ? 0 : 1;
+    const grupo = coincideRuta(segunda || '', 'campaign') ? 0
+      : coincideRuta(segunda || '', 'competitive') ? 2 : 1;
     return { tipo: 'modes', grupo };
   }
   if (coincideRuta(primera, 'help')) return { tipo: 'help' };
   if (coincideRuta(primera, 'settings')) return { tipo: 'settings' };
+  if (coincideRuta(primera, 'profile')) return { tipo: 'profile' };
   if (coincideRuta(primera, 'campaign')) {
     const nivel = /^(?:nivel|level)-?(\d{1,2})$/.exec(segunda || '');
     return nivel
       ? { tipo: 'campaign-level', nivel: Number(nivel[1]) - 1 }
       : { tipo: 'levels' };
   }
-  for (const modo of ['classic', 'frenzy', 'hunter']) {
+  for (const modo of ['classic', 'frenzy', 'hunter', 'timed', 'competitive']) {
     if (coincideRuta(primera, modo)) return { tipo: 'game', modo };
   }
   if (coincideRuta(primera, 'endless')) return { tipo: 'modes', grupo: 1 };
+  if (coincideRuta(primera, 'competitive')) return { tipo: 'modes', grupo: 2 };
   return { tipo: 'home' };
 }
 
 function rutaDeEstado() {
   if (app.pantalla === 'home') return BASE_PATH;
   if (app.pantalla === 'modes') {
-    const grupo = app.grupo === 0 ? 'campaign' : 'endless';
+    const grupo = app.grupo === 0 ? 'campaign' : app.grupo === 2 ? 'competitive' : 'endless';
     return `${BASE_PATH}${routeSlug('modes')}/${routeSlug(grupo)}`;
   }
   if (app.pantalla === 'help') return `${BASE_PATH}${routeSlug('help')}`;
   if (app.pantalla === 'settings') return `${BASE_PATH}${routeSlug('settings')}`;
+  if (app.pantalla === 'profile') return `${BASE_PATH}${routeSlug('profile')}`;
   if (app.pantalla === 'levels') return `${BASE_PATH}${routeSlug('campaign')}`;
+  if (['compmenu', 'preview', 'countdown', 'won', 'dead'].includes(app.pantalla)
+    && app.modo === 'competitive') {
+    return `${BASE_PATH}${routeSlug('competitive')}`;
+  }
   if (app.modo === 'campaign') {
     return `${BASE_PATH}${routeSlug('campaign')}/nivel-${dosDigitos(app.nivel + 1)}`;
   }
@@ -594,6 +759,10 @@ function mostrarRuta(ruta) {
     mostrarAyuda();
   } else if (ruta.tipo === 'settings') {
     mostrarAjustes('modes');
+  } else if (ruta.tipo === 'profile') {
+    mostrarPerfil();
+  } else if (ruta.tipo === 'game' && ruta.modo === 'competitive') {
+    menuCompetitivo();
   } else if (ruta.tipo === 'game') {
     empezarPartida(ruta.modo, 0);
   } else if (ruta.tipo === 'campaign-level') {
@@ -647,33 +816,128 @@ function actualizarMarcador() {
     meta = t('campaignLevel', {
       number: dosDigitos(app.nivel + 1),
       name: levelName(nivel.name),
-    });
+    }) + (nivel.mods && nivel.mods.length
+      ? ' · ' + nivel.mods.map((m) => t('mod_' + m)).join(' + ')
+      : '');
     marca = t('applesRemaining', { count: restantes, unit: appleUnit(restantes) });
     el.mult.textContent = appleUnit(recogidas);
     el.mult.classList.remove('activo');
     el.chain.style.width = '0%';
+    delete el.meta.dataset.fase;
   } else {
     valor = puntos(juego.score);
-    meta = t('fruitScore', { mode: modeName(app.modo), fruits: juego.fruits, unit: fruitUnit(juego.fruits) });
     marca = t('best', { score: mejorActual() });
     const mult = juego.multiplier;
     el.mult.textContent = mult > 1 ? `×${mult}` : '';
     el.mult.classList.toggle('activo', mult > 1);
     el.chain.style.width = `${((juego.chainTimer / juego.chainWindow) * 100 || 0).toFixed(1)}%`;
+    // en contrarreloj la meta es el reloj; en competitivo, cuántos quedan vivos
+    if (app.modo === 'timed') {
+      const s = Math.max(0, Math.ceil(juego.timeLeft / 1000));
+      meta = t('timeLeft', { s });
+      el.meta.classList.toggle('urgente', s <= 10 && juego.state === 'running');
+    } else if (app.modo === 'competitive') {
+      // el hueco libre de la barra superior: acto, recta final y ventaja.
+      // nada de carteles encima de los tableros.
+      const fase = faseDeRonda();
+      const final = app.tiempoPartida <= 10000;
+      const nombre = final
+        ? t('phaseFinal')
+        : t(fase.id === 'presion' ? 'phasePressure' : fase.id === 'sprint' ? 'phaseSprint' : 'phaseOpening');
+      meta = `${nombre} ×${fase.boost}`;
+      el.meta.dataset.fase = final ? 'final' : fase.id;
+      const jugador = app.tableros[0];
+      const ventaja = jugador ? textoVentaja(jugador, ordenCompetitivo()) : '';
+      const lider = !!jugador && jugador.puesto === 1 && jugador.juego.score > 0;
+      // la ventaja deja la barra pequeña y pasa a la banda grande de estado
+      marca = '';
+      if (el.compVentaja) {
+        const estado = lider ? 'lider' : 'persigue';
+        if (el.compVentaja.dataset.estado !== estado) el.compVentaja.dataset.estado = estado;
+        const rango = String(nivelDeRango());
+        if (el.compVentaja.dataset.rango !== rango) el.compVentaja.dataset.rango = rango;
+        const texto = ventaja || t('compTied');
+        if (el.compVentajaTexto.textContent !== texto) el.compVentajaTexto.textContent = texto;
+        const detalle = jugador
+          ? `${rankName(guardado.competitive.points)} · #${jugador.puesto} · ${puntos(jugador.juego.score)}`
+          : '';
+        if (el.compVentajaDetalle.textContent !== detalle) el.compVentajaDetalle.textContent = detalle;
+        if (el.compPublico) {
+          const cuenta = Number(el.compPublico.dataset.cuenta) || 0;
+          const etiqueta = t('compCrowd', { count: cuenta });
+          if (el.compPublico.getAttribute('aria-label') !== etiqueta) {
+            el.compPublico.setAttribute('aria-label', etiqueta);
+          }
+        }
+      }
+      el.best.classList.toggle('vivo', lider);
+      el.meta.classList.remove('urgente');
+      if (el.best.title) el.best.removeAttribute('title');
+    } else {
+      meta = t('fruitScore', { mode: modeName(app.modo), fruits: juego.fruits, unit: fruitUnit(juego.fruits) });
+      el.meta.classList.remove('urgente');
+      delete el.meta.dataset.fase;
+      el.best.classList.remove('vivo');
+    }
   }
+  if (app.modo !== 'timed') el.meta.classList.remove('urgente');
 
   if (el.score.textContent !== valor) el.score.textContent = valor;
   if (el.meta.textContent !== meta) el.meta.textContent = meta;
   if (el.best.textContent !== marca) el.best.textContent = marca;
   if (esCampana) el.mult.setAttribute('aria-label', appleUnit(juego.fruits));
   else el.mult.removeAttribute('aria-label');
+  if (app.modo !== 'competitive' && el.best.title) el.best.removeAttribute('title');
 
-  el.prompt.classList.toggle('visible', juego.state === 'ready');
+  el.senal.classList.toggle('visible', juego.state === 'ready');
   el.pause.textContent = t(app.pantalla === 'paused' ? 'resume' : 'pause');
   el.pause.title = t(app.pantalla === 'paused' ? 'resumeTitle' : 'pauseTitle');
   el.pause.disabled = app.pantalla !== 'playing' && app.pantalla !== 'paused';
 
+  actualizarReloj(juego);
   actualizarEfectos(juego);
+}
+
+// el reloj grande tiene su propio hueco: el tablero se encoge para no taparse
+let reservaReloj = 0;
+
+function reservarReloj(visible) {
+  const nodo = el.reloj;
+  if (!nodo) return;
+  nodo.hidden = !visible;
+  el.stage.classList.toggle('con-reloj', visible);
+  reservaReloj = visible
+    ? Math.max(0, Math.round(nodo.getBoundingClientRect().height || 0) + 8)
+    : 0;
+  el.stage.style.paddingTop = reservaReloj ? `${reservaReloj}px` : '';
+  ajustarLienzo();
+}
+
+// contrarreloj: el tiempo va en grande encima del tablero (también si el
+// modificador de una arena competitiva es el reloj)
+function actualizarReloj(juego) {
+  const nodo = el.reloj;
+  if (!nodo) return;
+  const ronda = app.modo === 'competitive' && app.tableros.length > 0;
+  const conReloj = ronda || (juego && juego.cfg && juego.cfg.timeAttack && app.modo === 'timed');
+  const visible = !!conReloj && (app.pantalla === 'playing' || app.pantalla === 'paused');
+  if (nodo.hidden === visible || el.stage.classList.contains('con-reloj') !== visible) {
+    reservarReloj(visible);
+  }
+  if (!visible) return;
+  const s = ronda
+    ? Math.max(0, Math.ceil((app.tiempoPartida || 0) / 1000))
+    : Math.max(0, Math.ceil(juego.timeLeft / 1000));
+  const cifra = nodo.querySelector('b');
+  if (cifra && cifra.textContent !== String(s)) cifra.textContent = String(s);
+  const fase = faseDeRonda();
+  nodo.classList.toggle('sprint', ronda && fase.id === 'sprint');
+  if (el.relojFase) {
+    const texto = ronda ? `×${fase.boost}` : '';
+    if (el.relojFase.textContent !== texto) el.relojFase.textContent = texto;
+  }
+  nodo.classList.toggle('urgente', s <= 10 && juego.state === 'running');
+  nodo.classList.toggle('parado', juego.state !== 'running');
 }
 
 function actualizarEfectos(juego) {
@@ -741,6 +1005,41 @@ function marcar(boton) {
   }
 }
 
+// desplaza la capa abierta: las flechas también mueven la UI en zonas de scroll
+function desplazarUI(paso, repetido = false) {
+  const caja = el.overlay;
+  if (!caja || !caja.classList.contains('abierto')) return false;
+  const salto = repetido
+    ? Math.max(18, Math.round((caja.clientHeight || 480) * 0.07))
+    : Math.max(60, Math.round((caja.clientHeight || 480) * 0.32));
+  const antes = caja.scrollTop;
+  const tope = Math.max(0, caja.scrollHeight - caja.clientHeight);
+  caja.scrollTop = Math.max(0, Math.min(tope, antes + paso * salto));
+  return caja.scrollTop !== antes;
+}
+
+function llevarALaVista(nodo) {
+  const caja = el.overlay;
+  if (!caja || !caja.classList.contains('abierto') || typeof nodo.getBoundingClientRect !== 'function') {
+    if (nodo && typeof nodo.scrollIntoView === 'function') {
+      try {
+        nodo.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      } catch (err) {
+        /* sin scroll, no pasa nada */
+      }
+    }
+    return;
+  }
+  const cajaRect = caja.getBoundingClientRect();
+  const nodoRect = nodo.getBoundingClientRect();
+  const margen = Math.min(84, Math.max(24, (cajaRect.height || 480) * 0.12));
+  if (nodoRect.top < cajaRect.top + margen) {
+    caja.scrollTop -= cajaRect.top + margen - nodoRect.top;
+  } else if (nodoRect.bottom > cajaRect.bottom - margen) {
+    caja.scrollTop += nodoRect.bottom - (cajaRect.bottom - margen);
+  }
+}
+
 function enfocarUI(indice) {
   const lista = botonesUI();
   if (!lista.length) {
@@ -750,14 +1049,7 @@ function enfocarUI(indice) {
   foco.indice = ((indice % lista.length) + lista.length) % lista.length;
   pintarFoco();
   marcar(lista[foco.indice]);
-  const activo = lista[foco.indice];
-  if (activo && typeof activo.scrollIntoView === 'function') {
-    try {
-      activo.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    } catch (err) {
-      /* sin scroll, no pasa nada */
-    }
-  }
+  llevarALaVista(lista[foco.indice]);
 }
 
 function enfocarPrimero(selector) {
@@ -798,19 +1090,15 @@ function fijarFoco(boton) {
   foco.indice = indice;
   pintarFoco();
   marcar(boton);
-  if (typeof boton.scrollIntoView === 'function') {
-    try {
-      boton.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    } catch (err) {
-      /* sin scroll, no pasa nada */
-    }
-  }
+  llevarALaVista(boton);
 }
 
 // flechas: recorren el anillo de la pantalla; en la rejilla, ↑↓ saltan de fila
-function moverFoco(dx, dy) {
+function moverFoco(dx, dy, repetido = false) {
   const anillo = anilloFoco();
   if (!anillo.length) return;
+  // con un solo botón (ayuda, perfil) las flechas mueven la propia capa
+  if (anillo.length === 1 && desplazarUI(dy || dx, repetido)) return;
   const actual = botonesUI()[foco.indice];
   let i = anillo.indexOf(actual);
   if (i < 0) {
@@ -903,6 +1191,7 @@ function mostrarInicio() {
       <nav class="filas" aria-label="${t('groupAria')}">${filas}</nav>
       <p class="pie">
         <button class="link" type="button" data-accion="help">${t('controls')}</button>
+        <button class="link" type="button" data-accion="profile">${t('profile')}</button>
       </p>
     </div>
     <aside class="inicio-demo">
@@ -920,7 +1209,7 @@ function mostrarInicio() {
   el.pause.disabled = true;
   el.pause.textContent = t('pause');
   el.pause.title = t('pauseTitle');
-  el.prompt.classList.remove('visible');
+  el.senal.classList.remove('visible');
   pantalla('home');
   seleccionarGrupo(app.grupo);
   enfocarPrimero(`.row[data-grupo="${app.grupo}"]`);
@@ -983,7 +1272,7 @@ function mostrarModos(indice = app.grupo) {
   el.pause.disabled = true;
   el.pause.textContent = t('pause');
   el.pause.title = t('pauseTitle');
-  el.prompt.classList.remove('visible');
+  el.senal.classList.remove('visible');
   pantalla('modes');
   seleccionarModo(0);
   enfocarPrimero('.row[data-modo]');
@@ -1005,6 +1294,7 @@ function seleccionarModo(i) {
 
 function elegirModo(modo) {
   if (modo === 'campaign') mostrarNiveles();
+  else if (modo === 'competitive') menuCompetitivo();
   else empezarPartida(modo, 0);
 }
 
@@ -1024,7 +1314,7 @@ function mostrarNiveles() {
   el.pause.disabled = true;
   el.pause.textContent = t('pause');
   el.pause.title = t('pauseTitle');
-  el.prompt.classList.remove('visible');
+  el.senal.classList.remove('visible');
 }
 
 function pintarNiveles() {
@@ -1036,7 +1326,7 @@ function pintarNiveles() {
   el.pause.disabled = true;
   el.pause.textContent = t('pause');
   el.pause.title = t('pauseTitle');
-  el.prompt.classList.remove('visible');
+  el.senal.classList.remove('visible');
 
   const celdas = LEVELS.map((nivel, i) => {
     const bloqueado = i >= guardado.campaign.unlocked;
@@ -1143,7 +1433,7 @@ function mostrarAyuda() {
   el.pause.disabled = true;
   el.pause.textContent = t('pause');
   el.pause.title = t('pauseTitle');
-  el.prompt.classList.remove('visible');
+  el.senal.classList.remove('visible');
 
   ponerOverlay(`<div class="panel ayuda">
     <div class="niveles-cabeza">
@@ -1165,9 +1455,13 @@ function mostrarAyuda() {
     <p class="kicker">${t('gameRules')}</p>
     <ul class="reglas">
       <li>${t('ruleChain')}</li>
+      <li>${t('rulePoison')}</li>
       <li>${t('ruleCampaign')}</li>
       <li>${t('ruleModes')}</li>
       <li>${t('ruleHunter')}</li>
+      <li>${t('ruleTimed')}</li>
+      <li>${t('ruleCompetitive')}</li>
+      <li>${t('ruleMods')}</li>
       <li>${t('powerBasics')}</li>
       <li>${t('powerAdvanced')}</li>
     </ul>
@@ -1222,17 +1516,754 @@ function mostrarAjustes(desde = app.pantalla, focoInicial = 'button[data-accion=
   el.pause.disabled = true;
   el.pause.textContent = t('pause');
   el.pause.title = t('pauseTitle');
-  el.prompt.classList.remove('visible');
+  el.senal.classList.remove('visible');
   pantalla('settings');
   enfocarPrimero(focoInicial);
 }
 
-// BORRAR-COMPETITIVO · rangos y salas eliminados en v1.0.
+
+/* ---------------------------------------------------------- perfil
+   estadísticas globales de todo lo jugado */
+
+function formatoTiempo(ms) {
+  const total = Math.floor(Math.max(0, ms) / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return h > 0 ? `${h}h ${dosDigitos(m)}m` : `${m}m ${dosDigitos(s)}s`;
+}
+
+function mostrarPerfil() {
+  pararTemporizador();
+  app.juego = null;
+  app.demo = null;
+  const s = guardado.stats;
+  const fila = (indice, nombre, valor) => `<div class="row stat">
+    <span class="row-idx">${indice}</span>
+    <span class="row-name">${nombre}</span>
+    <span class="row-right">${valor}</span>
+  </div>`;
+
+  ponerOverlay(`<div class="panel niveles">
+    <div class="niveles-cabeza">
+      <div>
+        <p class="kicker">${t('profileHint')}</p>
+        <h2>${t('profileTitle')}</h2>
+      </div>
+      <button class="ghost" type="button" data-accion="home">${t('back')} <kbd>esc</kbd></button>
+    </div>
+    <div class="filas">
+      ${fila('01', t('statsGames'), puntos(s.games))}
+      ${fila('02', t('statsWins'), puntos(s.wins))}
+      ${fila('03', t('statsFruits'), puntos(s.fruits))}
+      ${fila('04', t('statsTime'), formatoTiempo(s.timeMs))}
+      ${fila('05', t('statsChain'), `×${Math.max(1, s.bestChain)}`)}
+      ${fila('06', t('statsBest'), puntos(mejorGlobal()))}
+      ${fila('07', t('statsPoints'), puntos(guardado.competitive.points))}
+      ${fila('08', t('statsRank'), rankName(guardado.competitive.points))}
+    </div>
+    <button class="row peligro" type="button" data-accion="wipe">
+      <span class="row-idx">09</span>
+      <span class="row-name">${t('eraseAll')}<small>${t('eraseAllHint')}</small></span>
+      <span class="row-right">→</span>
+    </button>
+  </div>`);
+
+  el.score.textContent = '—';
+  el.meta.textContent = t('profile');
+  el.best.textContent = '';
+  el.mult.textContent = '';
+  el.chain.style.width = '0%';
+  el.pause.disabled = true;
+  el.pause.textContent = t('pause');
+  el.pause.title = t('pauseTitle');
+  el.senal.classList.remove('visible');
+  pantalla('profile');
+  enfocarPrimero('button[data-accion="home"]');
+}
 
 /* ---------------------------------------------------------- partida */
 
+/* ---------------------------------------------------------- competitivo
+   partida rápida al estilo de siempre: mapa y modificador se sortean en cada
+   partida (los mismos para todos), cada serpiente nace en su parcela y al
+   final se ganan copas que suben de rango. */
+
+// la escalera del competitivo: cada rango abre mapas más cerrados y deja
+// entrar modificadores nuevos; la intensidad también sube peldaño a peldaño
+const ESCALERA_ARENAS = [
+  [2, 3, 4, 5],
+  [4, 5, 6, 7],
+  [6, 7, 8, 9, 10],
+  [10, 11, 12, 13, 14, 15],
+  [16, 17, 18, 19, 20, 21],
+  [22, 23, 24, 25, 26, 27, 28, 29],
+];
+const ESCALERA_MODS = [
+  ['muros'],
+  ['muros', 'reloj'],
+  ['muros', 'reloj', 'cazador'],
+  ['muros', 'reloj', 'cazador', 'turbo'],
+  ['muros', 'reloj', 'cazador', 'turbo', 'veneno'],
+  ['muros', 'reloj', 'cazador', 'turbo', 'veneno'],
+];
+const COPAS_POR_PUESTO = [25, 10, 5, 0];
+const BONO_POR_PUNTOS = { cada: 250, tope: 3 };
+
+function elegir(lista) {
+  return lista[Math.floor(Math.random() * lista.length)];
+}
+
+function nivelDeRango() {
+  return rankInfo(guardado.competitive.points).nivel;
+}
+
+function arenasDelRango() {
+  return ESCALERA_ARENAS[nivelDeRango()] || ESCALERA_ARENAS[0];
+}
+
+function modsDelRango() {
+  return ESCALERA_MODS[nivelDeRango()] || ESCALERA_MODS[0];
+}
+
+function ajusteDeRango() {
+  const nivel = nivelDeRango();
+  const t = nivel / (ESCALERA_ARENAS.length - 1);
+  return {
+    startSpeed: Math.min(150, 130 + nivel * 4),
+    wallFrom: Math.round(6 - 3 * t),
+    wallEvery: Math.round(6 - 2 * t),
+    wallMax: Math.round(8 + 6 * t),
+    relojStart: Math.round(52000 - 12000 * t),
+    hunterSight: Math.round(3 + 3 * t),
+    hunterCap: Math.round(10 + 6 * t),
+    venenoChance: Number((0.1 + 0.14 * t).toFixed(2)),
+  };
+}
+
+function sortearArena() {
+  const indice = elegir(arenasDelRango());
+  return { indice, mods: [elegir(modsDelRango())] };
+}
+
+// cada tablero recibe la misma arena y el mismo modificador: la carrera es justa
+function configuracionArena() {
+  const nivel = LEVELS[app.arena.indice];
+  const rango = ajusteDeRango();
+  const cfg = {
+    ...MODES.competitive,
+    walls: nivel.walls.slice(),
+    startSpeed: rango.startSpeed,
+    mods: app.arena.mods.slice(),
+  };
+  if (app.arena.mods.includes('muros')) {
+    Object.assign(cfg, { wallFrom: rango.wallFrom, wallEvery: rango.wallEvery, wallMax: rango.wallMax });
+  }
+  if (app.arena.mods.includes('reloj')) {
+    cfg.timeAttack = { start: rango.relojStart, perFruit: 3200, max: 120000, rampMs: 60000 };
+  }
+  if (app.arena.mods.includes('cazador')) {
+    Object.assign(cfg, { hunter: true, hunterPellets: 2, hunterCap: rango.hunterCap, hunterSight: rango.hunterSight });
+  }
+  if (app.arena.mods.includes('turbo')) cfg.noTurbo = true;
+  // el veneno no está por defecto: entra como modificador sorteado
+  if (app.arena.mods.includes('veneno')) cfg.veneno = { chance: rango.venenoChance, puntos: 20 };
+  return cfg;
+}
+
+
+function configuracionSuelta(modo) {
+  return { ...MODES[modo] };
+}
+
+function camposMods(datos) {
+  return {
+    ...(datos.mods ? { mods: datos.mods.slice() } : {}),
+    ...(datos.noTurbo ? { noTurbo: true } : {}),
+    ...(datos.timeAttack ? { timeAttack: datos.timeAttack } : {}),
+    ...(datos.wallFrom ? {
+      wallFrom: datos.wallFrom,
+      wallEvery: datos.wallEvery,
+      wallMax: datos.wallMax,
+    } : {}),
+    ...(datos.hunter ? {
+      hunter: true,
+      hunterPellets: datos.hunterPellets,
+      hunterCap: datos.hunterCap,
+      hunterSight: datos.hunterSight,
+    } : {}),
+  };
+}
+
+// una bonificación mínima por el marcador de la partida, además del puesto
+function bonoPuntosCompetitivo() {
+  const marcador = app.tableros[0] ? app.tableros[0].juego.score : app.juego ? app.juego.score : 0;
+  return Math.min(BONO_POR_PUNTOS.tope, Math.floor(Math.max(0, marcador) / BONO_POR_PUNTOS.cada));
+}
+
+// copas de la partida: se suman una vez, al cerrar el resultado
+// la subida de rango se celebra una vez, con el icono nuevo y sin llenar la pantalla
+const CHISPAS_RANGO = [
+  [-58, -26], [-40, 22], [-22, -40], [12, -36], [44, -24],
+  [60, 8], [34, 30], [-30, 34], [6, 40], [-62, 2],
+];
+
+function bloqueSubidaRango(copas) {
+  if (!copas || !copas.subio) return '';
+  const info = rankInfo(copas.total);
+  const antes = Number.isInteger(copas.nivelAntes) ? copas.nivelAntes : info.nivel;
+  const chispas = CHISPAS_RANGO.map(([x, y], i) =>
+    `<i style="--x:${x}px;--y:${y}px;--i:${i};--d:${120 + i * 24}ms"></i>`).join('');
+  return `<div class="subida-rango" data-rango="${info.nivel}" role="status">
+      <span class="subida-halo" aria-hidden="true"></span>
+      <span class="subida-iconos" aria-hidden="true">
+        <span class="subida-viejo">${iconoRango(antes)}</span>
+        <b class="subida-flecha">→</b>
+        <span class="subida-nuevo">${iconoRango(info.nivel)}</span>
+      </span>
+      <span class="subida-texto">
+        <b>${t('rankUp')}</b>
+        <strong>${copas.subio}</strong>
+        <em>${puntos(copas.total)} ${t('statsPoints')}</em>
+      </span>
+      <span class="subida-chispas" aria-hidden="true">${chispas}</span>
+    </div>`;
+}
+
+function copasDePartida(puesto) {
+  if (!app.copas) {
+    const antes = guardado.competitive.points;
+    const infoAntes = rankInfo(antes);
+    const rangoAntes = infoAntes.nombre;
+    const base = COPAS_POR_PUESTO[Math.min(3, Math.max(0, (puesto || 4) - 1))] || 0;
+    const bono = bonoPuntosCompetitivo();
+    const ganadas = base + bono;
+    guardado.competitive.points = Math.max(0, antes + ganadas);
+    guardar();
+    const infoAhora = rankInfo(guardado.competitive.points);
+    const rangoAhora = infoAhora.nombre;
+    app.copas = {
+      base,
+      bono,
+      ganadas,
+      total: guardado.competitive.points,
+      subio: rangoAhora !== rangoAntes ? rangoAhora : '',
+      nivelAntes: infoAntes.nivel,
+      nivelAhora: infoAhora.nivel,
+    };
+  }
+  return app.copas;
+}
+
+/* ---------------------------------------------------------- competitivo
+   tableros separados, uno por serpiente: el mismo mapa, el mismo
+   modificador y la misma dificultad para todos. gana quien aguanta más. */
+
+// más rivales según el rango: 4 en bronce, hasta 8 en diamante y maestro.
+const JUGADORES_POR_RANGO = [6, 6, 7, 8, 8, 8];
+const DURACION_RONDA = 60000; // 60 s por partida
+const CASTIGO_CAIDA = 10; // puntos que se pierden al chocar
+const GRACIA_MS = 1800; // protección al volver de una caída
+
+// tres actos de 20 s: la recta final paga el doble, así que hay que elegir
+// cuándo arriesgar la racha y cuándo guardarla
+const FASES_RONDA = [
+  { id: 'apertura', boost: 1 },
+  { id: 'presion', boost: 1.5 },
+  { id: 'sprint', boost: 2 },
+];
+
+function totalJugadores(nivel = nivelDeRango()) {
+  const i = Math.max(0, Math.min(JUGADORES_POR_RANGO.length - 1, Math.floor(Number(nivel) || 0)));
+  return JUGADORES_POR_RANGO[i];
+}
+
+function faseDeRonda() {
+  const restante = Number(app.tiempoPartida) || 0;
+  if (restante > 40000) return FASES_RONDA[0];
+  if (restante > 20000) return FASES_RONDA[1];
+  return FASES_RONDA[2];
+}
+
+function aplicarFase() {
+  const fase = faseDeRonda();
+  const cambio = app.fase !== fase.id;
+  app.fase = fase.id;
+  for (const tab of app.tableros) tab.juego.cfg.scoreBoost = fase.boost;
+  if (el.relojFase) el.relojFase.textContent = `×${fase.boost}`;
+  // la luz del escenario sigue al acto: blanco tenue, presión y recta final roja
+  if (el.stage) el.stage.dataset.fase = app.tiempoPartida <= 10000 ? 'final' : fase.id;
+  // el cambio de acto se marca en la barra de arriba, sin tapar ningún tablero;
+  // el aviso de verdad vive en el marcador en vivo de cada tablero
+  if (cambio && app.pantalla === 'playing') {
+    parpadear(el.meta);
+    if (fase.id === 'sprint') audio.play('turbo');
+    else if (fase.id === 'presion') audio.play('power');
+  }
+}
+
+function ordenCompetitivo() {
+  return [...app.tableros].sort((a, b) => b.juego.score - a.juego.score || a.i - b.i);
+}
+
+function textoVentaja(jugador, orden) {
+  if (!jugador || !orden.length) return '';
+  if (!orden.some((tab) => tab.juego.score > 0)) return '';
+  const puesto = jugador.puesto || orden.length;
+  if (puesto === 1) {
+    const segundo = orden[1];
+    if (segundo && Math.abs(segundo.juego.score - jugador.juego.score) < 0.5) return t('compTied');
+    return t('compLead');
+  }
+  const delante = orden[puesto - 2];
+  if (!delante) return '';
+  const diferencia = Math.max(0, Math.round(delante.juego.score - jugador.juego.score));
+  if (diferencia < 1) return t('compTied');
+  return t('compGap', { count: diferencia, place: `#${puesto - 1}` });
+}
+
+// variable interna: con el rango suben la reacción y la puntería, pero la
+// velocidad es exactamente la misma que la tuya. no se enseña en el menú.
+const DIFICULTAD_RIVALES = [
+  { cada: 190, fallo: 0.26 }, // bronce
+  { cada: 175, fallo: 0.22 }, // plata
+  { cada: 160, fallo: 0.18 }, // oro
+  { cada: 145, fallo: 0.14 }, // platino
+  { cada: 130, fallo: 0.1 }, // diamante
+  { cada: 115, fallo: 0.06 }, // maestro
+];
+
+function dificultadRivales(nivel) {
+  const i = Math.max(0, Math.min(DIFICULTAD_RIVALES.length - 1, Number(nivel) || 0));
+  return DIFICULTAD_RIVALES[i];
+}
+
+// el icono del rango: una figura de bloques distinta por cada peldaño
+const DIBUJOS_RANGO = [
+  ['.....', '.....', '.###.', '.###.', '.....'], // bronce
+  ['.....', '..#..', '.###.', '..#..', '.....'], // plata
+  ['..#..', '.###.', '#####', '.###.', '..#..'], // oro
+  ['#...#', '.#.#.', '..#..', '.#.#.', '#...#'], // platino
+  ['.###.', '#...#', '#...#', '#...#', '.###.'], // diamante
+  ['#.#.#', '#####', '#####', '.###.', '..#..'], // maestro
+];
+
+// la grada crece con el rango: más bloques de público en la banda de estado
+const PUBLICO_POR_RANGO = [4, 6, 8, 10, 13, 16];
+
+function bloquesPublico(nivel) {
+  const n = Math.max(0, Math.min(PUBLICO_POR_RANGO.length - 1, Math.floor(Number(nivel) || 0)));
+  const total = PUBLICO_POR_RANGO[n];
+  return {
+    total,
+    html: Array.from({ length: total }, (_, i) =>
+      `<i style="--i:${i};--d:${i * 70}ms"></i>`).join(''),
+  };
+}
+
+function pintarPublico(nivel) {
+  if (!el.compPublico) return;
+  const { total, html } = bloquesPublico(nivel);
+  if (el.compPublico.dataset.cuenta === String(total)) return;
+  el.compPublico.innerHTML = html;
+  el.compPublico.dataset.cuenta = String(total);
+  el.compPublico.setAttribute('aria-label', t('compCrowd', { count: total }));
+}
+
+function iconoRango(nivel) {
+  const n = Math.max(0, Math.min(DIBUJOS_RANGO.length - 1, Math.floor(Number(nivel) || 0)));
+  let celdas = '';
+  let indice = 0;
+  for (const fila of DIBUJOS_RANGO[n]) {
+    for (const celda of fila) {
+      const lleno = celda === '#';
+      celdas += `<i${lleno ? ` class="lleno" style="--i:${indice};--d:${140 + indice * 18}ms"` : ''}></i>`;
+      indice++;
+    }
+  }
+  return `<span class="rango-icono" data-rango="${n}" aria-hidden="true">${celdas}</span>`;
+}
+
+function nombreTablero(i) {
+  return i === 0 ? t('you') : RIVAL_NAMES[i - 1];
+}
+
+function tableroPorIndice(i) {
+  return app.tableros.find((tab) => tab.i === i) || null;
+}
+
+// menú previo: rango, copas y reglas del modo
+function menuCompetitivo() {
+  pararTemporizador();
+  app.juego = null;
+  app.demo = null;
+  app.tableros = [];
+  app.arena = null;
+  el.arena.hidden = true;
+
+  const puntosYa = guardado.competitive.points;
+  const info = rankInfo(puntosYa);
+  const meta = info.siguiente
+    ? t('pointsToNext', { count: info.falta, rank: info.siguiente })
+    : t('maxRank');
+  const tramo = info.tramo || 0;
+  const avance = tramo > 0 ? Math.min(100, Math.round(((tramo - info.falta) / tramo) * 100)) : 100;
+  const dato = (valor, etiqueta) => `<div class="comp-dato"><b>${valor}</b><span>${etiqueta}</span></div>`;
+  const grada = bloquesPublico(info.nivel);
+  const total = totalJugadores(info.nivel);
+  const rivales = RIVAL_NAMES.slice(0, Math.max(1, total - 1)).join(' · ');
+
+  // la escalera de rangos: los seis peldaños, con el actual enmarcado
+  const escalera = rankList().map((r) => {
+    const clase = r.nivel === info.nivel ? ' aqui' : r.nivel < info.nivel ? ' hecho' : '';
+    const actual = r.nivel === info.nivel ? ' aria-current="step"' : '';
+    return `<span class="escalon${clase}" title="${r.nombre} · ${r.puntos}"${actual}>${iconoRango(r.nivel)}<em>${r.nombre}</em><small>${r.puntos}</small></span>`;
+  }).join('');
+
+  ponerOverlay(`<div class="panel competitivo">
+    <div class="comp-top">
+      <span>${t('modeCompetitive')}</span>
+      <span>${t('compPlayers', { count: total })}</span>
+    </div>
+    <div class="comp-cabeza">
+      ${iconoRango(info.nivel)}
+      <div class="comp-datos">
+        <p class="comp-rango">${t('compYourRank')} · ${info.nombre}</p>
+        <p class="comp-puntos">${puntos(puntosYa)}<small>${t('statsPoints')}</small></p>
+      </div>
+    </div>
+    <div class="comp-barra" aria-hidden="true"><i style="width:${avance}%"></i></div>
+    <p class="comp-nota">${meta}</p>
+    <p class="comp-escala">${t('compRankScale')}</p>
+    <div class="comp-escalera">${escalera}</div>
+    <div class="comp-mini">
+      ${dato(puntos(guardado.stats.games), t('labelGames'))}
+      ${dato(puntos(guardado.stats.wins), t('labelWins'))}
+      ${dato('60<small>s</small>', t('labelRound'))}
+    </div>
+    <div class="comp-fases" aria-label="${t('compActs')}">
+      <span><b>×1</b><i>20 s · ${t('phaseOpening')}</i></span>
+      <span><b>×1.5</b><i>20 s · ${t('phasePressure')}</i></span>
+      <span><b>×2</b><i>20 s · ${t('phaseSprint')}</i></span>
+    </div>
+    <p class="comp-rivales"><span>${t('compRivals')}</span><span>${rivales}</span></p>
+    <p class="comp-grada"><span>${t('compCrowd', { count: grada.total })}</span><span class="comp-grada-bloques" aria-hidden="true">${grada.html}</span></p>
+    <p class="comp-reglas"><span>60 s</span><span>${t('compDrop')}</span><span>${t('compProtected')}</span></p>
+    <div class="acciones">
+      <button class="principal" type="button" data-accion="jugarCompetitivo">${t('play')} <kbd>↵</kbd></button>
+      <button type="button" data-accion="home">${t('back')} <kbd>esc</kbd></button>
+    </div>
+  </div>`);
+
+  el.score.textContent = '—';
+  el.meta.textContent = t('modeCompetitive');
+  el.best.textContent = info.nombre;
+  el.mult.textContent = '';
+  el.chain.style.width = '0%';
+  el.pause.disabled = true;
+  el.senal.classList.remove('visible');
+  pantalla('compmenu');
+  enfocarPrimero('button[data-accion="jugarCompetitivo"]');
+}
+
+// sorteo: mapa y modificador, los mismos para todos los tableros. los nombres
+// giran unos instantes, se fijan con un golpe de bloque y la partida arranca sola
+function prepararCompetitivo() {
+  pararTemporizador();
+  app.juego = null;
+  app.demo = null;
+  app.tableros = [];
+  app.modo = 'competitive';
+  app.arena = sortearArena();
+  el.arena.hidden = true;
+
+  const nivel = LEVELS[app.arena.indice];
+  const mod = app.arena.mods[0];
+  const nombres = arenasDelRango().map((i) => levelName(LEVELS[i].name));
+  const azar = (lista) => lista[Math.floor(Math.random() * lista.length)];
+
+  ponerOverlay(`<div class="panel sorteo">
+    <p class="sorteo-etiqueta">${t('competitiveDraw')}</p>
+    <div class="sorteo-caja">
+      <p class="sorteo-mapa girando" id="sorteo-mapa">${azar(nombres)}</p>
+      <p class="sorteo-mod girando" id="sorteo-mod">${t('mod_' + azar(modsDelRango()))}</p>
+    </div>
+    <div class="sorteo-linea" aria-hidden="true"><i></i></div>
+    <p class="sorteo-pie">${t('compPlayers', { count: totalJugadores() })} · ${t('compActs')} · 60 s</p>
+  </div>`);
+
+  el.meta.textContent = t('modeCompetitive');
+  el.best.textContent = '';
+  el.score.textContent = '—';
+  el.pause.disabled = true;
+  el.senal.classList.remove('visible');
+  pantalla('preview');
+
+  const mapa = document.getElementById('sorteo-mapa');
+  const modo = document.getElementById('sorteo-mod');
+  const fijar = () => {
+    if (mapa) {
+      mapa.textContent = levelName(nivel.name);
+      mapa.classList.remove('girando');
+      mapa.classList.add('fija');
+    }
+    if (modo) {
+      modo.textContent = t('mod_' + mod);
+      modo.classList.remove('girando');
+      modo.classList.add('fija');
+    }
+    el.best.textContent = `${levelName(nivel.name)} · ${t('mod_' + mod)}`;
+    audio.play('tick');
+  };
+
+  if (sinMovimiento()) {
+    fijar();
+    app.temporizador = setTimeout(() => {
+      app.temporizador = 0;
+      if (app.pantalla === 'preview') empezarCompetitivo();
+    }, 1100);
+    return;
+  }
+
+  // ruleta corta: cambia de nombre sin saltos y luego se queda el sorteado
+  let vueltas = 0;
+  app.sorteoRuleta = setInterval(() => {
+    vueltas++;
+    if (vueltas >= 11) {
+      clearInterval(app.sorteoRuleta);
+      app.sorteoRuleta = 0;
+      fijar();
+      return;
+    }
+    if (mapa) mapa.textContent = azar(nombres);
+    if (modo) modo.textContent = t('mod_' + azar(modsDelRango()));
+  }, 85);
+
+  // sin botón: la ruleta se fija y empieza la cuenta atrás
+  app.temporizador = setTimeout(() => {
+    app.temporizador = 0;
+    if (app.sorteoRuleta) {
+      clearInterval(app.sorteoRuleta);
+      app.sorteoRuleta = 0;
+    }
+    if (app.pantalla === 'preview') empezarCompetitivo();
+  }, 2050);
+}
+
+// tableros iguales, cada uno con su serpiente
+function empezarCompetitivo() {
+  pararTemporizador();
+  audio.unlock();
+  if (!app.arena) app.arena = sortearArena();
+  app.modo = 'competitive';
+  app.copas = null;
+  app.puestoMuerte = 0;
+  app.motivoMuerte = null;
+  app.record = false;
+  app.tableros = [];
+  app.fase = null;
+  ponerOverlay(null);
+
+  const nivelRivales = rankInfo(guardado.competitive.points).nivel;
+  const dificultad = dificultadRivales(nivelRivales);
+  const total = totalJugadores(nivelRivales);
+  // el rango no sólo cambia la dificultad: también llena la grada, sube la luz
+  // y mete más serpientes en la partida
+  pintarPublico(nivelRivales);
+  if (el.compVentaja) el.compVentaja.dataset.rango = String(nivelRivales);
+  if (el.stage) el.stage.dataset.rango = String(nivelRivales);
+  prepararTableros(total);
+  for (let i = 0; i < total; i++) {
+    // misma velocidad, mismo mapa y mismo modificador para todos
+    const cfg = { ...configuracionArena(), graciaMs: GRACIA_MS };
+    const juego = new Game(
+      cfg,
+      i === 0 ? eventosJuego : (tipo, datos) => eventoRival(i, tipo, datos),
+    );
+    app.tableros.push({
+      i,
+      nombre: nombreTablero(i),
+      esJugador: i === 0,
+      juego,
+      vivo: true,
+      puesto: 0,
+      acum: 0,
+      cada: i === 0 ? 0 : dificultad.cada,
+      fallo: i === 0 ? 0 : dificultad.fallo,
+    });
+  }
+  app.juego = app.tableros[0].juego;
+  app.marca = mejorActual();
+  app.cuenta = 3000;
+  app.tiempoPartida = DURACION_RONDA;
+  aplicarFase();
+
+  el.arena.hidden = false;
+  pantalla('countdown');
+  ajustarLienzo();
+  actualizarTableros();
+  actualizarMarcador();
+  for (const tab of app.tableros) tab.revivirEn = 0;
+}
+
+// la cuenta atrás pinta 3 · 2 · 1 sobre el tablero
+function pasoCuenta(dt) {
+  if (app.cuenta <= 0) return false;
+  const antes = Math.ceil(app.cuenta / 1000);
+  app.cuenta -= dt;
+  const ahora = Math.max(0, Math.ceil(app.cuenta / 1000));
+  if (ahora !== antes) audio.play('tick');
+  if (el.cuenta) {
+    el.cuenta.hidden = false;
+    const cifra = el.cuenta.querySelector('b');
+    const texto = String(Math.max(1, ahora));
+    if (cifra && cifra.textContent !== texto) cifra.textContent = texto;
+  }
+  if (app.cuenta <= 0) {
+    if (el.cuenta) el.cuenta.hidden = true;
+    for (const tab of app.tableros) tab.juego.start();
+    aplicarFase();
+    pantalla('playing');
+    actualizarMarcador();
+  }
+  return true;
+}
+
+function eventoRival(i, tipo, datos) {
+  const tab = tableroPorIndice(i);
+  if (!tab) return;
+  if (tipo === 'die') {
+    perderPuntos(tab);
+    audio.play('rivalDie');
+    parpadear(el.tableros[i]);
+    actualizarTableros();
+  }
+}
+
+// un paso de todos los tableros: los rivales deciden y todos avanzan igual
+function pasoCompetitivo(dt) {
+  if (pasoCuenta(dt)) {
+    // durante la cuenta atrás ya se ve tu serpiente en su tablero
+    dibujarArena();
+    actualizarTableros();
+    return;
+  }
+  if (app.pantalla !== 'playing') return;
+
+  app.tiempoPartida = Math.max(0, app.tiempoPartida - dt);
+  aplicarFase();
+  if (app.tiempoPartida <= 0) {
+    dibujarArena();
+    actualizarTableros();
+    actualizarReloj(app.juego);
+    terminarCompetitivo();
+    return;
+  }
+
+  for (const tab of app.tableros) {
+    const juego = tab.juego;
+    if (juego.state === 'dead') {
+      tab.revivirEn = Math.max(0, (tab.revivirEn || 0) - dt);
+      if (tab.revivirEn <= 0 && app.tiempoPartida > 1500) juego.revive();
+    }
+    if (!tab.esJugador && juego.state === 'running') {
+      tab.acum += dt;
+      if (tab.acum >= (tab.cada || 60)) {
+        tab.acum = 0;
+        juego.decidir({ error: tab.fallo || 0 });
+      }
+    }
+    juego.update(dt);
+  }
+  dibujarArena();
+  actualizarTableros();
+  actualizarMarcador();
+  if (app.tableros[0].juego.state === 'running') {
+    guardado.stats.timeMs += dt;
+    app.statsAcum += dt;
+    if (app.statsAcum > 5000) {
+      app.statsAcum = 0;
+      guardar();
+    }
+  }
+}
+
+function dibujarArena() {
+  for (const tab of app.tableros) {
+    const fig = el.tableros[tab.i];
+    if (!fig || !tab.vista) continue;
+    const lienzo = fig.querySelector('canvas');
+    if (!lienzo || !tab.pincel) continue;
+    tab.juego.draw(tab.pincel, tab.vista);
+  }
+}
+
+function actualizarTableros() {
+  const orden = ordenCompetitivo();
+  orden.forEach((tab, k) => { tab.puesto = k + 1; });
+
+  app.tableros.forEach((tab) => {
+    const fig = el.tableros[tab.i];
+    if (!fig) return;
+    if (tab.nombre !== fig.dataset.nombre) {
+      fig.dataset.nombre = tab.nombre;
+      const nombre = fig.querySelector('.tablero-nombre');
+      if (nombre) nombre.textContent = tab.nombre;
+    }
+    fig.classList.toggle('mio', tab.esJugador);
+    fig.classList.toggle('caido', !tab.vivo);
+    fig.classList.toggle('lider', tab.puesto === 1 && tab.juego.score > 0);
+
+    const puesto = fig.querySelector('.tablero-puesto');
+    if (puesto) {
+      const texto = `#${tab.puesto}`;
+      if (puesto.textContent !== texto) puesto.textContent = texto;
+    }
+
+    const datos = fig.querySelector('.tablero-datos');
+    if (datos) {
+      const texto = String(Math.round(tab.juego.score));
+      if (datos.textContent !== texto) datos.textContent = texto;
+    }
+    fig.classList.toggle('revive', tab.juego.state === 'dead');
+
+    const protegido = tab.juego.gracia > 0;
+    fig.classList.toggle('protegido', protegido);
+    const estado = fig.querySelector('.tablero-estado');
+    if (estado) {
+      const texto = protegido ? t('compProtected') : '';
+      if (estado.textContent !== texto) estado.textContent = texto;
+    }
+  });
+}
+
+function vivosCompetitivo() {
+  return app.tableros.filter((tab) => tab.vivo).length;
+}
+
+// caer cuesta puntos y la serpiente vuelve al rato
+function perderPuntos(tab) {
+  if (!tab) return;
+  tab.juego.score = Math.max(0, tab.juego.score - CASTIGO_CAIDA);
+  tab.caidas = (tab.caidas || 0) + 1;
+  tab.revivirEn = 800;
+}
+
+// fin de la ronda: manda quien tenga más puntos
+function terminarCompetitivo() {
+  if (app.pantalla !== 'playing') return;
+  const orden = [...app.tableros].sort((a, b) => b.juego.score - a.juego.score);
+  app.puestoMuerte = orden.findIndex((tab) => tab.esJugador) + 1;
+  app.totalMuerte = app.totalJugadores;
+  guardarMarca();
+  guardado.stats.games++;
+  guardar();
+  audio.play('level');
+  mostrarFinCompetitivo();
+}
+
 function configuracion(modo, nivel) {
-  if (modo !== 'campaign') return { ...MODES[modo] };
+  if (modo !== 'campaign') return configuracionSuelta(modo);
   const datos = LEVELS[nivel];
   return {
     cols: COLS,
@@ -1248,16 +2279,25 @@ function configuracion(modo, nivel) {
     powerEvery: datos.powerEvery,
     powerPool: datos.powerPool,
     chainWindow: datos.chainWindow,
+    // modificadores asignados al mapa: muros que salen, reloj, cazador, sin turbo
+    ...camposMods(datos),
   };
 }
 
 function empezarPartida(modo, nivel = 0) {
+  if (modo === 'competitive') {
+    menuCompetitivo();
+    return;
+  }
   pararTemporizador();
   audio.unlock();
   app.demo = null;
   app.modo = modo;
   app.nivel = nivel;
   app.record = false;
+  app.motivoMuerte = null;
+  app.copas = null;
+  app.arena = modo === 'competitive' ? sortearArena() : null;
   app.juego = new Game(configuracion(modo, nivel), eventosJuego);
   app.marca = mejorActual();
 
@@ -1275,6 +2315,26 @@ function eventosJuego(tipo, datos) {
     case 'eat':
       audio.play('bite', datos);
       parpadear(el.score);
+      guardado.stats.fruits++;
+      break;
+    case 'combo':
+      guardado.stats.bestChain = Math.max(guardado.stats.bestChain, datos.multiplier || 1);
+      break;
+    case 'tick':
+      audio.play('tick');
+      break;
+    case 'veneno':
+      audio.play('alerta');
+      parpadear(el.meta);
+      parpadear(el.score);
+      break;
+    case 'win':
+      audio.play('win');
+      guardarMarca();
+      guardado.stats.games++;
+      guardado.stats.wins++;
+      guardar();
+      app.temporizador = setTimeout(mostrarVictoria, 700);
       break;
     case 'bonus':
       audio.play('bonus');
@@ -1295,6 +2355,13 @@ function eventosJuego(tipo, datos) {
       break;
     case 'wall':
       audio.play('wall');
+      break;
+    case 'wave':
+      audio.play('bonus');
+      parpadear(el.score);
+      break;
+    case 'pulse':
+      audio.play('turbo');
       break;
     case 'wallSoon':
       audio.play('alerta');
@@ -1324,11 +2391,21 @@ function eventosJuego(tipo, datos) {
     case 'die':
       audio.play('death');
       guardarMarca();
+      guardado.stats.games++;
+      guardar();
+      app.motivoMuerte = datos.reason;
+      if (app.modo === 'competitive') {
+        perderPuntos(app.tableros[0]);
+        parpadear(el.score);
+        parpadear(el.tableros[0]);
+        break;
+      }
       app.temporizador = setTimeout(mostrarFin, 900);
       break;
     case 'clear':
       audio.play(app.nivel >= LEVELS.length - 1 ? 'campaignComplete' : 'level');
       guardarMarca();
+      guardado.stats.games++;
       guardado.campaign.unlocked = Math.max(
         guardado.campaign.unlocked,
         Math.min(LEVELS.length, app.nivel + 2),
@@ -1363,13 +2440,20 @@ function mostrarFin() {
   if (!juego || juego.state !== 'dead') return;
   const esCampana = app.modo === 'campaign';
   app.record = !esCampana && juego.score > app.marca;
-  const meta = esCampana
-    ? resumenManzanas(juego)
-    : t('recordFruitMeta', {
+  let meta;
+  if (esCampana && app.motivoMuerte === 'tiempo') {
+    meta = `${t('timeUp')} · ${resumenManzanas(juego)}`;
+  } else if (esCampana) {
+    meta = resumenManzanas(juego);
+  } else if (app.modo === 'timed' && app.motivoMuerte === 'tiempo') {
+    meta = `${t('timeUp')} · ${t('fruits', { count: juego.fruits, unit: fruitUnit(juego.fruits) })}`;
+  } else {
+    meta = t('recordFruitMeta', {
       record: Math.max(app.marca, juego.score),
       fruits: juego.fruits,
       unit: fruitUnit(juego.fruits),
     });
+  }
   const cifra = esCampana ? puntos(juego.fruits) : puntos(juego.score);
 
   ponerOverlay(`<div class="panel fin">
@@ -1387,7 +2471,7 @@ function mostrarFin() {
   if (!esCampana) animarCifra(el.overlay.querySelector('[data-cifra]'), juego.score);
   enfocarPrimero('button[data-accion="retry"]');
   el.pause.disabled = true;
-  el.prompt.classList.remove('visible');
+  el.senal.classList.remove('visible');
   actualizarMarcador();
 }
 
@@ -1395,20 +2479,12 @@ function mostrarNivelSuperado() {
   const juego = app.juego;
   if (!juego || juego.state !== 'cleared') return;
   const ultimo = app.nivel >= LEVELS.length - 1;
-  const siguiente = LEVELS[Math.min(app.nivel + 1, LEVELS.length - 1)];
-  const detalle = ultimo
-    ? t('campaignComplete')
-    : t('nextLevelMeta', {
-      name: levelName(siguiente.name),
-      goal: siguiente.goal,
-      unit: appleUnit(siguiente.goal),
-    });
 
+  // nivel superado: solo el aviso y los botones, sin resumen de manzanas
   ponerOverlay(`<div class="panel fin">
     <div class="fin-cabeza">
-      <p class="kicker">${t('levelCleared', { number: dosDigitos(app.nivel + 1) })}</p>
-      <p class="cifra" data-cifra>${puntos(juego.fruits)}</p>
-      <p class="nota">${resumenManzanas(juego)} · ${detalle}</p>
+      <p class="cifra superado">${t('levelCleared', { number: dosDigitos(app.nivel + 1) })}</p>
+      ${ultimo ? `<p class="nota">${t('campaignComplete')}</p>` : ''}
     </div>
     <div class="acciones">
       ${ultimo ? '' : `<button class="principal" type="button" data-accion="next">${t('next')} <kbd>↵</kbd></button>`}
@@ -1419,7 +2495,78 @@ function mostrarNivelSuperado() {
   pantalla('cleared');
   enfocarPrimero('button.principal');
   el.pause.disabled = true;
-  el.prompt.classList.remove('visible');
+  el.senal.classList.remove('visible');
+}
+
+function mostrarFinCompetitivo() {
+  const juego = app.juego;
+  if (!juego) return;
+  const total = app.totalJugadores || app.totalMuerte || 4;
+  const puesto = app.puestoMuerte || total;
+  const copas = copasDePartida(puesto);
+  app.record = juego.score > app.marca;
+  const notas = [
+    t('competitiveRank', { rank: puesto, total }),
+    t('pointsWon', { count: copas.ganadas }),
+    rankName(copas.total),
+  ];
+  if (copas.bono > 0) notas.push(t('pointsBonus', { count: copas.bono }));
+  const orden = ordenCompetitivo();
+  const podio = orden.map((tab, i) => `<li class="${tab.esJugador ? 'tu' : ''}"><b>#${i + 1}</b><span>${tab.nombre}</span><em>${puntos(tab.juego.score)}</em></li>`).join('');
+  const caidas = (app.tableros[0] && app.tableros[0].caidas) || 0;
+  const resumen = [
+    t('fruits', { count: juego.fruits, unit: fruitUnit(juego.fruits) }),
+    t('compChain', { count: juego.mejorRacha || 1 }),
+    t('compFalls', { count: caidas }),
+  ].join(' · ');
+  ponerOverlay(`<div class="panel fin">
+    <div class="fin-cabeza">
+      <p class="kicker">${t('end')}</p>
+      <p class="cifra" data-cifra>${puntos(juego.score)}</p>
+      <p class="nota">${notas.join(' · ')}</p>
+    </div>
+    ${bloqueSubidaRango(copas)}
+    <ol class="podio">${podio}</ol>
+    <p class="nota comp-resumen">${resumen}</p>
+    <div class="acciones">
+      <button class="principal" type="button" data-accion="retry">${t('retry')} <kbd>R</kbd></button>
+      <button type="button" data-accion="jugarCompetitivo">${t('redraw')}</button>
+      <button type="button" data-accion="home">${t('menu')} <kbd>esc</kbd></button>
+    </div>
+  </div>`);
+  pantalla('dead');
+  animarCifra(el.overlay.querySelector('[data-cifra]'), juego.score);
+  enfocarPrimero('button[data-accion="retry"]');
+  el.pause.disabled = true;
+  el.senal.classList.remove('visible');
+}
+
+// victoria — todos los rivales han caído y tú sigues en pie
+function mostrarVictoria() {
+  const juego = app.juego;
+  if (!juego || juego.state !== 'running') return;
+  const caidos = (app.totalJugadores || 4) - 1;
+  const copas = copasDePartida(1);
+  const copasTexto = `${t('pointsWon', { count: copas.ganadas })}${copas.bono > 0 ? ` · ${t('pointsBonus', { count: copas.bono })}` : ''} · ${rankName(copas.total)}`;
+  ponerOverlay(`<div class="panel fin">
+    <div class="fin-cabeza">
+      <p class="kicker">${t('win')} · ${t('competitiveWin')}</p>
+      <p class="cifra" data-cifra>${puntos(juego.score)}</p>
+      <p class="nota">${t('fruits', { count: juego.fruits, unit: fruitUnit(juego.fruits) })} · ${t('competitiveDown', { count: caidos })}</p>
+      <p class="nota">${copasTexto}</p>
+    </div>
+    ${bloqueSubidaRango(copas)}
+    <div class="acciones">
+      <button class="principal" type="button" data-accion="retry">${t('retry')} <kbd>R</kbd></button>
+      <button type="button" data-accion="home">${t('menu')} <kbd>esc</kbd></button>
+    </div>
+  </div>`);
+  pantalla('won');
+  animarCifra(el.overlay.querySelector('[data-cifra]'), juego.score);
+  enfocarPrimero('button[data-accion="retry"]');
+  el.pause.disabled = true;
+  el.senal.classList.remove('visible');
+  actualizarMarcador();
 }
 
 // un parpadeo corto para dar feedback sin llenar la pantalla
@@ -1446,7 +2593,7 @@ function animarCifra(nodo, total) {
   };
   nodo.textContent = '0';
   requestAnimationFrame(paso);
-  // si el navegador no repinta (pestaña oculta), al menos queda la cifra buena
+  // si el tablero no repinta a tiempo, al menos queda la cifra buena
   setTimeout(() => {
     if (nodo.isConnected) nodo.textContent = puntos(objetivo);
   }, duracion + 80);
@@ -1483,11 +2630,12 @@ function mostrarPausa() {
   el.pause.textContent = t('resume');
   el.pause.title = t('resumeTitle');
   el.pause.disabled = false;
-  el.prompt.classList.remove('visible');
+  el.senal.classList.remove('visible');
 }
 
 function pausar() {
   if (!app.juego || app.pantalla !== 'playing') return;
+  for (const tab of app.tableros) tab.juego.pause();
   app.juego.pause();
   if (app.juego.state !== 'paused') return;
   audio.play('ui');
@@ -1497,6 +2645,7 @@ function pausar() {
 
 function reanudar() {
   if (!app.juego) return;
+  for (const tab of app.tableros) tab.juego.resume();
   app.juego.resume();
   ponerOverlay(null);
   foco.indice = -1;
@@ -1518,7 +2667,7 @@ function soltarFoco() {
   if (activo && activo !== document.body && activo.blur) activo.blur();
 }
 
-function accion(nombre) {
+function accion(nombre, repetido = false) {
   if (nombre === 'mute') {
     alternarSonido();
     return;
@@ -1544,11 +2693,25 @@ function accion(nombre) {
     return;
   }
 
+  if (nombre === 'scrollUp' || nombre === 'scrollDown' || nombre === 'scrollTop' || nombre === 'scrollBottom') {
+    const caja = el.overlay;
+    if (!caja || !caja.classList.contains('abierto')) return;
+    if (nombre === 'scrollTop') caja.scrollTop = 0;
+    else if (nombre === 'scrollBottom') caja.scrollTop = caja.scrollHeight;
+    else {
+      const salto = repetido
+        ? Math.max(28, Math.round(caja.clientHeight * 0.1))
+        : Math.max(120, Math.round(caja.clientHeight * 0.8));
+      caja.scrollTop += (nombre === 'scrollUp' ? -1 : 1) * salto;
+    }
+    return;
+  }
+
   const esDireccion = ['up', 'down', 'left', 'right'].includes(nombre);
 
   if (app.pantalla === 'home') {
-    if (nombre === 'up') moverFoco(0, -1);
-    else if (nombre === 'down') moverFoco(0, 1);
+    if (nombre === 'up') moverFoco(0, -1, repetido);
+    else if (nombre === 'down') moverFoco(0, 1, repetido);
     else if (nombre === 'left' || nombre === 'right') {
       const paso = nombre === 'left' ? -1 : 1;
       const total = GROUPS.length;
@@ -1565,8 +2728,8 @@ function accion(nombre) {
   }
 
   if (app.pantalla === 'modes') {
-    if (nombre === 'up') moverFoco(0, -1);
-    else if (nombre === 'down') moverFoco(0, 1);
+    if (nombre === 'up') moverFoco(0, -1, repetido);
+    else if (nombre === 'down') moverFoco(0, 1, repetido);
     else if (nombre === 'left' || nombre === 'right') {
       audio.play('ui');
       mostrarModos(app.grupo + (nombre === 'left' ? -1 : 1));
@@ -1587,10 +2750,10 @@ function accion(nombre) {
   }
 
   if (app.pantalla === 'levels') {
-    if (nombre === 'up') moverFoco(0, -1);
-    else if (nombre === 'down') moverFoco(0, 1);
-    else if (nombre === 'left') moverFoco(-1, 0);
-    else if (nombre === 'right') moverFoco(1, 0);
+    if (nombre === 'up') moverFoco(0, -1, repetido);
+    else if (nombre === 'down') moverFoco(0, 1, repetido);
+    else if (nombre === 'left') moverFoco(-1, 0, repetido);
+    else if (nombre === 'right') moverFoco(1, 0, repetido);
     else if (nombre === 'confirm') {
       audio.play('ui');
       const lista = botonesUI();
@@ -1603,22 +2766,50 @@ function accion(nombre) {
 
   if (app.pantalla === 'help') {
     if (nombre === 'up' || nombre === 'down' || nombre === 'left' || nombre === 'right') {
-      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0, repetido);
     } else if (nombre === 'back' || nombre === 'pause' || nombre === 'confirm') mostrarInicio();
     return;
   }
 
   if (app.pantalla === 'settings') {
     if (nombre === 'up' || nombre === 'down' || nombre === 'left' || nombre === 'right') {
-      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0, repetido);
     } else if (nombre === 'confirm') activarFoco();
     else if (nombre === 'back' || nombre === 'pause') ajustesDesde();
     return;
   }
 
+  if (app.pantalla === 'compmenu' || app.pantalla === 'preview') {
+    if (esDireccion) {
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0, repetido);
+      return;
+    }
+    if (app.pantalla === 'compmenu') {
+      if (nombre === 'confirm') activarFoco();
+      else if (nombre === 'jugarCompetitivo') prepararCompetitivo();
+      else if (nombre === 'back' || nombre === 'pause') mostrarInicio();
+      return;
+    }
+    // sorteo en marcha: no se puede cambiar, se espera a la cuenta atrás
+    return;
+  }
+
+  if (app.pantalla === 'countdown') return;
+
+  if (app.pantalla === 'won') {
+    if (esDireccion) {
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0, repetido);
+      return;
+    }
+    if (nombre === 'confirm') activarFoco();
+    else if (nombre === 'restart') prepararCompetitivo();
+    else if (nombre === 'back') mostrarInicio();
+    return;
+  }
+
   if (app.pantalla === 'paused' || app.pantalla === 'dead' || app.pantalla === 'cleared') {
     if (esDireccion) {
-      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0);
+      moverFoco(nombre === 'left' ? -1 : nombre === 'right' ? 1 : 0, nombre === 'up' ? -1 : nombre === 'down' ? 1 : 0, repetido);
       return;
     }
     if (nombre === 'confirm') {
@@ -1646,7 +2837,8 @@ function accion(nombre) {
     return;
   }
   if (nombre === 'restart') {
-    if (app.juego) empezarPartida(app.modo, app.nivel);
+    if (app.modo === 'competitive') prepararCompetitivo();
+    else if (app.juego) empezarPartida(app.modo, app.nivel);
     return;
   }
   if (!esDireccion) return;
@@ -1659,7 +2851,14 @@ function accion(nombre) {
 function ejecutar(nombre) {
   switch (nombre) {
     case 'retry':
-      empezarPartida(app.modo, app.nivel);
+      if (app.modo === 'competitive') prepararCompetitivo();
+      else empezarPartida(app.modo, app.nivel);
+      break;
+    case 'jugarCompetitivo':
+      prepararCompetitivo();
+      break;
+    case 'empezarCompetitivo':
+      empezarCompetitivo();
       break;
     case 'next':
       empezarPartida('campaign', Math.min(app.nivel + 1, LEVELS.length - 1));
@@ -1675,6 +2874,9 @@ function ejecutar(nombre) {
       break;
     case 'help':
       mostrarAyuda();
+      break;
+    case 'profile':
+      mostrarPerfil();
       break;
     case 'settings':
       mostrarAjustes(app.pantalla);
@@ -1703,11 +2905,19 @@ function ejecutar(nombre) {
 
 function borrarRecords() {
   if (!window.confirm(t('eraseConfirm'))) return;
-  guardado.best = { classic: 0, frenzy: 0, hunter: 0 };
+  guardado.best = { classic: 0, frenzy: 0, hunter: 0, timed: 0, competitive: 0 };
   guardado.campaign = { unlocked: 1 };
+  guardado.competitive = { points: 0 };
+  guardado.stats = nuevaStats();
+  try {
+    localStorage.removeItem(CLAVE_ANTIGUA);
+  } catch (err) {
+    /* sin almacenamiento no hay nada más que limpiar */
+  }
   guardar();
   audio.play('ui');
-  if (app.pantalla === 'settings') mostrarAjustes(app.settingsReturn, 'button[data-accion="wipe"]');
+  if (app.pantalla === 'profile') mostrarPerfil();
+  else if (app.pantalla === 'settings') mostrarAjustes(app.settingsReturn, 'button[data-accion="wipe"]');
   else mostrarInicio();
 }
 
@@ -1824,7 +3034,7 @@ function pasoDemo(dt) {
   app.demoAcum += dt;
   if (app.demoAcum > 60) {
     app.demoAcum = 0;
-    demo.botTurn();
+    demo.decidir();
   }
   if (demo.state === 'dead' || demo.state === 'cleared') crearDemo(app.demoModo);
 
@@ -1945,10 +3155,21 @@ function bucle(t) {
   if (app.pantalla === 'home' || app.pantalla === 'modes') {
     pasoDemo(dt);
     dibujarMarca(dt);
+  } else if (app.juego && app.modo === 'competitive' && app.tableros.length) {
+    pasoCompetitivo(dt);
   } else if (app.juego) {
     app.juego.update(dt);
     app.juego.draw(pincel, vista);
     actualizarMarcador();
+    // el perfil cuenta el tiempo realmente jugado (guardado de vez en cuando)
+    if (app.juego.state === 'running') {
+      guardado.stats.timeMs += dt;
+      app.statsAcum += dt;
+      if (app.statsAcum > 5000) {
+        app.statsAcum = 0;
+        guardar();
+      }
+    }
   }
 
   requestAnimationFrame(bucle);
@@ -1986,7 +3207,7 @@ try {
 }
 
 if (location.hash === '#debug') {
-  window.__snake = { app, guardado, accion, empezarPartida, mostrarInicio, crearDemo, mostrarFin };
+  window.__snake = { app, guardado, accion, ejecutar, empezarPartida, mostrarInicio, crearDemo, mostrarFin, mostrarNivelSuperado, mostrarVictoria };
   // rótulo: para poder mirarlo desde las pruebas
   window.__snake.marca = marca;
   window.__snake.serpientesMarca = SERPIENTES_NOMBRE;

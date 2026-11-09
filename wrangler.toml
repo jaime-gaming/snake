@@ -1,0 +1,17 @@
+# Despliegue en Cloudflare Workers (dominio propio: snake.jaime-gaming.com).
+#
+#   npx wrangler deploy
+#
+# Sirve el repositorio completo como estáticos en la raíz del dominio y,
+# gracias al modo SPA, cualquier ruta del juego (/competitivo, /contrarreloj,
+# /perfil, /campaña/nivel-30…) resuelve en index.html. Sin build previo:
+# el worker empaqueta tal cual los ficheros del repo (index.html, styles.css,
+# snake.js…).
+
+name = "snake"
+compatibility_date = "2026-11-07"
+
+[assets]
+directory = "./"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
