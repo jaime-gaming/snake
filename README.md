@@ -4,7 +4,7 @@ Un juego de serpientes de bloques en blanco y negro. Sin adornos, sin dependenci
 
 ## Idea visual
 
-La pantalla es una hoja de tinta: negro profundo, blancos duros y un rojo reservado para lo que quema. La serpiente no es una línea continua, sino una cadena de bloques que respira con la manzana. El título de la portada está dibujado como cinco serpientes independientes; la `e` persigue la manzana despacio, sin prisa, hasta alcanzarla. Los marcos son escuetos, las esquinas se marcan con dos trazos y cada aviso ocupa el menor espacio posible. La tipografía es de bloques, con cifras tabulares y mayúsculas espaciadas para los rótulos.
+La pantalla es una hoja de tinta: negro profundo, blancos duros y un rojo reservado para lo que quema. La serpiente no es una línea continua, sino una cadena de bloques que respira con la manzana. El título de la portada está dibujado como cinco serpientes independientes; la `e` persigue la manzana despacio, sin prisa, hasta alcanzarla. Los marcos son escuetos, las esquinas se marcan con dos trazos y cada aviso ocupa el menor espacio posible. La tipografía mezcla texto sin serifa para leer con comodidad y monoespaciada para cifras y rótulos; los datos siguen alineados como bloques.
 
 El rojo no es decoración: anuncia la manzana envenenada, la serpiente cazadora y el borde que apura el reloj. La manzana envenenada no grita: comparte tamaño, brillo y respiración con la buena; sólo la delatan un rojo algo más oscuro y una muesca mínima en la esquina inferior derecha.
 
@@ -19,7 +19,7 @@ El rojo no es decoración: anuncia la manzana envenenada, la serpiente cazadora 
 | Sonido | M | — |
 | Menús | Flechas, Av Pág/Re Pág, Inicio/Fin y Enter | Elegir una opción |
 
-Los paneles largos se recorren con la rueda, con el gesto táctil y con el teclado; el foco siempre queda a la vista. En la rejilla de niveles, `↑↓` cambian de fila. El ajuste de sonido y de efecto de pantalla vive bajo la lista de modos.
+Los paneles largos se recorren con la rueda, con el gesto táctil y con el teclado; el foco siempre queda a la vista. En la rejilla de niveles, `↑↓` cambian de fila. La barra superior no lleva botones: pausa y sonido viven en el teclado y en los ajustes.
 
 ## Modos
 
@@ -52,7 +52,7 @@ Antes de jugar hay un menú con el rango, los puntos, la escalera completa y los
 
 ### Rangos
 
-El puesto reparte puntos: 1.º +25, 2.º +10, 3.º +5, 4.º +0. Además, el marcador de la partida deja una bonificación mínima: un punto extra por cada 250 puntos conseguidos, con un tope de tres. Los puntos suben por seis peldaños y **cada peldaño pide más que el anterior**:
+El puesto reparte puntos: 1.º +25, 2.º +10, 3.º +5 y del 4.º en adelante +0. Además, el marcador de la partida deja una bonificación mínima: un punto extra por cada 250 puntos conseguidos, con un tope de tres. Los puntos suben por seis peldaños y **cada peldaño pide más que el anterior**:
 
 | Rango | Puntos | Lo que se abre |
 | --- | --- | --- |
@@ -72,3 +72,7 @@ La portada enlaza con el perfil: partidas, victorias en competitivo, frutas, tie
 ## Idioma
 
 El selector **EN / ES** cambia todos los textos y recuerda la elección. La estética no cambia con el idioma: los mismos bloques, los mismos silencios y el mismo rojo.
+
+## Despliegue
+
+La publicación en el dominio, la caché y la comprobación posterior están en [DESPLIEGUE.md](DESPLIEGUE.md).
