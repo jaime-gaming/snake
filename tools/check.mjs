@@ -1268,8 +1268,8 @@ process.stdout.write('cuatro tableros, sorteo y cuenta atrás\n');
     'competitivo: los tableros no muestran los puntos de cada jugador');
   comprobar(css.includes('grid-template-columns: minmax(0, 1.7fr)') && main.includes('* 1.7) / 2.7'),
     'competitivo: tu tablero no es más grande que los rivales');
-  comprobar(main.includes("meta = '';\n      marca = '';"),
-    'competitivo: la barra de arriba sigue cargada de texto');
+  comprobar(main.includes('meta = `${nombre} ×${fase.boost}') && main.includes("el.best.classList.toggle('vivo'"),
+    'competitivo: la barra de arriba no recoge el acto y la ventaja');
   comprobar(main.includes('class="comp-barra"') && main.includes('class="comp-mini"')
     && css.includes('.comp-barra i') && css.includes('.comp-dato b')
     && css.includes('.panel.competitivo') && css.includes('display: flex'),
@@ -1309,11 +1309,13 @@ process.stdout.write('cuatro tableros, sorteo y cuenta atrás\n');
     && main.includes("app.sorteoRuleta = setInterval") && css.includes('overflow-y: auto'),
   'interfaz: la UI no se mueve ni se lleva a la vista dentro de las zonas de scroll');
   comprobar(main.includes('const FASES_RONDA') && main.includes('scoreBoost = fase.boost')
-    && main.includes('function revisarPuesto()') && main.includes('function textoVentaja(')
-    && main.includes('app.finalAnunciado') && main.includes('function mostrarAviso(')
-    && css.includes('.comp-fases') && css.includes('#aviso') && css.includes('.podio')
-    && pagina.includes('id="aviso"') && pagina.includes('id="reloj-fase"'),
-  'competitivo: faltan los tres actos, el marcador en vivo o el aviso de la ronda');
+    && main.includes('function aplicarFase()') && main.includes('function textoVentaja(')
+    && main.includes('textoVentaja(jugador, ordenCompetitivo())')
+    && main.includes("el.best.classList.toggle('vivo'") && !main.includes('mostrarAviso')
+    && !pagina.includes('id="aviso"')
+    && css.includes('.comp-fases') && css.includes('.podio')
+    && pagina.includes('id="reloj-fase"'),
+  'competitivo: faltan los tres actos, el marcador en vivo o el aviso dentro de la barra');
   comprobar(css.includes('flex-direction: column') && css.includes('flex: 0 0 auto') && css.includes('margin: auto 0')
     && input.includes('scrollUp') && input.includes('repetible') && main.includes('repetido = false'),
   'interfaz: la capa de menús no se puede recorrer entera o el teclado no repite el scroll');

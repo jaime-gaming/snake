@@ -44,9 +44,9 @@ El fantasma atraviesa peligros; el lento baja la velocidad; encoger acorta la co
 
 ## Competitivo
 
-Una partida de **sesenta segundos** en **cuatro tableros separados**, uno por serpiente: tú y tres rivales. No comparten casillas ni fruta. Tu tablero es el más grande y va enmarcado en blanco; cada tablero lleva su nombre, sus puntos, su puesto y la diferencia con el rival inmediato. El líder lleva un marco propio y los avisos celebran los adelantamientos.
+Una partida de **sesenta segundos** en **cuatro tableros separados**, uno por serpiente: tú y tres rivales. No comparten casillas ni fruta. Tu tablero es el más grande y va enmarcado en blanco; cada tablero lleva su nombre, sus puntos, su puesto y la diferencia con el rival inmediato. El líder lleva un marco propio. El acto y la ventaja se leen en los huecos libres de la barra superior y en el rótulo de cada tablero: no hay carteles que tapen la partida ni avisos repetidos por cada adelantamiento.
 
-La partida tiene **tres actos de veinte segundos**: apertura a ×1, presión a ×1.5 y sprint final a ×2. Guardar los riesgos para el último acto es una decisión real. Al chocar se pierden diez puntos y la serpiente vuelve a los 0,8 segundos con 1,8 segundos de gracia: durante ese tiempo atraviesa muros y cuerpos, y el borde da la vuelta en vez de matar. Cuatro bloques sobre su cabeza cuentan la gracia que queda.
+La partida tiene **tres actos de veinte segundos**: apertura a ×1, presión a ×1.5 y sprint final a ×2. El cambio de acto se marca con un destello breve en la barra, no con un cartel sobre el juego. Guardar los riesgos para el último acto es una decisión real. Al chocar se pierden diez puntos y la serpiente vuelve a los 0,8 segundos con 1,8 segundos de gracia: durante ese tiempo atraviesa muros y cuerpos, y el borde da la vuelta en vez de matar. Cuatro bloques sobre su cabeza cuentan la gracia que queda.
 
 Antes de jugar hay un menú con el rango, los puntos, la escalera completa y los rivales. Después se sortean el mapa y el modificador, la ruleta gira, se fija el resultado y una cuenta atrás de tres segundos arranca los cuatro tableros. Los rivales se mueven exactamente a tu velocidad, en tu mismo mapa y con tu mismo modificador; lo que cambia por dentro es su lectura del tablero, nunca una barra de fuerza a la vista.
 

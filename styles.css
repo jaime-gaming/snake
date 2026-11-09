@@ -159,6 +159,15 @@ button:disabled {
   text-overflow: ellipsis;
 }
 
+.meta[data-fase="presion"] {
+  color: var(--fg);
+}
+
+.meta[data-fase="sprint"],
+.meta[data-fase="final"] {
+  color: var(--accent);
+}
+
 .score {
   font-size: clamp(15px, 2.2vw, 19px);
   font-weight: 600;
@@ -925,86 +934,6 @@ button:disabled {
   text-shadow: 0 0 24px rgba(255, 255, 255, 0.35);
 }
 
-#aviso {
-  position: absolute;
-  top: clamp(64px, 17%, 150px);
-  left: 50%;
-  z-index: 30;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 9px 16px 10px;
-  border: 1px solid var(--line2);
-  background: rgba(0, 0, 0, 0.86);
-  text-align: center;
-  pointer-events: none;
-  transform: translateX(-50%);
-  opacity: 0;
-}
-
-#aviso[hidden] {
-  display: none;
-}
-
-#aviso.visible {
-  animation: aviso-golpe 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-
-#aviso b {
-  font-size: clamp(24px, 5.2vmin, 50px);
-  font-weight: 600;
-  line-height: 0.95;
-  letter-spacing: -0.03em;
-  text-transform: uppercase;
-}
-
-#aviso span {
-  font-size: 8px;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-#aviso[data-tono="sprint"],
-#aviso[data-tono="final"],
-#aviso[data-tono="remontada"] {
-  border-color: var(--accent);
-}
-
-#aviso[data-tono="sprint"] b,
-#aviso[data-tono="final"] b,
-#aviso[data-tono="remontada"] b {
-  color: var(--accent);
-}
-
-#aviso[data-tono="lider"] {
-  border-color: var(--fg);
-  background: var(--fg);
-  color: #000;
-}
-
-#aviso[data-tono="lider"] span {
-  color: #333;
-}
-
-@keyframes aviso-golpe {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -10px) scale(0.96);
-  }
-  12% {
-    opacity: 1;
-    transform: translate(-50%, 0) scale(1);
-  }
-  72% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-
 /* contrarreloj: el tiempo en grande encima del tablero, sin tapar el juego */
 #stage.con-reloj {
   /* el hueco del reloj lo pone main.js según su altura real */
@@ -1081,10 +1010,6 @@ button:disabled {
     animation: none;
   }
 
-  #aviso.visible {
-    animation: none;
-    opacity: 1;
-  }
 }
 
 /* capa de menús */

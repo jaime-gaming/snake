@@ -36,7 +36,6 @@ const el = {
   relojFase: $('#reloj-fase'),
   arena: $('#arena'),
   cuenta: $('#cuenta'),
-  aviso: $('#aviso'),
   tableros: [...document.querySelectorAll('#arena .tablero')],
   meta: $('#hud-meta'),
   score: $('#hud-score'),
@@ -151,10 +150,6 @@ const app = {
   cuenta: 0, // cuenta atrás de 3 s antes de salir
   puestoMuerte: 0,
   fase: null, // apertura, presión o sprint
-  liderAnterior: null,
-  puestoJugador: 0,
-  finalAnunciado: false,
-  avisoTimer: 0,
 };
 
 const rutas = { listas: false, restaurando: false };
@@ -192,10 +187,6 @@ function pararTemporizador() {
   if (app.sorteoRuleta) {
     clearInterval(app.sorteoRuleta);
     app.sorteoRuleta = 0;
-  }
-  if (app.avisoTimer) {
-    clearTimeout(app.avisoTimer);
-    app.avisoTimer = 0;
   }
 }
 
@@ -748,6 +739,7 @@ function actualizarMarcador() {
     el.mult.textContent = appleUnit(recogidas);
     el.mult.classList.remove('activo');
     el.chain.style.width = '0%';
+    delete el.meta.dataset.fase;
   } else {
     valor = puntos(juego.score);
     marca = t('best', { score: mejorActual() });
@@ -761,14 +753,25 @@ function actualizarMarcador() {
       meta = t('timeLeft', { s });
       el.meta.classList.toggle('urgente', s <= 10 && juego.state === 'running');
     } else if (app.modo === 'competitive') {
-      // arriba sólo los puntos: el resto vive en cada tablero
-      meta = '';
-      marca = '';
+      // el hueco libre de la barra superior: acto, recta final y ventaja.
+      // nada de carteles encima de los tableros.
+      const fase = faseDeRonda();
+      const final = app.tiempoPartida <= 10000;
+      const nombre = final
+        ? t('phaseFinal')
+        : t(fase.id === 'presion' ? 'phasePressure' : fase.id === 'sprint' ? 'phaseSprint' : 'phaseOpening');
+      meta = `${nombre} ×${fase.boost}`;
+      el.meta.dataset.fase = final ? 'final' : fase.id;
+      const jugador = app.tableros[0];
+      marca = jugador ? textoVentaja(jugador, ordenCompetitivo()) : '';
+      el.best.classList.toggle('vivo', !!jugador && jugador.puesto === 1 && jugador.juego.score > 0);
       el.meta.classList.remove('urgente');
       if (el.best.title) el.best.removeAttribute('title');
     } else {
       meta = t('fruitScore', { mode: modeName(app.modo), fruits: juego.fruits, unit: fruitUnit(juego.fruits) });
       el.meta.classList.remove('urgente');
+      delete el.meta.dataset.fase;
+      el.best.classList.remove('vivo');
     }
   }
   if (app.modo !== 'timed') el.meta.classList.remove('urgente');
@@ -1633,54 +1636,18 @@ function faseDeRonda() {
   return FASES_RONDA[2];
 }
 
-function mostrarAviso(titulo, subtitulo, tono = '') {
-  const nodo = el.aviso;
-  if (!nodo) return;
-  const grande = nodo.querySelector('b');
-  const pequeno = nodo.querySelector('span');
-  if (grande) grande.textContent = titulo;
-  if (pequeno) pequeno.textContent = subtitulo;
-  nodo.dataset.tono = tono;
-  nodo.hidden = false;
-  nodo.classList.remove('visible');
-  void nodo.offsetWidth;
-  nodo.classList.add('visible');
-  clearTimeout(app.avisoTimer);
-  app.avisoTimer = setTimeout(() => {
-    nodo.hidden = true;
-    nodo.classList.remove('visible');
-    app.avisoTimer = 0;
-  }, 1500);
-}
-
-function ocultarAviso() {
-  if (app.avisoTimer) {
-    clearTimeout(app.avisoTimer);
-    app.avisoTimer = 0;
-  }
-  if (el.aviso) {
-    el.aviso.hidden = true;
-    el.aviso.classList.remove('visible');
-  }
-}
-
-function aplicarFase(anunciar = false) {
+function aplicarFase() {
   const fase = faseDeRonda();
   const cambio = app.fase !== fase.id;
   app.fase = fase.id;
   for (const tab of app.tableros) tab.juego.cfg.scoreBoost = fase.boost;
   if (el.relojFase) el.relojFase.textContent = `×${fase.boost}`;
-  if (cambio && anunciar) {
-    if (fase.id === 'sprint') {
-      mostrarAviso(t('phaseSprint'), t('phaseSprintSub'), 'sprint');
-      audio.play('turbo');
-    } else if (fase.id === 'presion') {
-      mostrarAviso(t('phasePressure'), t('phasePressureSub'), 'presion');
-      audio.play('power');
-    } else {
-      mostrarAviso(t('phaseGo'), t('phaseGoSub'), 'inicio');
-      audio.play('start');
-    }
+  // el cambio de acto se marca en la barra de arriba, sin tapar ningún tablero;
+  // el aviso de verdad vive en el marcador en vivo de cada tablero
+  if (cambio && app.pantalla === 'playing') {
+    parpadear(el.meta);
+    if (fase.id === 'sprint') audio.play('turbo');
+    else if (fase.id === 'presion') audio.play('power');
   }
 }
 
@@ -1902,11 +1869,6 @@ function empezarCompetitivo() {
   app.record = false;
   app.tableros = [];
   app.fase = null;
-  app.liderAnterior = null;
-  app.puestoJugador = 0;
-  app.finalAnunciado = false;
-  app.ultimoAviso = 0;
-  ocultarAviso();
   ponerOverlay(null);
 
   const nivelRivales = rankInfo(guardado.competitive.points).nivel;
@@ -1934,7 +1896,7 @@ function empezarCompetitivo() {
   app.marca = mejorActual();
   app.cuenta = 3000;
   app.tiempoPartida = DURACION_RONDA;
-  aplicarFase(false);
+  aplicarFase();
 
   el.arena.hidden = false;
   pantalla('countdown');
@@ -1960,8 +1922,7 @@ function pasoCuenta(dt) {
   if (app.cuenta <= 0) {
     if (el.cuenta) el.cuenta.hidden = true;
     for (const tab of app.tableros) tab.juego.start();
-    app.fase = null;
-    aplicarFase(true);
+    aplicarFase();
     pantalla('playing');
     actualizarMarcador();
   }
@@ -1989,12 +1950,7 @@ function pasoCompetitivo(dt) {
   if (app.pantalla !== 'playing') return;
 
   app.tiempoPartida = Math.max(0, app.tiempoPartida - dt);
-  aplicarFase(true);
-  if (app.tiempoPartida <= 10000 && !app.finalAnunciado) {
-    app.finalAnunciado = true;
-    mostrarAviso(t('phaseFinal'), t('phaseFinalSub'), 'final');
-    audio.play('alerta');
-  }
+  aplicarFase();
   if (app.tiempoPartida <= 0) {
     dibujarArena();
     actualizarTableros();
@@ -2020,7 +1976,6 @@ function pasoCompetitivo(dt) {
   }
   dibujarArena();
   actualizarTableros();
-  revisarPuesto();
   actualizarMarcador();
   if (app.tableros[0].juego.state === 'running') {
     guardado.stats.timeMs += dt;
@@ -2089,46 +2044,6 @@ function actualizarTableros() {
   });
 }
 
-// un adelantamiento se celebra una vez; no queremos un aviso en cada frame
-function revisarPuesto() {
-  if (app.pantalla !== 'playing' || !app.tableros.length) return;
-  const orden = ordenCompetitivo();
-  if (!(orden[0].juego.score > 0)) return;
-  const lider = orden[0].i;
-  const jugador = app.tableros[0];
-  const puesto = jugador.puesto || TOTAL_TABLEROS;
-
-  if (app.liderAnterior === null) {
-    app.liderAnterior = lider;
-    app.puestoJugador = puesto;
-    return;
-  }
-
-  const ahora = performance.now();
-  const puedeAvisar = ahora - (app.ultimoAviso || 0) > 900;
-
-  if (lider !== app.liderAnterior) {
-    if (puedeAvisar) {
-      if (lider === 0) {
-        mostrarAviso(t('compLead'), t('compLeadSub'), 'lider');
-        audio.play('combo');
-      } else if (app.liderAnterior === 0) {
-        mostrarAviso(t('compLostLead'), t('compLostLeadSub'), 'remontada');
-        audio.play('alerta');
-      }
-      app.ultimoAviso = ahora;
-    }
-    app.liderAnterior = lider;
-  }
-
-  if (app.puestoJugador && puesto < app.puestoJugador && puesto > 1 && puedeAvisar) {
-    mostrarAviso(`#${puesto}`, t('compUp'), 'sube');
-    audio.play('power');
-    app.ultimoAviso = ahora;
-  }
-  app.puestoJugador = puesto;
-}
-
 function vivosCompetitivo() {
   return app.tableros.filter((tab) => tab.vivo).length;
 }
@@ -2147,7 +2062,6 @@ function terminarCompetitivo() {
   const orden = [...app.tableros].sort((a, b) => b.juego.score - a.juego.score);
   app.puestoMuerte = orden.findIndex((tab) => tab.esJugador) + 1;
   app.totalMuerte = TOTAL_TABLEROS;
-  ocultarAviso();
   guardarMarca();
   guardado.stats.games++;
   guardar();
@@ -2529,7 +2443,6 @@ function pausar() {
   app.juego.pause();
   if (app.juego.state !== 'paused') return;
   audio.play('ui');
-  ocultarAviso();
   pantalla('paused');
   mostrarPausa();
 }
