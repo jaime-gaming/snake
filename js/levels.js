@@ -378,7 +378,7 @@ export const LEVELS = [
     ...holes(vline(17, 7, 6), [[17, 9], [17, 10]]),
   ]),
 
-  // ---- v2.0: diez niveles más, de 15 a 18 manzanas ----
+  // ---- diez niveles más, de 15 a 18 manzanas ----
 
   nivel(20, 'TÚNEL', 15, [
     ...hline(0, 6, 20),

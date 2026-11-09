@@ -707,9 +707,9 @@ export class Game {
       : null;
 
     // memoria corta: no dar vueltas sobre las mismas casillas
-    if (!yo.botTrail) yo.botTrail = new Map();
-    for (const [k, v] of yo.botTrail) yo.botTrail.set(k, v - 1);
-    yo.botTrail.set(K(cabeza.x, cabeza.y), 14);
+    if (!yo.rastroCaza) yo.rastroCaza = new Map();
+    for (const [k, v] of yo.rastroCaza) yo.rastroCaza.set(k, v - 1);
+    yo.rastroCaza.set(K(cabeza.x, cabeza.y), 14);
 
     let mejor = null;
     let mejorPunto = -Infinity;
@@ -754,7 +754,7 @@ export class Game {
         const d = Math.abs(destino.x - this.bonus.x) + Math.abs(destino.y - this.bonus.y);
         if (d <= 7) puntos += (8 - d) * 10;
       }
-      const visto = yo.botTrail.get(K(nx, ny));
+      const visto = yo.rastroCaza.get(K(nx, ny));
       if (visto > 0) puntos -= visto * 7;
 
       const movimiento = { dx, dy, puntos, seguro: espacio > yo.body.length + 1 };
@@ -1049,7 +1049,7 @@ export class Game {
       cazando: false,
       movido: this.time,
       paso: 1,
-      botSiguienteFallo: 48 + rand(30),
+      proximoFallo: 48 + rand(30),
     };
     this.hunterTick = 0;
     // el premio recoloca al cazador, así que también debe quedar listo para moverse
@@ -1172,9 +1172,9 @@ export class Game {
     if (this.hunterTick % this.hunterCadence() !== 0) return;
 
     let error = '';
-    if (this.hunterTick >= h.botSiguienteFallo) {
+    if (this.hunterTick >= h.proximoFallo) {
       // pequeños titubeos; más raro que elija mal o se estrelle
-      h.botSiguienteFallo = this.hunterTick + 48 + rand(40);
+      h.proximoFallo = this.hunterTick + 48 + rand(40);
       const suerte = Math.random();
       if (suerte < 0.06) return; // se queda pensando y pierde este movimiento
       if (suerte < 0.10) error = 'choque';

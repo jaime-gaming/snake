@@ -3,8 +3,8 @@
 const KEY = 'snake.language';
 const STRINGS = {
   es: {
-    documentTitle: 'Snake — v2.0',
-    description: 'Snake v2.0: campaña de 30 niveles con modificadores, contrarreloj, competitivo de cuatro tableros y perfil.',
+    documentTitle: 'Snake',
+    description: 'Snake: serpientes de bloques en blanco y negro. Campaña, infinitos, contrarreloj y competitivo de cuatro tableros con rangos.',
     language: 'Idioma',
     sound: 'sonido',
     soundTitleOn: 'sonido activo (M)',
@@ -14,13 +14,13 @@ const STRINGS = {
     resume: 'seguir',
     resumeTitle: 'seguir (P)',
     board: 'tablero',
-    startPrompt: 'pulsa una dirección',
-    focusHint: 'haz clic en el tablero para que responda el teclado',
+    startSignal: 'pulsa una dirección',
+    focusHint: 'toca el tablero para despertar el teclado',
     fatalTitle: 'el juego no ha arrancado',
-    fatalReload: 'recargar limpio',
-    noScript: 'este juego necesita javascript activado.',
+    fatalReload: 'volver a barajar',
+    noScript: 'este juego necesita su motor en marcha.',
     loading: 'cargando…',
-    missingPieces: 'faltan piezas ({pieces}). casi seguro hay ficheros viejos en caché: pulsa recargar limpio.',
+    missingPieces: 'faltan piezas del tablero ({pieces}). vuelve a barajar.',
     campaign: 'campaña',
     groupCampaign: 'progreso',
     groupCampaignTag: 'rutas con obstáculos',
@@ -156,6 +156,7 @@ const STRINGS = {
     mod_turbo: 'sin turbo',
     mod_ninguno: 'sin modificador',
     pointsWon: '+{count} puntos',
+    pointsBonus: 'bonus por puntos: +{count}',
     newRank: '¡nuevo rango: {name}!',
     rankBronze: 'bronce', rankSilver: 'plata', rankGold: 'oro',
     rankPlatinum: 'platino', rankDiamond: 'diamante', rankMaster: 'maestro',
@@ -164,6 +165,7 @@ const STRINGS = {
     labelWins: 'victorias',
     labelRound: 'ronda',
     compYourRank: 'tu rango',
+    compRankScale: 'mapas y modificadores según tu rango',
     compRivals: 'rivales',
     compBoards: '4 tableros',
     compActs: 'tres actos',
@@ -201,7 +203,7 @@ const STRINGS = {
     win: '¡has ganado!',
     profile: 'perfil',
     profileTitle: 'tu perfil',
-    profileHint: 'todo lo acumulado en este navegador',
+    profileHint: 'todo lo jugado, guardado en el tablero',
     statsGames: 'partidas jugadas',
     statsWins: 'victorias en competitivo',
     statsFruits: 'frutas recogidas',
@@ -228,8 +230,8 @@ const STRINGS = {
     footerGroups: 'grupos',
   },
   en: {
-    documentTitle: 'Snake — v2.0',
-    description: 'Snake v2.0: 30-level campaign with modifiers, time attack, four-board competitive mode, and a profile.',
+    documentTitle: 'Snake',
+    description: 'Snake: block snakes in black and white. Campaign, endless, time attack and a four-board competitive mode with ranks.',
     language: 'Language',
     sound: 'sound',
     soundTitleOn: 'sound on (M)',
@@ -239,13 +241,13 @@ const STRINGS = {
     resume: 'resume',
     resumeTitle: 'resume (P)',
     board: 'game board',
-    startPrompt: 'press a direction',
-    focusHint: 'click the board to enable keyboard controls',
+    startSignal: 'press a direction',
+    focusHint: 'touch the board to wake the keyboard',
     fatalTitle: 'the game did not start',
-    fatalReload: 'reload cleanly',
-    noScript: 'this game needs javascript enabled.',
+    fatalReload: 'shuffle again',
+    noScript: 'this game needs its engine running.',
     loading: 'loading…',
-    missingPieces: 'missing pieces ({pieces}). The browser may have cached old files; try a clean reload.',
+    missingPieces: 'missing board pieces ({pieces}). shuffle again.',
     campaign: 'campaign',
     groupCampaign: 'campaign',
     groupCampaignTag: 'obstacle routes',
@@ -381,6 +383,7 @@ const STRINGS = {
     mod_turbo: 'no boost',
     mod_ninguno: 'no modifier',
     pointsWon: '+{count} points',
+    pointsBonus: 'score bonus: +{count}',
     newRank: 'new rank: {name}!',
     rankBronze: 'bronze', rankSilver: 'silver', rankGold: 'gold',
     rankPlatinum: 'platinum', rankDiamond: 'diamond', rankMaster: 'master',
@@ -389,6 +392,7 @@ const STRINGS = {
     labelWins: 'wins',
     labelRound: 'round',
     compYourRank: 'your rank',
+    compRankScale: 'maps and modifiers follow your rank',
     compRivals: 'rivals',
     compBoards: '4 boards',
     compActs: 'three acts',
@@ -426,7 +430,7 @@ const STRINGS = {
     win: 'you won!',
     profile: 'profile',
     profileTitle: 'your profile',
-    profileHint: 'everything earned in this browser',
+    profileHint: 'everything played, kept on the board',
     statsGames: 'games played',
     statsWins: 'competitive wins',
     statsFruits: 'fruits collected',
@@ -523,7 +527,7 @@ export function levelName(name) {
   return names[name] || String(name).toLowerCase();
 }
 
-const UMBRALES_RANGO = [1000, 750, 500, 250, 100, 0];
+const UMBRALES_RANGO = [1200, 700, 400, 180, 60, 0];
 const CLAVES_RANGO = ['rankMaster', 'rankDiamond', 'rankPlatinum', 'rankGold', 'rankSilver', 'rankBronze'];
 
 export function rankName(cups) {
@@ -548,13 +552,14 @@ export function rankInfo(cups) {
   const pos = idx < 0 ? CLAVES_RANGO.length - 1 : idx;
   const nombre = t(CLAVES_RANGO[pos]);
   const nivel = CLAVES_RANGO.length - 1 - pos; // 0 bronce … 5 maestro
-  if (idx <= 0) return { nombre, nivel, copas: n, siguiente: null, falta: 0 };
+  if (idx <= 0) return { nombre, nivel, copas: n, siguiente: null, falta: 0, tramo: 0 };
   return {
     nombre,
     nivel,
     copas: n,
     siguiente: t(CLAVES_RANGO[idx - 1]),
     falta: UMBRALES_RANGO[idx - 1] - n,
+    tramo: UMBRALES_RANGO[idx - 1] - UMBRALES_RANGO[idx],
   };
 }
 

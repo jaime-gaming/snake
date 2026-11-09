@@ -6,8 +6,8 @@
 <meta http-equiv="Cache-Control" content="no-store">
 <meta name="theme-color" content="#000000">
 <link rel="canonical" href="https://snake.jaime-gaming.com/">
-<meta id="meta-description" name="description" content="Snake v2.0 en snake.jaime-gaming.com: campaña de 30 niveles con modificadores, competitivo de cuatro tableros con rangos, contrarreloj y perfil.">
-<title>Snake — v2.0</title>
+<meta id="meta-description" name="description" content="Snake: serpientes de bloques en blanco y negro. Campaña, infinitos, contrarreloj y un competitivo de cuatro tableros con rangos.">
+<title>Snake</title>
 <script>
   (function () {
     var route = new URLSearchParams(location.search).get('route');
@@ -30,12 +30,12 @@
   })();
 </script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Crect x='2' y='7' width='4' height='4' fill='%23fff'/%3E%3Crect x='6' y='7' width='4' height='4' fill='%23fff'/%3E%3Crect x='10' y='7' width='2' height='4' fill='%23fff'/%3E%3Crect x='13' y='2' width='3' height='3' fill='%23ff2b2b'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="styles.css?v=25">
+<link rel="stylesheet" href="styles.css?v=26">
 </head>
 <body data-screen="home">
   <div id="app">
     <header id="topbar">
-      <span class="brand">snake<span class="dot">.</span><span class="version">v2.0</span></span>
+      <span class="brand">snake<span class="dot">.</span></span>
       <div class="stats">
         <span id="hud-meta" class="meta" data-i18n="loading">cargando…</span>
         <span id="hud-score" class="score">—</span>
@@ -68,7 +68,7 @@
       <div id="cuenta" hidden aria-hidden="true"><b>3</b></div>
       <div id="aviso" hidden aria-hidden="true"><b></b><span></span></div>
       <div id="reloj" hidden aria-hidden="true"><b>30</b><span>s</span><em id="reloj-fase"></em></div>
-      <div id="prompt" data-i18n="startPrompt">pulsa una dirección</div>
+      <div id="senal" data-i18n="startSignal">pulsa una dirección</div>
       <div id="overlay"></div>
     </main>
 
@@ -94,7 +94,7 @@
   </div>
 
   <noscript>
-    <div id="sin-js" data-i18n="noScript">este juego necesita javascript activado.</div>
+    <div id="sin-js" data-i18n="noScript">este juego necesita su motor en marcha.</div>
   </noscript>
 
   <script>
@@ -119,16 +119,15 @@
       window.addEventListener('error', function (evento) {
         var objetivo = evento.target || {};
         if (objetivo.tagName === 'SCRIPT' || objetivo.tagName === 'LINK') {
-          fallo('no se pudo cargar ' + (objetivo.src || objetivo.href));
+          fallo('no se pudo colocar una pieza del tablero.');
           return;
         }
-        var archivo = (evento.filename || '').split('/').pop();
-        fallo((evento.message || 'error de javascript') + (archivo ? ' · ' + archivo + ':' + (evento.lineno || '?') : ''));
+        fallo(evento.message || 'el tablero ha perdido el trazo.');
       }, true);
 
       window.addEventListener('unhandledrejection', function (evento) {
         var motivo = evento.reason;
-        fallo('promesa rechazada: ' + ((motivo && motivo.message) || motivo));
+        fallo('el tablero ha hecho un movimiento imposible.');
       });
 
       document.getElementById('fatal-reload').addEventListener('click', function () {
@@ -137,12 +136,12 @@
 
       setTimeout(function () {
         if (!document.documentElement.dataset.booted) {
-          fallo('el juego no ha arrancado en 4 s. si acabas de actualizar, recarga limpio: puede haber una versión vieja en caché.');
+          fallo('el tablero no ha despertado en 4 s. vuelve a abrirlo.');
         }
       }, 4000);
     })();
   </script>
 
-  <script src="snake.js?v=25"></script>
+  <script src="snake.js?v=26"></script>
 </body>
 </html>

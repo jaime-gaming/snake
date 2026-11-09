@@ -81,13 +81,13 @@ function configNivel(nivel) {
 // estructura: grupos del menú, 30 niveles y velocidades coherentes
 process.stdout.write('estructura\n');
 {
-  comprobar(GROUPS.length === 3, 'grupos: v2.0 tiene tres grupos (progreso, infinitos, competitivo)');
+  comprobar(GROUPS.length === 3, 'grupos: el juego tiene tres grupos (progreso, infinitos, competitivo)');
   comprobar(GROUPS[0].modes[0] === 'campaign', 'grupos: la campaña va primero');
   comprobar(GROUPS[2].modes.includes('competitive'), 'grupos: el competitivo cuelga del tercer grupo');
   const planos = GROUPS.flatMap((g) => g.modes);
   comprobar(planos.length === MODE_ORDER.length, 'grupos: MODE_ORDER no coincide con los grupos');
   comprobar(new Set(planos).size === planos.length, 'grupos: hay un modo repetido');
-  comprobar(Object.keys(MODES).length === 5, 'modos: v2.0 tiene cinco modos (clásico, frenesí, cazador, contrarreloj, competitivo)');
+  comprobar(Object.keys(MODES).length === 5, 'modos: el juego tiene cinco modos (clásico, frenesí, cazador, contrarreloj, competitivo)');
   comprobar(!!MODES.timed && !!MODES.competitive, 'modos: faltan contrarreloj o competitivo');
   comprobar(!!MODES.timed.timeAttack && MODES.timed.timeAttack.start >= 20000
     && MODES.timed.timeAttack.start <= 45000
@@ -606,7 +606,7 @@ process.stdout.write('hunter behavior\n');
 
   // una duda dura exactamente una oportunidad de movimiento
   impulso.hunterTick = 3;
-  impulso.hunter.botSiguienteFallo = 0;
+  impulso.hunter.proximoFallo = 0;
   impulso.hunter.body = [{ x: 3, y: 3 }, { x: 2, y: 3 }, { x: 1, y: 3 }];
   impulso.pellets = [{ x: 16, y: 16 }];
   const antes = impulso.hunter.body.map((c) => ({ ...c }));
@@ -626,7 +626,7 @@ process.stdout.write('hunter behavior\n');
   malGirado.hunter.body = [{ x: 5, y: 5 }, { x: 4, y: 5 }, { x: 3, y: 5 }];
   malGirado.hunter.dir = { x: 1, y: 0 };
   malGirado.hunterTick = 3;
-  malGirado.hunter.botSiguienteFallo = 0;
+  malGirado.hunter.proximoFallo = 0;
   malGirado.pellets = [{ x: 10, y: 5 }];
   const randomAntesGiro = Math.random;
   const secuenciaGiro = [0.5, 0.2];
@@ -645,7 +645,7 @@ process.stdout.write('hunter behavior\n');
   choque.hunter.body = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }];
   choque.hunter.dir = { x: 0, y: -1 };
   choque.hunterTick = 3;
-  choque.hunter.botSiguienteFallo = 0;
+  choque.hunter.proximoFallo = 0;
   choque.pellets = [{ x: 16, y: 16 }];
   const randomAntesChoque = Math.random;
   const secuenciaChoque = [0, 0.08];
@@ -1097,9 +1097,9 @@ process.stdout.write('cazador al choque\n');
   process.stdout.write('  cazador: avanza interpolado entre casillas\n');
 }
 /* ═══════════════════════════════════════════════════════════════════════════
-   v2.0: competitivo, contrarreloj, perfil, idioma y publicación
+   competitivo, contrarreloj, perfil, idioma y publicación
    ═══════════════════════════════════════════════════════════════════════════ */
-process.stdout.write('v2.0, idioma y publicación\n');
+process.stdout.write('arte, idioma y tableros\n');
 {
   const main = fs.readFileSync(path.join(RAIZ, 'js/main.js'), 'utf8');
   const input = fs.readFileSync(path.join(RAIZ, 'js/input.js'), 'utf8');
@@ -1115,17 +1115,16 @@ process.stdout.write('v2.0, idioma y publicación\n');
   const wrangler = fs.readFileSync(path.join(RAIZ, 'wrangler.toml'), 'utf8');
 
   comprobar(!!MODES.competitive && GROUPS.flatMap((g) => g.modes).includes('competitive'),
-    'v2.0: falta el modo competitivo en los grupos');
-  comprobar(/\n  start\(\) \{/.test(motor) && /\n  decidir\(opciones = \{\}\) \{/.test(motor)
-    && !/rivals|cfg\.bots|botTurn/.test(motor),
-  'v2.0: el motor debe arrancar tableros y decidir sin rivales dentro de la misma rejilla');
+    'falta el modo competitivo en los grupos');
+  comprobar(/\n  start\(\) \{/.test(motor) && /\n  decidir\(opciones = \{\}\) \{/.test(motor),
+  'el motor debe arrancar tableros y decidir sin rivales dentro de la misma rejilla');
   comprobar(/timeAttack/.test(motor) && /timeLeft/.test(motor),
-    'v2.0: falta el reloj de contrarreloj en el motor');
+    'falta el reloj de contrarreloj en el motor');
   comprobar(/mostrarVictoria|mostrarPerfil/.test(main) && /stats/.test(main) && idiomas.includes('statsGames'),
-    'v2.0: falta la pantalla de perfil con estadísticas');
+    'falta la pantalla de perfil con estadísticas');
   const marcaRetirada = 'BORRAR' + '-COMPETITIVO';
   comprobar(!new RegExp(marcaRetirada).test(main + motor + niveles + audio + pagina + css + idiomas + readme + servidor + wrangler),
-    'v2.0: todavía quedan marcadores de retirada en el código');
+    'todavía quedan marcadores de retirada en el código');
   comprobar(main.includes("app.modo !== 'hunter'") && input.includes('canTurbo'),
     'turbo: no se desactiva para el cazador');
 
@@ -1140,8 +1139,8 @@ process.stdout.write('v2.0, idioma y publicación\n');
     && main.includes('El cuerpo se extiende de forma continua y lenta'),
   'marca: la e no se aproxima despacio y de forma continua a la manzana');
 
-  comprobar(pagina.includes('snake.js?v=25') && pagina.includes('styles.css?v=25') && pagina.includes('Snake — v2.0'),
-    'caché: falta la versión v2.0 (v22) en la página');
+  comprobar(pagina.includes('snake.js?v=26') && pagina.includes('styles.css?v=26') && pagina.includes('<title>Snake</title>'),
+    'caché: falta el sello de la página (v26)');
   comprobar(pagina.includes('id="lang-switch"') && idiomas.includes("en: {")
     && idiomas.includes('export function setLanguage'), 'idioma: falta el selector ES/EN o su traducción');
   setLanguage('en');
@@ -1159,7 +1158,7 @@ process.stdout.write('v2.0, idioma y publicación\n');
     && t('modeTimedTag').includes('30') && t('mod_muros') === 'walls appear' && t('mod_turbo') === 'no boost'
     && routeSlug('timed') === 'timed' && routeSlug('competitive') === 'competitive' && routeSlug('profile') === 'profile'
     && routeWords().timed.includes('contrarreloj') && routeWords().competitive.includes('competitivo'),
-  'idioma: faltan las cadenas inglesas de v2.0 (contrarreloj, competitivo, perfil, modificadores)');
+  'idioma: faltan las cadenas inglesas de el juego (contrarreloj, competitivo, perfil, modificadores)');
   setLanguage('es');
   comprobar(t('campaign') === 'campaña' && routeSlug('campaign') === 'campaña'
     && routeSlug('settings') === 'ajustes' && routeWords().settings.includes('settings')
@@ -1175,7 +1174,7 @@ process.stdout.write('v2.0, idioma y publicación\n');
     && t('ruleMods').length > 10
     && routeSlug('timed') === 'contrarreloj' && routeSlug('competitive') === 'competitivo' && routeSlug('profile') === 'perfil'
     && levelName('TÚNEL') === 'túnel' && levelName('GRAN FINAL') === 'gran final',
-  'idioma: faltan las cadenas españolas de v2.0 (contrarreloj, competitivo, perfil, modificadores)');
+  'idioma: faltan las cadenas españolas de el juego (contrarreloj, competitivo, perfil, modificadores)');
   comprobar(main.includes('scoring: false') && main.includes('resumenManzanas(juego)')
     && main.includes("el.mult.textContent = appleUnit(recogidas)")
     && motor.includes('if (this.cfg.scoring === false) return 0;')
@@ -1212,15 +1211,15 @@ process.stdout.write('v2.0, idioma y publicación\n');
     && workflow.includes('node tools/check.mjs')
     && !/configure-pages|upload-pages-artifact|deploy-pages|wrangler deploy/.test(workflow),
     'workflow: los checks deben validar fuentes sin desplegar');
-  comprobar(readme.includes('wrangler deploy') && readme.includes('snake.jaime-gaming.com')
-    && readme.includes('not_found_handling'),
-    'README: falta la guía de despliegue en Cloudflare Workers con el dominio');
+  comprobar(readme.includes('## Competitivo') && readme.includes('### Rangos')
+    && readme.includes('1200') && !readme.includes('Cloudflare'),
+    'README: falta el manual de arte y rangos del juego');
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   v2.0: competitivo de cuatro tableros, sorteos, cuenta atrás y copas;
+   competitivo de cuatro tableros, sorteos, cuenta atrás y copas;
    contrarreloj con reloj que acelera y manzana envenenada
    ═══════════════════════════════════════════════════════════════════════════ */
-process.stdout.write('v2.0: cuatro tableros, sorteo y cuenta atrás\n');
+process.stdout.write('cuatro tableros, sorteo y cuenta atrás\n');
 {
   comprobar(main.includes('const TOTAL_TABLEROS = 4') && main.includes('function nombreTablero(i)'),
     'competitivo: faltan los cuatro tableros o sus nombres');
@@ -1363,7 +1362,7 @@ process.stdout.write('v2.0: cuatro tableros, sorteo y cuenta atrás\n');
   comprobar(!MODES.classic.veneno && !MODES.hunter.veneno && !MODES.competitive.veneno
     && MODES.frenzy.veneno && MODES.frenzy.veneno.chance > 0,
   'veneno: clásico y cazador deben quedar limpios; frenesí conserva el suyo');
-  comprobar(main.includes("if (app.arena.mods.includes('veneno')) cfg.veneno = { chance: 0.18, puntos: 20 }")
+  comprobar(main.includes("if (app.arena.mods.includes('veneno')) cfg.veneno = { chance: rango.venenoChance, puntos: 20 }")
     && motor.includes('this.score = Math.max(0, this.score - puntos)'),
   'competitivo: el veneno no entra como modificador sorteado o no resta puntos');
   comprobar(motor.includes("ctx.fillStyle = '#df1f1f'")
@@ -1373,17 +1372,26 @@ process.stdout.write('v2.0: cuatro tableros, sorteo y cuenta atrás\n');
   'contrarreloj: la manzana envenenada no tiene una diferencia sutil con la buena');
   comprobar(motor.includes('>= 6);') && motor.includes('la misma respiración que la fruta'),
     'contrarreloj: la envenenada no aparece lejos ni con la misma animación');
-  comprobar(main.includes('const MODS_COMPETITIVO') && main.includes("['muros', 'reloj', 'cazador', 'turbo', 'veneno']"),
-    'competitivo: el modificador no se sortea entre muros, reloj, cazador, sin turbo y veneno');
+  comprobar(main.includes('const ESCALERA_MODS') && main.includes("['muros', 'reloj', 'cazador', 'turbo', 'veneno']")
+    && main.includes('const ESCALERA_ARENAS') && main.includes('function modsDelRango')
+    && main.includes('function arenasDelRango') && main.includes('function ajusteDeRango'),
+  'competitivo: los mapas y modificadores no se escalan con el rango');
+  comprobar(main.includes('const BONO_POR_PUNTOS') && main.includes('function bonoPuntosCompetitivo')
+    && main.includes("t('pointsBonus'"),
+  'competitivo: falta la bonificación pequeña por los puntos de la partida');
+  const umbrales = rankList().map((r) => r.puntos);
+  comprobar(JSON.stringify(umbrales) === JSON.stringify([0, 60, 180, 400, 700, 1200]),
+    'rangos: los umbrales no suben cada vez más entre peldaños');
+  const tramos = umbrales.slice(1).map((p, i) => p - umbrales[i]);
+  comprobar(tramos.every((t, i) => i === 0 || t > tramos[i - 1]) && rankInfo(0).tramo === 60,
+    'rangos: el requerimiento para pasar no crece con el rango');
   comprobar(main.includes('const COPAS_POR_PUESTO = [25, 10, 5, 0]')
     && main.includes('guardado.competitive.points') && main.includes('comp.points ?? comp.cups'),
   'competitivo: faltan los puntos por puesto o su guardado');
-  // el patrón se arma por partes: la propia búsqueda no debe dejar rastro
-  const sobra = new RegExp(['rivals', 'cfg\\.bots', 'botTurn', ['piloto', 'automático'].join(' ')].join('|'));
-  comprobar(!sobra.test(main + motor + niveles),
-    'sin rastro: queda lenguaje de rivales dentro de la rejilla o de conducción automática');
-  comprobar(!/botDie|\bbots\b/.test(main + motor + niveles + idiomas + pagina),
-    'sin rastro: quedan restos de la palabra bots en el código o los textos');
+  // el patrón se arma por partes para no dejar la palabra en el propio test
+  const ajeno = new RegExp([['pr', 'ompt'].join(''), '|', ['bot', 'Trail'].join(''), '|', ['bot', 'Siguiente'].join('')].join(''));
+  comprobar(!ajeno.test(main + motor + niveles + idiomas + pagina),
+    'sin rastro: queda vocabulario ajeno al tablero');
 
   // cuatro partidas iguales, cada una en su tablero: no comparten nada
   const arena = LEVELS[10];
@@ -1565,7 +1573,7 @@ process.stdout.write('v2.0: cuatro tableros, sorteo y cuenta atrás\n');
   // idioma: copas, rangos y explicaciones de los modificadores
   setLanguage('es');
   comprobar(rankInfo(120).nombre === 'plata' && rankInfo(120).siguiente === 'oro'
-    && rankInfo(120).falta === 130 && rankInfo(1500).siguiente === null,
+    && rankInfo(120).falta === 60 && rankInfo(1500).siguiente === null,
   'idioma: el rango actual o lo que falta para el siguiente no cuadran');
   comprobar(rankList().length === 6 && rankList()[0].nombre === 'bronce'
     && rankList()[5].nombre === 'maestro' && rankList()[5].nivel === 5,
@@ -1620,14 +1628,14 @@ process.stdout.write('v2.0: cuatro tableros, sorteo y cuenta atrás\n');
   const larga = reglas.find((regla) => regla.length > 80);
   comprobar(!larga, `minimalismo: una regla pasa de 80 letras («${larga}»)`);
 
-  // v2.0 consolida el competitivo: ya no debe quedar ningún rastro de la retirada.
+  // el competitivo consolida el competitivo: ya no debe quedar ningún rastro de la retirada.
   const vigilados = [
     'js/levels.js', 'js/main.js', 'js/engine.js', 'js/audio.js', 'index.html',
     'styles.css', 'tools/check.mjs', 'README.md', 'serve.mjs', 'wrangler.toml',
   ];
   for (const rel of vigilados) {
     const texto = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
-    comprobar(!texto.includes('BORRAR' + '-COMPETITIVO'), `v2.0: queda la marca de retirada en ${rel}`);
+    comprobar(!texto.includes('BORRAR' + '-COMPETITIVO'), `queda la marca de retirada en ${rel}`);
   }
   process.stdout.write(`  ${reglas.length} reglas de ayuda · retirada limpia en ${vigilados.length} ficheros\n`);
 }

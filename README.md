@@ -1,117 +1,74 @@
-# snake — v2.0
+# snake
 
-A monochrome grid-based Snake game with no external dependencies or network requests. It supports English and Spanish, remembers the selected language in the browser, and works with a keyboard, touch controls, and a gamepad. It is served from its own domain, **https://snake.jaime-gaming.com**, via **Cloudflare Workers**.
+Un juego de serpientes de bloques en blanco y negro. Sin adornos, sin dependencias y sin llamadas a la red: sólo la rejilla, la manzana, el pulso de los bloques y el ruido seco de cada choque. La interfaz está en español y en inglés, y se puede jugar con teclado, gesto táctil o mando.
 
-Competitive is a quick match on **four separate boards**: one per snake, all with the same map, modifier and speed. Before playing, a card shows your **rank ladder** and points, then the **draw** (map + modifier) is announced, a **3-second countdown** starts the match, and **most points after 60 seconds wins**. Crashing costs points and you **revive with a grace period**. Placing earns **points** that climb **ranks**. Frenzy and Time attack hide a **poisoned apple** now and then; Classic and Hunter stay clean, and in Competitive the poison only appears when the draw picks it as the modifier. Time attack also shows a **big clock** that **keeps accelerating**. The site is served from its own domain via **Cloudflare Workers**.
+## Idea visual
 
-## Controls
+La pantalla es una hoja de tinta: negro profundo, blancos duros y un rojo reservado para lo que quema. La serpiente no es una línea continua, sino una cadena de bloques que respira con la manzana. El título de la portada está dibujado como cinco serpientes independientes; la `e` persigue la manzana despacio, sin prisa, hasta alcanzarla. Los marcos son escuetos, las esquinas se marcan con dos trazos y cada aviso ocupa el menor espacio posible. La tipografía es de bloques, con cifras tabulares y mayúsculas espaciadas para los rótulos.
 
-| Action | Keyboard | Touch / gamepad |
+El rojo no es decoración: anuncia la manzana envenenada, la serpiente cazadora y el borde que apura el reloj. La manzana envenenada no grita: comparte tamaño, brillo y respiración con la buena; sólo la delatan un rojo algo más oscuro y una muesca mínima en la esquina inferior derecha.
+
+## Controles
+
+| Acción | Teclado | Táctil / mando |
 | --- | --- | --- |
-| Turn | Arrow keys or WASD | Swipe / D-pad or stick |
-| Boost | Space or Shift | Tap the board / A button; unavailable in Hunter and in no-boost levels |
-| Pause | P or Esc | Pause button / Start |
-| Restart | R | Button |
-| Sound | M | Sound button |
-| Menus | Arrow keys, Page Up/Down, Home/End and Enter | Select an option |
+| Girar | Flechas o WASD | Deslizar / cruceta o stick |
+| Turbo | Espacio o Mayús | Tocar el tablero / botón A; no existe en Cazador ni en los niveles sin turbo |
+| Pausa | P o Esc | Botón de pausa / Start |
+| Reiniciar | R | Botón |
+| Sonido | M | Botón de sonido |
+| Menús | Flechas, Av Pág/Re Pág, Inicio/Fin y Enter | Elegir una opción |
 
-Group, mode, level, help, profile, and settings navigation all support the keyboard and keep a visible focus indicator; long panels scroll with the focused option and with Page Up/Down. In the level grid, use `↑↓` to move between rows. The compact settings button is below the mode list; use it to change sound and the screen effect, or clear saved records and progress.
+Los paneles largos se recorren con la rueda, con el gesto táctil y con el teclado; el foco siempre queda a la vista. En la rejilla de niveles, `↑↓` cambian de fila. El ajuste de sonido y de efecto de pantalla vive bajo la lista de modos.
 
-## Modes
+## Modos
 
-The home screen has three groups: **progress**, **endless**, and **competitive**. Switch groups with `←→` on the mode screen.
+La portada agrupa el juego en tres rutas: **progreso**, **infinitos** y **competitivo**.
 
-- **Campaign** — 30 hand-designed levels. Clear each level to unlock the next. There is no score: progress is measured by apples collected and remaining. Some levels carry a **modifier** that changes the rules instead of (or besides) the map: level 8 and 21 get *walls that appear*, level 12 is *no boost*, level 16 and 30 have a *clock*, and level 26 brings the *hunter* into the campaign. The HUD shows the active modifier next to the level name.
-- **Classic** — Endless play. Each fruit speeds up the snake; walls begin to appear after 30 fruits. No poisoned apples: the run is about pace and space.
-- **Frenzy** — The edges wrap around and the snake gradually speeds up. Every 16 seconds a **wave of three extra fruits** lands (they blink before vanishing) and every 11 seconds a **speed pulse** pushes everyone faster for a moment. The **poisoned apple** also appears.
-- **Hunter** — A red snake eats blue pellets and then pursues you. Its head is dangerous; its body and pellets are safe. If it collides with your body, it disappears and returns smaller. You can eat the blue pellets too.
-- **Time attack** — You start with **30 seconds**, shown as a **big clock** over the board. Every fruit adds 3 seconds (up to a cap), but the clock **keeps speeding up** (up to twice as fast after 60 seconds); the *slow* power-up now **halves the clock** instead of the snake, **boost is disabled**, and under 10 seconds the clock turns red and blinks.
+- **Campaña** — Treinta niveles dibujados a mano. Cada manzana abre el siguiente; no hay puntuación, sólo manzanas recogidas y las que faltan. Algunos niveles añaden un modificador: muros que aparecen, un reloj, la ausencia de turbo o la entrada del cazador.
+- **Clásico** — Sin final. Cada fruta acelera la serpiente y, a partir de la trigésima, empiezan a salir muros. La manzana envenenada no existe aquí: todo es ritmo y espacio.
+- **Frenesí** — Los bordes se abren y la serpiente gana velocidad poco a poco. Cada dieciséis segundos cae una ola de tres frutas extra, que parpadean antes de irse, y cada once segundos un pulso de velocidad aprieta el tablero. La manzana envenenada aparece de vez en cuando.
+- **Cazador** — Una serpiente roja come puntos azules y después te busca. Su cabeza mata; su cuerpo y sus puntos son seguros. Si choca contigo, estalla y vuelve más corta. Tú también puedes comer los puntos azules. Aquí no hay veneno.
+- **Contrarreloj** — Empiezas con treinta segundos en un reloj grande sobre el tablero. Cada fruta suma tres segundos, pero el reloj acelera hasta el doble; el potenciador *lento* lo frena a la mitad, el turbo queda apagado y, bajo diez segundos, el reloj se vuelve rojo y parpadea. Una segunda manzana, lejos de la buena, va envenenada: comerla cuesta cinco segundos y corta la cadena.
 
-  Now and then a second apple appears **far from the real one** and it is **poisoned**. It keeps the same breathing animation and looks almost identical: only a **slightly darker red** and a **small bitten corner** give it away. Eating it **costs 5 seconds** and **cuts the chain**; in Frenzy it **costs 20 points** instead, and in Competitive it costs 20 points when the poison modifier is drawn. Another one comes back far from the good apple.
-- **Competitive** — A **60-second round** on four **separate boards**, one per snake (you and three rivals). Boards never share cells or fruit, and yours is **bigger** and framed in white, with each snake's name and **points** next to it. Every match **draws a map** (the walls of a campaign map) and **one modifier** — *walls that appear*, a *clock*, the *hunter*, *no boost* or *poison* — the same for everyone. The round has **three 20-second acts**: opening at ×1, pressure at ×1.5 and a final sprint at ×2, so saving risky moves for the last act is a real choice.
+Los potenciadores cambian según el modo:
 
-  The flow is **menu → draw → countdown → round**. The menu is a bordered card: your **rank emblem**, points and a **progress bar**, the **six-rank ladder** with the current step framed, three short figures, the **three acts** and the **three rivals**. The draw **spins through map and modifier names**, fixes the chosen pair with a short pulse and **starts on its own**; a **3-second countdown** runs while your snake is already visible, then the round begins. **Most points when the clock hits zero wins.** Live position badges, the gap to the next snake, lead-change callouts and a leader frame keep the race readable. Crashing costs **10 points**; the snake **revives after 0.8 s with 1.8 s of grace**, during which it crosses walls and bodies and the board edge wraps instead of killing, so a bad start never ends the match. Four blocks over its head count down the remaining grace.
+- **Campaña:** fantasma, lento y encoger.
+- **Clásico:** fantasma, lento, encoger y doble puntuación.
+- **Frenesí:** lento, escudo y doble puntuación.
+- **Cazador:** fantasma, encoger y escudo.
+- **Contrarreloj:** lento, escudo, doble y fantasma.
+- **Competitivo:** fantasma, escudo, lento y encoger. Los rivales también los recogen.
 
-  Placing awards **rank points**: 1st +25, 2nd +10, 3rd +5, 4th +0, across six **ranks** — bronze (0), silver (100), gold (250), platinum (500), diamond (750), master (1000) — with a six-block icon that fills up. Rivals steer towards the power-ups that help them (shield, ghost, slow) and the golden apple. They move at **exactly your speed** on the same map, and rivals and players revive with the same grace and the same point penalty.
+El fantasma atraviesa peligros; el lento baja la velocidad; encoger acorta la cola; el escudo perdona un choque; el doble multiplica los puntos.
 
-Power-ups vary by mode:
+## Competitivo
 
-- **Campaign:** ghost, slow, and shrink.
-- **Classic:** ghost, slow, shrink, and double score.
-- **Frenzy:** slow, shield, and double score.
-- **Hunter:** ghost, shrink, and shield.
-- **Time attack:** slow, shield, double, and ghost.
-- **Competitive:** ghost, shield, slow, and shrink. Rivals can pick them up too.
+Una partida de **sesenta segundos** en **cuatro tableros separados**, uno por serpiente: tú y tres rivales. No comparten casillas ni fruta. Tu tablero es el más grande y va enmarcado en blanco; cada tablero lleva su nombre, sus puntos, su puesto y la diferencia con el rival inmediato. El líder lleva un marco propio y los avisos celebran los adelantamientos.
 
-Ghost passes through hazards; slow reduces speed; shrink shortens the tail; shield saves you from one collision; double multiplies score.
+La partida tiene **tres actos de veinte segundos**: apertura a ×1, presión a ×1.5 y sprint final a ×2. Guardar los riesgos para el último acto es una decisión real. Al chocar se pierden diez puntos y la serpiente vuelve a los 0,8 segundos con 1,8 segundos de gracia: durante ese tiempo atraviesa muros y cuerpos, y el borde da la vuelta en vez de matar. Cuatro bloques sobre su cabeza cuentan la gracia que queda.
 
-## Profile
+Antes de jugar hay un menú con el rango, los puntos, la escalera completa y los rivales. Después se sortean el mapa y el modificador, la ruleta gira, se fija el resultado y una cuenta atrás de tres segundos arranca los cuatro tableros. Los rivales se mueven exactamente a tu velocidad, en tu mismo mapa y con tu mismo modificador; lo que cambia por dentro es su lectura del tablero, nunca una barra de fuerza a la vista.
 
-The home screen has a **profile** link (route `/perfil`, `/profile`). It shows lifetime stats saved in the browser: games played, competitive wins, fruits collected, time played, best chain, best score, plus competitive **points** and the current **rank**. Clearing records in settings wipes them too.
+### Rangos
 
-## Home screen
+El puesto reparte puntos: 1.º +25, 2.º +10, 3.º +5, 4.º +0. Además, el marcador de la partida deja una bonificación mínima: un punto extra por cada 250 puntos conseguidos, con un tope de tres. Los puntos suben por seis peldaños y **cada peldaño pide más que el anterior**:
 
-The `snake.` title is drawn as five independent snakes, one per letter. Only the `e` follows the apple, moving slowly and continuously until it reaches it. The design keeps crisp blocks and a high-contrast palette.
+| Rango | Puntos | Lo que se abre |
+| --- | --- | --- |
+| Bronce | 0 | Mapas amplios y muros |
+| Plata | 60 | Entra el reloj |
+| Oro | 180 | Entra el cazador |
+| Platino | 400 | Entra la ausencia de turbo |
+| Diamante | 700 | Entra el veneno y los mapas cerrados |
+| Maestro | 1200 | El repertorio completo, en su versión más dura |
 
-## Language and routes
+La escalera no es sólo una cifra: **los mapas y los modificadores suben contigo**. En bronce se juega en mapas abiertos y con muros; al ascender se abren laberintos más cerrados, entran el reloj, el cazador, la ausencia de turbo y el veneno, el reloj arranca con menos margen, el cazador ve más lejos y los muros salen antes y con más frecuencia. Los cuatro tableros reciben siempre el mismo mapa, el mismo modificador y la misma velocidad.
 
-The **EN / ES** selector changes the text and route names, and remembers the preference in the browser. The site is served from the domain root, for example:
+## Perfil
 
-- `https://snake.jaime-gaming.com/`
-- Spanish: `/campaña`, `/clásico`, `/contrarreloj`, `/competitivo`, `/perfil`
-- English: `/campaign`, `/classic`, `/timed`, `/competitive`, `/profile`
+La portada enlaza con el perfil: partidas, victorias en competitivo, frutas, tiempo jugado, mejor cadena, mejor puntuación, puntos de rango y el peldaño actual. Borrar los récords en los ajustes también borra este registro.
 
-Routes support direct access and reloads: the Worker resolves any extensionless path to `index.html` (SPA fallback). A legacy `/snake/` prefix is still detected automatically, so old links keep working. Locally, `serve.mjs` offers the same behaviour on both `/` and `/snake/`.
+## Idioma
 
-## Project files
-
-```text
-index.html          document, canonical domain, and accessible interface elements
-wrangler.toml       Cloudflare Workers config: static assets + SPA fallback
-styles.css          block design, responsive layout, and accessibility
-snake.js            generated classic-script bundle loaded by the page
-js/
-  engine.js         game engine, collisions, powers, clock, modifiers, and drawing
-  grid.js           BFS and grid utilities
-  levels.js         groups, five modes, and 30 levels with modifiers
-  audio.js          synthesized audio; no audio files
-  input.js          keyboard, gestures, and gamepad
-  i18n.js           English/Spanish strings and localized names
-  main.js           screens, routes, progress, profile, four-board arena, and game loop
-serve.mjs           local server with no-cache headers and SPA route fallback
-tools/build.mjs     bundles js/ into snake.js without dependencies
-tools/check.mjs     level, engine, language, and publishing tests
-.github/workflows/checks.yml   source and game checks; does not deploy the site
-```
-
-The page loads `snake.js` as a classic script, not a module, so `index.html` can also be opened directly with `file://`. To edit the game, change `js/` and regenerate the bundle:
-
-```sh
-node tools/build.mjs          # regenerate snake.js
-node tools/check.mjs          # test levels, engine, language, and routes
-node tools/build.mjs --check  # verify that snake.js is current
-```
-
-## Run locally
-
-```sh
-node serve.mjs 8123
-```
-
-Open `http://localhost:8123/` (root, like the domain) or `http://localhost:8123/snake/` (legacy prefix). The server also handles deep routes such as `http://localhost:8123/competitivo`.
-
-## Publish on Cloudflare Workers (own domain)
-
-The site is a plain static bundle, so the Worker only serves the repository files and falls back to `index.html` for game routes:
-
-1. `wrangler.toml` already declares the assets: `directory = "./"` with `not_found_handling = "single-page-application"` — that is the whole SPA fallback, no code needed.
-2. Install the CLI once (`npm install -g wrangler` or use `npx wrangler`) and log in (`npx wrangler login`).
-3. Deploy from the repository root:
-
-   ```sh
-   npx wrangler deploy
-   ```
-
-4. In the Cloudflare dashboard, add the custom domain **snake.jaime-gaming.com** to the `snake` Worker (Workers & Pages → snake → Triggers → Custom Domains). SSL is automatic.
-
-The workflow in `.github/workflows/checks.yml` only validates the source and bundle (`node tools/build.mjs --check` + `node tools/check.mjs`); it never deploys. Regenerate the bundle with `node tools/build.mjs` before running `npx wrangler deploy`.
+El selector **EN / ES** cambia todos los textos y recuerda la elección. La estética no cambia con el idioma: los mismos bloques, los mismos silencios y el mismo rojo.

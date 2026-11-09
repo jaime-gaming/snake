@@ -106,16 +106,6 @@ button:disabled {
   color: var(--accent);
 }
 
-.version {
-  margin-left: 8px;
-  padding-left: 7px;
-  border-left: 1px solid var(--line2);
-  color: var(--muted);
-  font-size: 8px;
-  font-weight: 400;
-  letter-spacing: 0.12em;
-  vertical-align: middle;
-}
 
 .language-control {
   display: inline-flex;
@@ -275,7 +265,7 @@ button:disabled {
   touch-action: none;
 }
 
-#prompt {
+#senal {
   position: absolute;
   left: 50%;
   bottom: 6%;
@@ -292,7 +282,7 @@ button:disabled {
   transition: opacity 0.16s ease;
 }
 
-#prompt.visible {
+#senal.visible {
   opacity: 1;
 }
 
@@ -397,6 +387,14 @@ button:disabled {
   color: var(--muted);
 }
 
+.comp-escala {
+  margin: 0;
+  font-size: 7px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .comp-nota {
   margin: -4px 0 0;
   font-size: 8px;
@@ -447,7 +445,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
+  gap: 3px;
   min-width: 0;
   padding: 5px 2px;
   border: 1px solid transparent;
@@ -470,6 +468,17 @@ button:disabled {
   color: var(--muted);
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.escalon small {
+  font-size: 6px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.escalon.aqui small {
+  color: var(--fg);
 }
 
 .escalon.hecho {
@@ -1900,11 +1909,6 @@ button.foco {
     letter-spacing: 0.2em;
   }
 
-  .version {
-    margin-left: 5px;
-    padding-left: 5px;
-    font-size: 7px;
-  }
 
   #lang-switch {
     min-width: 35px;
@@ -1973,7 +1977,7 @@ button.foco {
 }
 
 
-/* v2.0 · reloj de contrarreloj cuando apura el tiempo */
+/* reloj de contrarreloj cuando apura el tiempo */
 .meta.urgente {
   color: #ff2b2b;
   font-weight: 700;
@@ -1995,7 +1999,7 @@ button.foco {
   }
 }
 
-/* v2.0 · filas de solo lectura del perfil */
+/* filas de solo lectura del perfil */
 .row.stat {
   cursor: default;
   pointer-events: none;
