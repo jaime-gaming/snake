@@ -91,6 +91,9 @@ export class Game {
     // competitivo: unos instantes de protección al volver tras una caída
     this.gracia = 0;
     this.graciaTotal = 0;
+    // si la protección termina dentro de un muro, los muros no vuelven a
+    // contar hasta que la cabeza sale a una casilla libre
+    this.enMuro = false;
     // frenesí: olas de fruta extra y picos de velocidad
     this.extraFoods = [];
     this.waveTimer = 0;
@@ -216,6 +219,7 @@ export class Game {
     this.queue = [];
     this.pendingWalls = [];
     this.pendingFood = null;
+    this.enMuro = false;
     this.body = [];
     for (let i = 0; i < 4; i++) {
       this.body.push({ x: start.x - start.dir.x * i, y: start.y - start.dir.y * i });
@@ -278,12 +282,13 @@ export class Game {
     this.prevBody = this.body.map((p) => ({ ...p }));
     this.queue = [];
     this.acc = 0;
+    this.enMuro = false;
     this.gracia = Math.max(this.gracia, 700);
     this.graciaTotal = Math.max(this.graciaTotal, this.gracia);
     this.flash = Math.max(this.flash, 0.3);
   }
 
-  // salir a la vez en los cuatro tableros, sin esperar a la primera tecla
+  // salir a la vez en todos los tableros, sin esperar a la primera tecla
   start() {
     if (this.state !== 'ready') return;
     this.state = 'running';
@@ -455,7 +460,11 @@ export class Game {
       return this.die('borde', clamp(hx, 0, this.cols - 1), clamp(hy, 0, this.rows - 1));
     }
 
-    if (!intangible && this.wallSet.has(K(hx, hy))) return this.die('muro', hx, hy);
+    // el pestillo dura hasta salir del muro: si el escudo o el fantasma se
+    // acaban dentro, la serpiente puede atravesarlo sin morir al instante
+    if (!intangible && !this.enMuro && this.wallSet.has(K(hx, hy))) {
+      return this.die('muro', hx, hy);
+    }
     // el cuerpo del cazador no te mata: le muerdes el anillo y sigues.
     // sólo su cabeza puede comerte (y sólo si cae sobre la tuya)
     if (!intangible && this.hunter) {
@@ -489,6 +498,10 @@ export class Game {
     this.body.unshift({ x: hx, y: hy });
     if (this.grow > 0) this.grow--;
     else this.body.pop();
+    // mientras la cabeza siga sobre un muro, el pestillo no se suelta
+    const sobreMuro = this.wallSet.has(K(hx, hy));
+    if (sobreMuro && intangible) this.enMuro = true;
+    else if (!sobreMuro) this.enMuro = false;
 
     if (extraIdx >= 0) this.eatExtra(extraIdx);
     if (this.veneno && hx === this.veneno.x && hy === this.veneno.y) this.comerVeneno();
@@ -647,6 +660,7 @@ export class Game {
     const impactoY = y ?? this.body[0].y;
     if (this.fx.shield > 0) {
       this.fx.shield = 0;
+      if (reason === 'muro') this.enMuro = true;
       this.fx.ghost = Math.max(this.fx.ghost, Math.max(250, this.interval() * 2));
       this.shake = Math.max(this.shake, 4);
       this.flash = Math.max(this.flash, 0.65);

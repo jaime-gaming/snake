@@ -9,6 +9,7 @@
   --line2: #383838;
   --accent: #ff2b2b;
   --mono: ui-monospace, "SFMono-Regular", "SF Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 * {
@@ -28,13 +29,41 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family: var(--mono);
-  font-size: 13px;
+  font-family: var(--sans);
+  font-size: 14px;
   line-height: 1.5;
   overflow: hidden;
   overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* los datos y las etiquetas cortas siguen en mono; el texto respira en sans */
+.score,
+.meta,
+.best,
+.mult,
+.row-idx,
+.row-right,
+.tablero figcaption,
+.comp-top,
+.comp-rango,
+.comp-escala,
+.comp-dato span,
+.comp-reglas,
+.kicker,
+.grupo,
+.pie,
+.link,
+.tab,
+.escalon em,
+.escalon small,
+.sorteo-etiqueta,
+.comp-fases i,
+.tablero-estado,
+.comp-grada,
+.comp-rivales {
+  font-family: var(--mono);
 }
 
 /* trama de fósforo, se puede quitar desde el menú */
@@ -91,15 +120,23 @@ button:disabled {
   z-index: 50;
   display: flex;
   align-items: center;
-  gap: clamp(8px, 1.6vw, 18px);
-  min-height: 26px;
+  gap: clamp(10px, 1.6vw, 18px);
+  min-height: 32px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--line);
+}
+
+#topbar.competitivo {
+  border-bottom: 0;
+  padding-bottom: 0;
 }
 
 .brand {
   flex: none;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.22em;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
 }
 
 .brand .dot {
@@ -113,21 +150,24 @@ button:disabled {
 }
 
 #lang-switch {
-  min-width: 39px;
-  min-height: 26px;
-  padding: 3px 5px;
-  border: 1px solid var(--line2);
+  min-width: 38px;
+  min-height: 30px;
+  padding: 4px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--line2);
   border-radius: 0;
   background: #000;
-  color: var(--fg);
-  font: inherit;
-  font-size: 9px;
-  letter-spacing: 0.12em;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
   cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
 }
 
 #lang-switch:hover {
   border-color: var(--fg);
+  color: var(--fg);
 }
 
 .sr-only {
@@ -145,14 +185,14 @@ button:disabled {
 .stats {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
   flex: 1;
 }
 
 .meta {
-  font-size: 9.5px;
-  letter-spacing: 0.14em;
+  font-size: 10px;
+  letter-spacing: 0.08em;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
@@ -169,7 +209,7 @@ button:disabled {
 }
 
 .score {
-  font-size: clamp(15px, 2.2vw, 19px);
+  font-size: clamp(17px, 2.3vw, 21px);
   font-weight: 600;
   line-height: 1;
   letter-spacing: -0.01em;
@@ -205,8 +245,8 @@ button:disabled {
 .best {
   margin-left: auto;
   padding-left: 10px;
-  font-size: 9px;
-  letter-spacing: 0.12em;
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
   color: var(--dim);
   white-space: nowrap;
   /* en competitivo aquí va «arena · modificador»: si no cabe, se recorta */
@@ -258,11 +298,10 @@ button:disabled {
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  font-size: clamp(18px, 2.7vw, 28px);
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: clamp(20px, 2.8vw, 30px);
+  font-weight: 650;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--fg);
@@ -277,8 +316,9 @@ button:disabled {
   margin-left: auto;
   min-width: 0;
   overflow: hidden;
+  font-family: var(--mono);
   font-size: 9px;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -371,44 +411,8 @@ button:disabled {
 
 .tools {
   display: flex;
-  gap: 5px;
+  gap: 0;
   flex: none;
-}
-
-.tool {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 7px;
-  border: 1px solid var(--line2);
-  font-size: 9px;
-  letter-spacing: 0.12em;
-  color: #cfcfcf;
-  transition: color 0.12s, border-color 0.12s;
-}
-
-.tool:hover:not(:disabled) {
-  border-color: var(--fg);
-  color: var(--fg);
-}
-
-.tool:disabled {
-  opacity: 0.3;
-}
-
-.tool.apagado {
-  color: var(--muted);
-}
-
-.led {
-  width: 5px;
-  height: 5px;
-  background: var(--fg);
-}
-
-.tool.apagado .led {
-  background: transparent;
-  box-shadow: inset 0 0 0 1px var(--dim);
 }
 
 #stage {
@@ -513,10 +517,11 @@ button:disabled {
 
 .panel.competitivo {
   position: relative;
-  max-width: 420px;
-  gap: 12px;
-  padding: 16px 16px 14px;
+  max-width: 440px;
+  gap: 13px;
+  padding: 20px 20px 16px;
   border: 1px solid var(--line2);
+  border-radius: 3px;
   background: #000;
 }
 
@@ -548,8 +553,8 @@ button:disabled {
   gap: 12px;
   padding-bottom: 9px;
   border-bottom: 1px solid var(--line);
-  font-size: 8px;
-  letter-spacing: 0.2em;
+  font-size: 9px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted);
 }
@@ -582,8 +587,8 @@ button:disabled {
 
 .comp-rango {
   margin: 0;
-  font-size: 9px;
-  letter-spacing: 0.2em;
+  font-size: 10px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
 }
@@ -607,18 +612,18 @@ button:disabled {
 
 .comp-escala {
   margin: 0;
-  font-size: 7px;
-  letter-spacing: 0.16em;
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
 }
 
 .comp-nota {
   margin: -4px 0 0;
-  font-size: 8px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--dim);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 /* barra de progreso del rango: bloques, sin adornos */
@@ -682,8 +687,8 @@ button:disabled {
   max-width: 100%;
   overflow: hidden;
   font-style: normal;
-  font-size: 7px;
-  letter-spacing: 0.04em;
+  font-size: 8px;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--muted);
   white-space: nowrap;
@@ -691,7 +696,7 @@ button:disabled {
 }
 
 .escalon small {
-  font-size: 6px;
+  font-size: 7px;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
@@ -760,13 +765,13 @@ button:disabled {
 }
 
 .comp-dato span {
-  font-size: 7px;
-  letter-spacing: 0.16em;
+  font-size: 8px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--dim);
 }
 
-/* los tres rivales de la partida, en una línea */
+/* los rivales de la partida, en una línea que puede crecer */
 .comp-fases {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -792,9 +797,9 @@ button:disabled {
 
 .comp-fases i {
   font-style: normal;
-  font-size: 6px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-size: 7px;
+  letter-spacing: 0.03em;
+  line-height: 1.25;
   color: var(--muted);
 }
 
@@ -812,20 +817,21 @@ button:disabled {
 
 .comp-rivales {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 12px;
+  gap: 6px 12px;
   margin: 0;
   padding-top: 9px;
   border-top: 1px solid var(--line);
-  font-size: 7px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  font-size: 8.5px;
+  letter-spacing: 0.04em;
   color: var(--muted);
 }
 
 .comp-rivales span:last-child {
   color: var(--fg);
-  letter-spacing: 0.12em;
+  letter-spacing: 0.04em;
+  text-align: right;
 }
 
 .comp-grada {
@@ -834,9 +840,8 @@ button:disabled {
   justify-content: space-between;
   gap: 12px;
   margin: 0;
-  font-size: 7px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  font-size: 8px;
+  letter-spacing: 0.04em;
   color: var(--muted);
 }
 
@@ -875,9 +880,8 @@ button:disabled {
   justify-content: space-between;
   gap: 8px;
   margin: 0;
-  font-size: 7px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-size: 8px;
+  letter-spacing: 0.02em;
   color: var(--dim);
 }
 
@@ -993,8 +997,8 @@ button:disabled {
 
 .sorteo-pie {
   margin: 0;
-  font-size: 7px;
-  letter-spacing: 0.18em;
+  font-size: 8px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--dim);
 }
@@ -1285,9 +1289,9 @@ button:disabled {
   text-align: center;
 }
 
-/* competitivo: cuatro tableros separados, cada uno con su serpiente */
+/* competitivo: un tablero por serpiente, con la rejilla calculada al arrancar */
 #arena {
-  /* tu tablero ocupa la columna ancha y las tres filas; los rivales van en fila */
+  /* tu tablero ocupa la columna ancha y todas las filas; los rivales se reparten */
   background: radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.035), transparent 62%);
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
@@ -1300,7 +1304,7 @@ button:disabled {
 }
 
 #arena .tablero:first-child {
-  grid-row: 1 / span 3;
+  grid-row: 1 / -1;
 }
 
 .tablero {
@@ -1327,9 +1331,8 @@ button:disabled {
   justify-content: center;
   gap: 6px;
   font-size: 8px;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.04em;
   color: var(--muted);
-  text-transform: uppercase;
   white-space: nowrap;
   transition: color 0.35s ease;
 }
@@ -1574,7 +1577,7 @@ button:disabled {
 .panel {
   flex: 0 0 auto;
   width: 100%;
-  max-width: 760px;
+  max-width: 780px;
   margin: auto 0;
   animation: aparecer 130ms ease-out;
 }
@@ -1590,16 +1593,16 @@ button:disabled {
 
 .kicker {
   margin: 0;
-  font-size: 9px;
-  letter-spacing: 0.2em;
+  font-size: 10px;
+  letter-spacing: 0.12em;
   color: var(--muted);
 }
 
 .nota {
   margin: 0;
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  line-height: 1.65;
+  font-size: 11px;
+  letter-spacing: 0;
+  line-height: 1.6;
   color: var(--muted);
 }
 
@@ -1632,9 +1635,9 @@ h1.marca canvas {
 
 h2 {
   margin: 0;
-  font-size: clamp(15px, 3vw, 19px);
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-size: clamp(16px, 3vw, 20px);
+  font-weight: 650;
+  letter-spacing: 0;
 }
 
 /* inicio */
@@ -1662,10 +1665,10 @@ h2 {
 .tagline {
   margin: -2px 0 0;
   color: var(--fg);
-  font-size: clamp(13px, 2.5vw, 17px);
+  font-size: clamp(14px, 2.5vw, 18px);
   font-weight: 600;
-  letter-spacing: -0.035em;
-  line-height: 1.2;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
 }
 
 .filas {
@@ -1688,10 +1691,10 @@ h2 {
 
 .row {
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) auto;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  padding: clamp(7px, 1.4vh, 11px) 9px;
+  gap: 10px;
+  padding: clamp(9px, 1.5vh, 12px) 11px;
   border-bottom: 1px solid var(--line);
   text-align: left;
   transition: background 0.1s, color 0.1s;
@@ -1707,16 +1710,17 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  font-size: clamp(13px, 2.4vw, 15px);
+  font-size: clamp(14px, 2.4vw, 16px);
   font-weight: 600;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.01em;
   min-width: 0;
 }
 
 .row-name small {
+  font-family: var(--mono);
   font-size: 9px;
   font-weight: 400;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
@@ -1809,9 +1813,9 @@ button.foco {
 }
 
 .portada .row-name {
-  font-size: clamp(15px, 3vw, 18px);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-size: clamp(16px, 3vw, 18px);
+  letter-spacing: 0.01em;
+  text-transform: none;
 }
 
 .modos {
@@ -2352,15 +2356,6 @@ button.foco {
     font-size: 8px;
   }
 
-  .tool {
-    padding: 4px 6px;
-    font-size: 8px;
-  }
-
-  .tool#btn-mute span {
-    display: none;
-  }
-
   .meta {
     max-width: 34vw;
   }
@@ -2494,6 +2489,29 @@ button.foco {
 }
 
 /* filas de solo lectura del perfil */
+.row.peligro {
+  margin-top: 14px;
+  border: 1px solid #351010;
+  color: #ff8a8a;
+}
+
+.row.peligro .row-idx,
+.row.peligro .row-right,
+.row.peligro .row-name small {
+  color: #b35a5a;
+}
+
+.row.peligro:hover {
+  background: #1a0606;
+  color: #ffb4b4;
+}
+
+.row.peligro:hover .row-idx,
+.row.peligro:hover .row-right,
+.row.peligro:hover .row-name small {
+  color: #e08a8a;
+}
+
 .row.stat {
   cursor: default;
   pointer-events: none;

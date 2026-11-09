@@ -14,9 +14,9 @@ El rojo no es decoración: anuncia la manzana envenenada, la serpiente cazadora 
 | --- | --- | --- |
 | Girar | Flechas o WASD | Deslizar / cruceta o stick |
 | Turbo | Espacio o Mayús | Tocar el tablero / botón A; no existe en Cazador ni en los niveles sin turbo |
-| Pausa | P o Esc | Botón de pausa / Start |
-| Reiniciar | R | Botón |
-| Sonido | M | Botón de sonido |
+| Pausa | P o Esc | Start |
+| Reiniciar | R | — |
+| Sonido | M | — |
 | Menús | Flechas, Av Pág/Re Pág, Inicio/Fin y Enter | Elegir una opción |
 
 Los paneles largos se recorren con la rueda, con el gesto táctil y con el teclado; el foco siempre queda a la vista. En la rejilla de niveles, `↑↓` cambian de fila. El ajuste de sonido y de efecto de pantalla vive bajo la lista de modos.
@@ -44,11 +44,11 @@ El fantasma atraviesa peligros; el lento baja la velocidad y tiñe la serpiente 
 
 ## Competitivo
 
-Una partida de **sesenta segundos** en **cuatro tableros separados**, uno por serpiente: tú y tres rivales. No comparten casillas ni fruta. Tu tablero es el más grande y va enmarcado en blanco; cada tablero lleva su nombre, sus puntos y su puesto. El líder lleva un marco propio y un pulso lento; tu marco queda encendido todo el rato y un choque lo enciende en rojo un instante. El acto se lee en la barra superior y la ventaja en una **banda grande** justo debajo: «lideras» o la distancia al rival que va delante, con el puesto, los puntos y el rango al lado. No hay carteles que tapen la partida ni avisos repetidos por cada adelantamiento. La luz del escenario se cruza entre actos —el halo blanco se apaga mientras entra el rojo— y la grada crece con tu rango: cuanto más alto, más bloques de público y más peso tiene la luz de la recta final.
+Una partida de **sesenta segundos** en **tableros separados**, uno por serpiente: tú y tus rivales. En bronce son cinco rivales; el número sube con el rango hasta siete en diamante y maestro. No comparten casillas ni fruta. Tu tablero es el más grande y va enmarcado en blanco; cada tablero lleva su nombre, sus puntos y su puesto. El líder lleva un marco propio y un pulso lento; tu marco queda encendido todo el rato y un choque lo enciende en rojo un instante. El acto se lee en la barra superior y la ventaja en una **banda grande** justo debajo: «lideras» o la distancia al rival que va delante, con el puesto, los puntos y el rango al lado. No hay carteles que tapen la partida ni avisos repetidos por cada adelantamiento. La luz del escenario se cruza entre actos —el halo blanco se apaga mientras entra el rojo— y la grada crece con tu rango: cuanto más alto, más bloques de público y más peso tiene la luz de la recta final.
 
 La partida tiene **tres actos de veinte segundos**: apertura a ×1, presión a ×1.5 y sprint final a ×2. El cambio de acto se marca con un destello breve en la barra, no con un cartel sobre el juego. Guardar los riesgos para el último acto es una decisión real. Al chocar se pierden diez puntos y la serpiente vuelve a los 0,8 segundos con 1,8 segundos de gracia: durante ese tiempo atraviesa muros y cuerpos, y el borde da la vuelta en vez de matar. Cuatro bloques sobre su cabeza cuentan la gracia que queda.
 
-Antes de jugar hay un menú con el rango, los puntos, la escalera completa y los rivales. Después se sortean el mapa y el modificador, la ruleta gira, se fija el resultado y una cuenta atrás de tres segundos arranca los cuatro tableros. Los rivales se mueven exactamente a tu velocidad, en tu mismo mapa y con tu mismo modificador; lo que cambia por dentro es su lectura del tablero, nunca una barra de fuerza a la vista.
+Antes de jugar hay un menú con el rango, los puntos, la escalera completa y los rivales. Después se sortean el mapa y el modificador, la ruleta gira, se fija el resultado y una cuenta atrás de tres segundos arranca todos los tableros. Los rivales se mueven exactamente a tu velocidad, en tu mismo mapa y con tu mismo modificador; lo que cambia por dentro es su lectura del tablero, nunca una barra de fuerza a la vista.
 
 ### Rangos
 
@@ -63,11 +63,11 @@ El puesto reparte puntos: 1.º +25, 2.º +10, 3.º +5, 4.º +0. Además, el marc
 | Diamante | 700 | Entra el veneno y los mapas cerrados |
 | Maestro | 1200 | El repertorio completo, en su versión más dura |
 
-Cada peldaño tiene su propia figura de bloques; al subir de rango, el resultado compara el icono viejo con el nuevo, hace saltar sus bloques en cascada, lanza chispas y barre una luz por la franja, una sola vez. La escalera no es sólo una cifra: **los mapas y los modificadores suben contigo**. En bronce se juega en mapas abiertos y con muros; al ascender se abren laberintos más cerrados, entran el reloj, el cazador, la ausencia de turbo y el veneno, el reloj arranca con menos margen, el cazador ve más lejos y los muros salen antes y con más frecuencia. Los cuatro tableros reciben siempre el mismo mapa, el mismo modificador y la misma velocidad.
+Cada peldaño tiene su propia figura de bloques; al subir de rango, el resultado compara el icono viejo con el nuevo, hace saltar sus bloques en cascada, lanza chispas y barre una luz por la franja, una sola vez. La escalera no es sólo una cifra: **los mapas y los modificadores suben contigo**. En bronce se juega en mapas abiertos y con muros; al ascender se abren laberintos más cerrados, entran el reloj, el cazador, la ausencia de turbo y el veneno, el reloj arranca con menos margen, el cazador ve más lejos y los muros salen antes y con más frecuencia. Todos los tableros reciben siempre el mismo mapa, el mismo modificador y la misma velocidad.
 
 ## Perfil
 
-La portada enlaza con el perfil: partidas, victorias en competitivo, frutas, tiempo jugado, mejor cadena, mejor puntuación, puntos de rango y el peldaño actual. Borrar los récords en los ajustes también borra este registro.
+La portada enlaza con el perfil: partidas, victorias en competitivo, frutas, tiempo jugado, mejor cadena, mejor puntuación, puntos de rango y el peldaño actual. Al final hay un botón para **borrar todo el progreso** —récords, campaña, rango y estadísticas— con confirmación; el ajuste de borrado hace lo mismo.
 
 ## Idioma
 

@@ -6,8 +6,20 @@
 <meta http-equiv="Cache-Control" content="no-store">
 <meta name="theme-color" content="#000000">
 <link rel="canonical" href="https://snake.jaime-gaming.com/">
-<meta id="meta-description" name="description" content="Snake: serpientes de bloques en blanco y negro. Campaña, infinitos, contrarreloj y un competitivo de cuatro tableros con rangos.">
+<meta id="meta-description" name="description" content="Snake: serpientes de bloques en blanco y negro. Campaña, infinitos, contrarreloj y un competitivo con más rivales en cada rango.">
 <title>Snake</title>
+<script>
+  // las URLs antiguas del despliegue bajo /snake/ vuelven a la raíz; así los
+  // assets nunca se piden en /snake/styles.css (donde el fallback SPA podía
+  // devolver el HTML y dejar la página sin estilos).
+  (function () {
+    if (location.protocol === 'file:') return;
+    var ruta = location.pathname;
+    if (ruta !== '/snake' && ruta.indexOf('/snake/') !== 0) return;
+    var resto = ruta.replace(/^\/snake/, '') || '/';
+    location.replace(resto + location.search + location.hash);
+  })();
+</script>
 <script>
   (function () {
     var route = new URLSearchParams(location.search).get('route');
@@ -22,15 +34,12 @@
 </script>
 <script>
   (function () {
-    var base = './';
-    if (location.protocol !== 'file:') {
-      base = (location.pathname === '/snake' || location.pathname.indexOf('/snake/') === 0) ? '/snake/' : '/';
-    }
+    var base = location.protocol === 'file:' ? './' : '/';
     document.write('<base href="' + base + '">');
   })();
 </script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Crect x='2' y='7' width='4' height='4' fill='%23fff'/%3E%3Crect x='6' y='7' width='4' height='4' fill='%23fff'/%3E%3Crect x='10' y='7' width='2' height='4' fill='%23fff'/%3E%3Crect x='13' y='2' width='3' height='3' fill='%23ff2b2b'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="styles.css?v=28">
+<link rel="stylesheet" href="styles.css?v=29">
 </head>
 <body data-screen="home">
   <div id="app">
@@ -50,10 +59,6 @@
             <option value="en">EN</option>
           </select>
         </label>
-        <button id="btn-mute" class="tool" type="button" aria-pressed="true" data-i18n-title="soundTitleOn" title="sonido activo (M)">
-          <i class="led" aria-hidden="true"></i><span data-i18n="sound">sonido</span>
-        </button>
-        <button id="btn-pause" class="tool" type="button" disabled data-i18n-title="pauseTitle" title="pausa (P)" data-i18n="pause">pausa</button>
       </div>
       <div id="comp-ventaja" hidden aria-live="polite">
         <b id="comp-ventaja-texto"></b>
@@ -146,6 +151,6 @@
     })();
   </script>
 
-  <script src="snake.js?v=28"></script>
+  <script src="snake.js?v=29"></script>
 </body>
 </html>

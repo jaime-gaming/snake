@@ -27,6 +27,19 @@ const ORDEN = MODE_ORDER;
 const CLAVE = 'snake.v2';
 const CLAVE_ANTIGUA = 'snake.frenzy.v1';
 
+// los controles de sonido y pausa ya no viven en la barra: siguen
+// existiendo como disparadores internos para M/P y para el menú de ajustes.
+function controlOculto(id, texto) {
+  const boton = document.createElement('button');
+  boton.id = id;
+  boton.type = 'button';
+  boton.hidden = true;
+  boton.tabIndex = -1;
+  boton.setAttribute('aria-hidden', 'true');
+  boton.textContent = texto;
+  return boton;
+}
+
 const el = {
   stage: $('#stage'),
   topbar: $('#topbar'),
@@ -49,14 +62,15 @@ const el = {
   chain: $('#chain-bar'),
   combo: $('#combo'),
   effects: $('#effects'),
-  mute: $('#btn-mute'),
-  pause: $('#btn-pause'),
+  mute: controlOculto('btn-mute', 'sonido'),
+  pause: controlOculto('btn-pause', 'pausa'),
   lang: $('#lang-switch'),
   hint: $('#hint'),
   avisoFoco: $('#aviso-foco'),
   barrido: $('#barrido'), // transición de bloques entre pantallas
 };
 
+el.pause.disabled = true;
 const pincel = el.canvas.getContext('2d', { alpha: false });
 
 /* ---------------------------------------------------------- récords */
@@ -154,15 +168,17 @@ const app = {
   tableros: [], // un tablero por serpiente en el competitivo
   cuenta: 0, // cuenta atrás de 3 s antes de salir
   puestoMuerte: 0,
+  totalJugadores: 4, // competitivo: tú + rivales, según el rango
+  arenaColumnas: 1, // columnas de rivales en la rejilla
+  arenaFilas: 3,
   fase: null, // apertura, presión o sprint
 };
 
 const rutas = { listas: false, restaurando: false };
-// La base sale de la página: raíz en el dominio y /snake/ para enlaces antiguos.
-const BASE_PATH = (() => {
-  if (location.protocol === 'file:') return './';
-  return location.pathname === '/snake' || location.pathname.startsWith('/snake/') ? '/snake/' : '/';
-})();
+// la base es siempre la raíz del dominio: las rutas se resuelven con
+// history.pushState y los assets viven en /styles.css y /snake.js. Las URLs
+// antiguas bajo /snake/ se redirigen a su sitio antes de cargar nada.
+const BASE_PATH = location.protocol === 'file:' ? './' : '/';
 
 const vista = { cell: 24, ox: 0, oy: 0, width: 480, height: 480, dpr: 1 };
 const vistaDemo = { cell: 10, ox: 0, oy: 0, width: 200, height: 200, dpr: 1 };
@@ -385,17 +401,71 @@ function dibujarMarca(dt) {
 
 /* ---------------------------------------------------------- lienzo */
 
-// los cuatro tableros del competitivo: cada uno en su celda de la rejilla
+// los tableros del competitivo: cada uno en su celda de la rejilla
+// la rejilla crece con el número de serpientes: una columna de rivales en
+// bronce, dos a partir de oro y tres en diamante/maestro. tu tablero siempre
+// ocupa la columna ancha y todas las filas.
+function rejillaArena(total) {
+  const rivales = Math.max(1, total - 1);
+  const columnas = rivales <= 4 ? 1 : rivales <= 6 ? 2 : 3;
+  const filas = Math.max(1, Math.ceil(rivales / columnas));
+  app.totalJugadores = total;
+  app.arenaColumnas = columnas;
+  app.arenaFilas = filas;
+  el.arena.style.gridTemplateColumns = `minmax(0, 1.7fr) repeat(${columnas}, minmax(0, 1fr))`;
+  el.arena.style.gridTemplateRows = `repeat(${filas}, minmax(0, 1fr))`;
+  el.arena.dataset.jugadores = String(total);
+  return { columnas, filas };
+}
+
+// crea un tablero por serpiente reutilizando la figura de la página; así el
+// número de rivales puede cambiar sin tocar el HTML ni el motor.
+function prepararTableros(total) {
+  const modelo = el.arena && el.arena.querySelector('.tablero');
+  if (!modelo) return;
+  const { columnas } = rejillaArena(total);
+  const patron = modelo.cloneNode(true);
+  el.arena.replaceChildren();
+  for (let i = 0; i < total; i++) {
+    const fig = patron.cloneNode(true);
+    fig.classList.remove('mio', 'lider', 'caido', 'revive', 'protegido', 'golpe');
+    if (i === 0) fig.classList.add('mio');
+    fig.dataset.indice = String(i);
+    fig.removeAttribute('data-nombre');
+    if (i === 0) {
+      fig.style.gridColumn = '1';
+      fig.style.gridRow = '1 / -1';
+    } else {
+      const k = i - 1;
+      fig.style.gridColumn = String(2 + (k % columnas));
+      fig.style.gridRow = String(1 + Math.floor(k / columnas));
+    }
+    const nombre = fig.querySelector('.tablero-nombre');
+    if (nombre) nombre.textContent = nombreTablero(i);
+    const puesto = fig.querySelector('.tablero-puesto');
+    if (puesto) puesto.textContent = '';
+    const datos = fig.querySelector('.tablero-datos');
+    if (datos) datos.textContent = '0';
+    const estado = fig.querySelector('.tablero-estado');
+    if (estado) estado.textContent = '';
+    el.arena.appendChild(fig);
+  }
+  el.tableros.length = 0;
+  el.tableros.push(...el.arena.querySelectorAll('.tablero'));
+}
+
 function ajustarArena() {
   if (!el.arena || !app.tableros.length) return;
   const caja = el.arena.getBoundingClientRect();
   const ancho = caja.width || el.stage.getBoundingClientRect().width || 480;
   const alto = caja.height || el.stage.getBoundingClientRect().height || 480;
   const hueco = 6;
+  const columnas = Math.max(1, app.arenaColumnas || 1);
+  const filas = Math.max(1, app.arenaFilas || 3);
   // la rejilla da más sitio a tu tablero: 1.7 partes frente a 1 de cada rival
-  const anchoMio = ((ancho - hueco) * 1.7) / 2.7;
-  const anchoRival = ((ancho - hueco) * 1.0) / 2.7;
-  const altoRival = (alto - hueco * 2) / 3;
+  const anchoMio = ((ancho - hueco * columnas) * 1.7) / (1.7 + columnas);
+  const anchoRival = ((ancho - hueco * columnas) * 1.0) / (1.7 + columnas);
+  const altoRival = (alto - hueco * (filas - 1)) / filas;
   const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
   for (const tab of app.tableros) {
     const fig = el.tableros[tab.i];
@@ -1492,6 +1562,11 @@ function mostrarPerfil() {
       ${fila('07', t('statsPoints'), puntos(guardado.competitive.points))}
       ${fila('08', t('statsRank'), rankName(guardado.competitive.points))}
     </div>
+    <button class="row peligro" type="button" data-accion="wipe">
+      <span class="row-idx">09</span>
+      <span class="row-name">${t('eraseAll')}<small>${t('eraseAllHint')}</small></span>
+      <span class="row-right">→</span>
+    </button>
   </div>`);
 
   el.score.textContent = '—';
@@ -1681,10 +1756,11 @@ function copasDePartida(puesto) {
 }
 
 /* ---------------------------------------------------------- competitivo
-   cuatro tableros separados, uno por serpiente: el mismo mapa, el mismo
+   tableros separados, uno por serpiente: el mismo mapa, el mismo
    modificador y la misma dificultad para todos. gana quien aguanta más. */
 
-const TOTAL_TABLEROS = 4;
+// más rivales según el rango: 4 en bronce, hasta 8 en diamante y maestro.
+const JUGADORES_POR_RANGO = [6, 6, 7, 8, 8, 8];
 const DURACION_RONDA = 60000; // 60 s por partida
 const CASTIGO_CAIDA = 10; // puntos que se pierden al chocar
 const GRACIA_MS = 1800; // protección al volver de una caída
@@ -1696,6 +1772,11 @@ const FASES_RONDA = [
   { id: 'presion', boost: 1.5 },
   { id: 'sprint', boost: 2 },
 ];
+
+function totalJugadores(nivel = nivelDeRango()) {
+  const i = Math.max(0, Math.min(JUGADORES_POR_RANGO.length - 1, Math.floor(Number(nivel) || 0)));
+  return JUGADORES_POR_RANGO[i];
+}
 
 function faseDeRonda() {
   const restante = Number(app.tiempoPartida) || 0;
@@ -1829,6 +1910,8 @@ function menuCompetitivo() {
   const avance = tramo > 0 ? Math.min(100, Math.round(((tramo - info.falta) / tramo) * 100)) : 100;
   const dato = (valor, etiqueta) => `<div class="comp-dato"><b>${valor}</b><span>${etiqueta}</span></div>`;
   const grada = bloquesPublico(info.nivel);
+  const total = totalJugadores(info.nivel);
+  const rivales = RIVAL_NAMES.slice(0, Math.max(1, total - 1)).join(' · ');
 
   // la escalera de rangos: los seis peldaños, con el actual enmarcado
   const escalera = rankList().map((r) => {
@@ -1840,7 +1923,7 @@ function menuCompetitivo() {
   ponerOverlay(`<div class="panel competitivo">
     <div class="comp-top">
       <span>${t('modeCompetitive')}</span>
-      <span>${t('compBoards')}</span>
+      <span>${t('compPlayers', { count: total })}</span>
     </div>
     <div class="comp-cabeza">
       ${iconoRango(info.nivel)}
@@ -1863,7 +1946,7 @@ function menuCompetitivo() {
       <span><b>×1.5</b><i>20 s · ${t('phasePressure')}</i></span>
       <span><b>×2</b><i>20 s · ${t('phaseSprint')}</i></span>
     </div>
-    <p class="comp-rivales"><span>${t('compRivals')}</span><span>${RIVAL_NAMES.join(' · ')}</span></p>
+    <p class="comp-rivales"><span>${t('compRivals')}</span><span>${rivales}</span></p>
     <p class="comp-grada"><span>${t('compCrowd', { count: grada.total })}</span><span class="comp-grada-bloques" aria-hidden="true">${grada.html}</span></p>
     <p class="comp-reglas"><span>60 s</span><span>${t('compDrop')}</span><span>${t('compProtected')}</span></p>
     <div class="acciones">
@@ -1883,7 +1966,7 @@ function menuCompetitivo() {
   enfocarPrimero('button[data-accion="jugarCompetitivo"]');
 }
 
-// sorteo: mapa y modificador, los mismos para los cuatro tableros. los nombres
+// sorteo: mapa y modificador, los mismos para todos los tableros. los nombres
 // giran unos instantes, se fijan con un golpe de bloque y la partida arranca sola
 function prepararCompetitivo() {
   pararTemporizador();
@@ -1906,7 +1989,7 @@ function prepararCompetitivo() {
       <p class="sorteo-mod girando" id="sorteo-mod">${t('mod_' + azar(modsDelRango()))}</p>
     </div>
     <div class="sorteo-linea" aria-hidden="true"><i></i></div>
-    <p class="sorteo-pie">${t('compBoards')} · ${t('compActs')} · 60 s</p>
+    <p class="sorteo-pie">${t('compPlayers', { count: totalJugadores() })} · ${t('compActs')} · 60 s</p>
   </div>`);
 
   el.meta.textContent = t('modeCompetitive');
@@ -1967,7 +2050,7 @@ function prepararCompetitivo() {
   }, 2050);
 }
 
-// cuatro tableros iguales, cada uno con su serpiente
+// tableros iguales, cada uno con su serpiente
 function empezarCompetitivo() {
   pararTemporizador();
   audio.unlock();
@@ -1983,12 +2066,15 @@ function empezarCompetitivo() {
 
   const nivelRivales = rankInfo(guardado.competitive.points).nivel;
   const dificultad = dificultadRivales(nivelRivales);
-  // el rango no sólo cambia la dificultad: también llena la grada y sube la luz
+  const total = totalJugadores(nivelRivales);
+  // el rango no sólo cambia la dificultad: también llena la grada, sube la luz
+  // y mete más serpientes en la partida
   pintarPublico(nivelRivales);
   if (el.compVentaja) el.compVentaja.dataset.rango = String(nivelRivales);
   if (el.stage) el.stage.dataset.rango = String(nivelRivales);
-  for (let i = 0; i < TOTAL_TABLEROS; i++) {
-    // misma velocidad, mismo mapa y mismo modificador para los cuatro
+  prepararTableros(total);
+  for (let i = 0; i < total; i++) {
+    // misma velocidad, mismo mapa y mismo modificador para todos
     const cfg = { ...configuracionArena(), graciaMs: GRACIA_MS };
     const juego = new Game(
       cfg,
@@ -2054,7 +2140,7 @@ function eventoRival(i, tipo, datos) {
   }
 }
 
-// un paso de los cuatro tableros: los rivales deciden y todos avanzan igual
+// un paso de todos los tableros: los rivales deciden y todos avanzan igual
 function pasoCompetitivo(dt) {
   if (pasoCuenta(dt)) {
     // durante la cuenta atrás ya se ve tu serpiente en su tablero
@@ -2168,7 +2254,7 @@ function terminarCompetitivo() {
   if (app.pantalla !== 'playing') return;
   const orden = [...app.tableros].sort((a, b) => b.juego.score - a.juego.score);
   app.puestoMuerte = orden.findIndex((tab) => tab.esJugador) + 1;
-  app.totalMuerte = TOTAL_TABLEROS;
+  app.totalMuerte = app.totalJugadores;
   guardarMarca();
   guardado.stats.games++;
   guardar();
@@ -2415,11 +2501,12 @@ function mostrarNivelSuperado() {
 function mostrarFinCompetitivo() {
   const juego = app.juego;
   if (!juego) return;
-  const puesto = app.puestoMuerte || TOTAL_TABLEROS;
+  const total = app.totalJugadores || app.totalMuerte || 4;
+  const puesto = app.puestoMuerte || total;
   const copas = copasDePartida(puesto);
   app.record = juego.score > app.marca;
   const notas = [
-    t('competitiveRank', { rank: puesto, total: TOTAL_TABLEROS }),
+    t('competitiveRank', { rank: puesto, total }),
     t('pointsWon', { count: copas.ganadas }),
     rankName(copas.total),
   ];
@@ -2454,11 +2541,11 @@ function mostrarFinCompetitivo() {
   el.senal.classList.remove('visible');
 }
 
-// victoria — los tres rivales han caído y tú sigues en pie
+// victoria — todos los rivales han caído y tú sigues en pie
 function mostrarVictoria() {
   const juego = app.juego;
   if (!juego || juego.state !== 'running') return;
-  const caidos = TOTAL_TABLEROS - 1;
+  const caidos = (app.totalJugadores || 4) - 1;
   const copas = copasDePartida(1);
   const copasTexto = `${t('pointsWon', { count: copas.ganadas })}${copas.bono > 0 ? ` · ${t('pointsBonus', { count: copas.bono })}` : ''} · ${rankName(copas.total)}`;
   ponerOverlay(`<div class="panel fin">
@@ -2821,9 +2908,16 @@ function borrarRecords() {
   guardado.best = { classic: 0, frenzy: 0, hunter: 0, timed: 0, competitive: 0 };
   guardado.campaign = { unlocked: 1 };
   guardado.competitive = { points: 0 };
+  guardado.stats = nuevaStats();
+  try {
+    localStorage.removeItem(CLAVE_ANTIGUA);
+  } catch (err) {
+    /* sin almacenamiento no hay nada más que limpiar */
+  }
   guardar();
   audio.play('ui');
-  if (app.pantalla === 'settings') mostrarAjustes(app.settingsReturn, 'button[data-accion="wipe"]');
+  if (app.pantalla === 'profile') mostrarPerfil();
+  else if (app.pantalla === 'settings') mostrarAjustes(app.settingsReturn, 'button[data-accion="wipe"]');
   else mostrarInicio();
 }
 

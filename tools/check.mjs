@@ -426,6 +426,37 @@ process.stdout.write('potenciadores\n');
   escudo.die('wall');
   comprobar(escudo.state === 'dead', 'escudo: salva más de un choque');
 
+  // el escudo se acaba dentro de un muro: el muro no debe matar hasta salir
+  const pegado = new Game({
+    cols: 20, rows: 20, startSpeed: 120, minSpeed: 80, accelPerFood: 0,
+    wrap: false, goal: null, walls: [], chainWindow: 3200,
+  }, () => {});
+  pegado.state = 'running';
+  pegado.body = [{ x: 4, y: 5 }, { x: 3, y: 5 }, { x: 2, y: 5 }, { x: 1, y: 5 }];
+  pegado.prevBody = pegado.body.map((p) => ({ ...p }));
+  pegado.dir = { x: 1, y: 0 };
+  pegado.queue = [];
+  pegado.food = null;
+  pegado.extraFoods = [];
+  pegado.bonus = null;
+  pegado.power = null;
+  pegado.gracia = 0;
+  pegado.wallSet.add(K(5, 5));
+  pegado.fx.shield = POWER_INFO.shield.ms;
+  pegado.step();
+  comprobar(pegado.state === 'running' && pegado.enMuro === true,
+    'escudo: el choque contra un muro no deja el pestillo puesto');
+  pegado.fx.ghost = 0;
+  pegado.step();
+  comprobar(pegado.state === 'running' && pegado.body[0].x === 5 && pegado.enMuro === true,
+    'escudo: muere al acabarse la protección dentro del muro');
+  pegado.step();
+  comprobar(pegado.state === 'running' && pegado.body[0].x === 6 && pegado.enMuro === false,
+    'escudo: el pestillo no se suelta al salir del muro');
+  pegado.wallSet.add(K(7, 5));
+  pegado.step();
+  comprobar(pegado.state === 'dead', 'escudo: los muros no vuelven a contar al salir');
+
   const protegido = new Game({ ...MODES.hunter }, () => {});
   protegido.fx.shield = POWER_INFO.shield.ms;
   const lienzo = lienzoFalso();
@@ -1143,8 +1174,8 @@ process.stdout.write('arte, idioma y tableros\n');
     && main.includes('El cuerpo se extiende de forma continua y lenta'),
   'marca: la e no se aproxima despacio y de forma continua a la manzana');
 
-  comprobar(pagina.includes('snake.js?v=28') && pagina.includes('styles.css?v=28') && pagina.includes('<title>Snake</title>'),
-    'caché: falta el sello de la página (v28)');
+  comprobar(pagina.includes('snake.js?v=29') && pagina.includes('styles.css?v=29') && pagina.includes('<title>Snake</title>'),
+    'caché: falta el sello de la página (v29)');
   comprobar(pagina.includes('id="lang-switch"') && idiomas.includes("en: {")
     && idiomas.includes('export function setLanguage'), 'idioma: falta el selector ES/EN o su traducción');
   setLanguage('en');
@@ -1186,12 +1217,19 @@ process.stdout.write('arte, idioma y tableros\n');
   'campaña: se muestra o se guarda puntuación en lugar de manzanas recogidas/restantes');
   comprobar(main.includes('data-accion="settings"') && main.includes("case 'toggleSound':")
     && main.includes("routeSlug('settings')"), 'ajustes: falta el acceso compacto o su navegación');
+  comprobar(main.includes('class="row peligro"') && main.includes('data-accion="wipe"')
+    && main.includes('guardado.stats = nuevaStats()') && idiomas.includes('eraseAll')
+    && css.includes('.row.peligro'), 'perfil: falta el borrado de todo el progreso');
+  comprobar(!pagina.includes('class="tool"') && !pagina.includes('id="btn-mute"')
+    && !pagina.includes('id="btn-pause"') && !css.includes('.tool {'),
+    'interfaz: siguen visibles los controles de la barra');
   comprobar(!/fruta a fruta|fruit to fruit|gridSummary|20×20 grid|rejilla 20×20/.test(main + idiomas + pagina),
     'interfaz: vuelve a mostrar alguno de los lemas retirados');
 
-  comprobar(main.includes('BASE_PATH = (() =>')
-    && main.includes("'/snake/' : '/'")
-    && pagina.includes("indexOf('/snake/') === 0")
+  comprobar(main.includes("const BASE_PATH = location.protocol === 'file:' ? './' : '/'")
+    && pagina.includes("var base = location.protocol === 'file:' ? './' : '/'")
+    && pagina.includes("ruta.indexOf('/snake/') !== 0")
+    && pagina.includes('location.replace(resto')
     && main.includes("window.addEventListener('popstate'")
     && main.includes("coincideRuta(primera, 'settings')")
     && main.includes("coincideRuta(primera, 'competitive')")
@@ -1199,6 +1237,9 @@ process.stdout.write('arte, idioma y tableros\n');
   'rutas: falta la base dinámica (raíz en el dominio propio) o la navegación interna');
   comprobar(servidor.includes('pareceArchivo') && servidor.includes('(fallback)'),
     'servidor local: falta el fallback SPA en raíz y bajo /snake/');
+  comprobar(fs.existsSync(path.join(RAIZ, '_headers')) && fs.existsSync(path.join(RAIZ, '_redirects'))
+    && fs.existsSync(path.join(RAIZ, 'DESPLIEGUE.md')),
+    'despliegue: faltan las cabeceras, las redirecciones o el manual');
   comprobar(wrangler.includes('name = "snake"')
     && wrangler.includes('directory = "./"')
     && wrangler.includes('not_found_handling = "single-page-application"'),
@@ -1220,20 +1261,23 @@ process.stdout.write('arte, idioma y tableros\n');
     'README: falta el manual de arte y rangos del juego');
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   competitivo de cuatro tableros, sorteos, cuenta atrás y copas;
+   competitivo con tableros por rango, sorteos, cuenta atrás y copas;
    contrarreloj con reloj que acelera y manzana envenenada
    ═══════════════════════════════════════════════════════════════════════════ */
-process.stdout.write('cuatro tableros, sorteo y cuenta atrás\n');
+process.stdout.write('tableros por rango, sorteo y cuenta atrás\n');
 {
-  comprobar(main.includes('const TOTAL_TABLEROS = 4') && main.includes('function nombreTablero(i)'),
-    'competitivo: faltan los cuatro tableros o sus nombres');
+  comprobar(main.includes('const JUGADORES_POR_RANGO = [6, 6, 7, 8, 8, 8]')
+    && main.includes('function totalJugadores(') && main.includes('function nombreTablero(i)'),
+    'competitivo: falta el número de jugadores por rango o sus nombres');
   comprobar(main.includes('function menuCompetitivo()') && main.includes('function prepararCompetitivo()')
     && main.includes('function empezarCompetitivo()'),
   'competitivo: falta el menú previo, el anuncio del sorteo o el arranque');
   comprobar(main.includes('function pasoCuenta(dt)') && main.includes('app.cuenta = 3000')
     && main.includes('el.cuenta'),
   'competitivo: falta la cuenta atrás de tres segundos');
-  comprobar(main.includes('for (let i = 0; i < TOTAL_TABLEROS; i++)')
+  comprobar(main.includes('const total = totalJugadores(nivelRivales)')
+    && main.includes('prepararTableros(total)')
+    && main.includes('for (let i = 0; i < total; i++)')
     && main.includes('const juego = new Game(')
     && main.includes("i === 0 ? eventosJuego"),
   'competitivo: los tableros no se crean uno por serpiente');
@@ -1270,7 +1314,7 @@ process.stdout.write('cuatro tableros, sorteo y cuenta atrás\n');
   }
   comprobar(main.includes("const texto = String(Math.round(tab.juego.score))"),
     'competitivo: los tableros no muestran los puntos de cada jugador');
-  comprobar(css.includes('grid-template-columns: minmax(0, 1.7fr)') && main.includes('* 1.7) / 2.7'),
+  comprobar(css.includes('grid-template-columns: minmax(0, 1.7fr)') && main.includes('* 1.7) / (1.7 + columnas)'),
     'competitivo: tu tablero no es más grande que los rivales');
   comprobar(main.includes('meta = `${nombre} ×${fase.boost}') && main.includes("el.best.classList.toggle('vivo'"),
     'competitivo: la barra de arriba no recoge el acto y la ventaja');
@@ -1281,7 +1325,8 @@ process.stdout.write('cuatro tableros, sorteo y cuenta atrás\n');
   comprobar(main.includes('class="comp-escalera"') && main.includes('rankList().map')
     && css.includes('.comp-escalera') && css.includes('.escalon.aqui'),
   'competitivo: falta la escalera de rangos en el menú');
-  comprobar(main.includes('class="comp-rivales"') && main.includes("RIVAL_NAMES.join(' · ')")
+  comprobar(main.includes('class="comp-rivales"') && main.includes('RIVAL_NAMES.slice(0, Math.max(1, total - 1))')
+    && main.includes("t('compPlayers', { count: total })")
     && !main.includes('fuerzaRival') && !idiomas.includes('compStrength'),
   'competitivo: la dificultad interna de los rivales sigue a la vista');
   comprobar(main.includes('iconoRango(info.nivel)') && css.includes('.rango-icono[data-rango="5"]'),
@@ -1299,11 +1344,11 @@ process.stdout.write('cuatro tableros, sorteo y cuenta atrás\n');
     && main.includes("t('compCrowd'"),
   'competitivo: la grada no crece con el rango');
   comprobar(main.includes('function dibujarArena()') && main.includes('function actualizarTableros()')
-    && main.includes('vivosCompetitivo()'),
-  'competitivo: faltan el dibujo y los rótulos de los cuatro tableros');
+    && main.includes('function prepararTableros(') && main.includes('function rejillaArena('),
+  'competitivo: faltan el dibujo, los rótulos o la rejilla variable de tableros');
   comprobar(pagina.includes('id="arena"') && pagina.indexOf('class="tablero"') > 0
     && (pagina.match(/class="tablero"/g) || []).length === 4,
-  'competitivo: la página no tiene cuatro tableros separados');
+  'competitivo: la página no tiene los tableros separados');
   comprobar(css.includes('#arena {') && css.includes('grid-template-columns: minmax(0, 1.7fr)')
     && css.includes('.tablero.mio') && css.includes('#cuenta'),
   'competitivo: falta la rejilla de los tableros o la cuenta atrás en el estilo');
@@ -1607,7 +1652,7 @@ process.stdout.write('cuatro tableros, sorteo y cuenta atrás\n');
     && t('pointsToNext', { count: 80, rank: 'plata' }) === '80 para plata'
     && t('placedShort', { rank: 2 }) === '2º' && rankInfo(620).nivel === 3
     && t('compRivals') === 'rivales' && t('compDrop') === '−10 al caer',
-  'idioma: faltan las cadenas españolas del competitivo de cuatro tableros');
+  'idioma: faltan las cadenas españolas del competitivo');
   setLanguage('en');
   comprobar(rankInfo(260).nombre === 'gold' && t('you') === 'you' && t('play') === 'play'
     && t('pointsToNext', { count: 3, rank: 'gold' }) === '3 to gold'

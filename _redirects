@@ -1,0 +1,3 @@
+# Las URLs antiguas del despliegue estático bajo /snake/ vuelven a la raíz.
+/snake / 301
+/snake/* /:splat 301

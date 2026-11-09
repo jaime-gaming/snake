@@ -35,13 +35,13 @@ const slit = (x, y, alto) => vline(x, y, alto);
 
 
 // rivales del competitivo: cada uno juega en su propio tablero
-export const RIVAL_NAMES = ['KOBRA', 'VÍBORA', 'MAMBA'];
+export const RIVAL_NAMES = ['KOBRA', 'VÍBORA', 'MAMBA', 'BOA', 'PITÓN', 'ANACONDA', 'SIERPE'];
 
 // grupos del menú: cada uno es una subpágina con sus modos
 export const GROUPS = [
   { name: 'progreso', tag: 'rutas con obstáculos', modes: ['campaign'] },
   { name: 'infinitos', tag: 'puntuación sin final', modes: ['classic', 'frenzy', 'hunter', 'timed'] },
-  { name: 'competitivo', tag: 'cuatro tableros a la vez', modes: ['competitive'] },
+  { name: 'competitivo', tag: 'rivales por rango a la vez', modes: ['competitive'] },
 ];
 
 export const MODE_ORDER = GROUPS.flatMap((g) => g.modes);
@@ -132,7 +132,7 @@ export const MODES = {
     ...base,
     id: 'competitive',
     name: 'COMPETITIVO',
-    tag: 'cuatro tableros · tres actos · el sprint final vale doble',
+    tag: 'rivales por rango · tres actos · el sprint final vale doble',
     startSpeed: 132,
     minSpeed: 78,
     accelPerFood: 0.9,
