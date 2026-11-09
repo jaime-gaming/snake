@@ -1,4 +1,4 @@
-/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-11-09 · v27).
+/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-11-09 · v28).
    no lo edites a mano: cambia js/*.js y vuelve a ejecutar node tools/build.mjs */
 (function () {
 'use strict';
@@ -2975,6 +2975,8 @@ const STRINGS = {
     pointsWon: '+{count} puntos',
     pointsBonus: 'bonus por puntos: +{count}',
     newRank: '¡nuevo rango: {name}!',
+    rankUp: 'nuevo rango',
+    compCrowd: 'público {count}',
     rankBronze: 'bronce', rankSilver: 'plata', rankGold: 'oro',
     rankPlatinum: 'platino', rankDiamond: 'diamante', rankMaster: 'maestro',
     statsPoints: 'puntos',
@@ -3193,6 +3195,8 @@ const STRINGS = {
     pointsWon: '+{count} points',
     pointsBonus: 'score bonus: +{count}',
     newRank: 'new rank: {name}!',
+    rankUp: 'new rank',
+    compCrowd: 'crowd {count}',
     rankBronze: 'bronze', rankSilver: 'silver', rankGold: 'gold',
     rankPlatinum: 'platinum', rankDiamond: 'diamond', rankMaster: 'master',
     statsPoints: 'points',
@@ -3446,6 +3450,10 @@ const el = {
   meta: $('#hud-meta'),
   score: $('#hud-score'),
   best: $('#hud-best'),
+  compVentaja: $('#comp-ventaja'),
+  compVentajaTexto: $('#comp-ventaja-texto'),
+  compVentajaDetalle: $('#comp-ventaja-detalle'),
+  compPublico: $('#comp-publico'),
   mult: $('#hud-mult'),
   chain: $('#chain-bar'),
   combo: $('#combo'),
@@ -3965,7 +3973,11 @@ function pantalla(nombre) {
   // fuera de la partida vuelve a su aspecto normal
   const enArena = app.modo === 'competitive' && ['playing', 'paused', 'countdown'].includes(nombre);
   if (el.topbar) el.topbar.classList.toggle('competitivo', enArena);
-  if (el.stage && !enArena) delete el.stage.dataset.fase;
+  if (el.compVentaja) el.compVentaja.hidden = !enArena;
+  if (el.stage && !enArena) {
+    delete el.stage.dataset.fase;
+    delete el.stage.dataset.rango;
+  }
   if (!app.juego) actualizarEfectos(null);
   if (el.arena) {
     el.arena.hidden = !enArena;
@@ -4174,8 +4186,30 @@ function actualizarMarcador() {
       meta = `${nombre} ×${fase.boost}`;
       el.meta.dataset.fase = final ? 'final' : fase.id;
       const jugador = app.tableros[0];
-      marca = jugador ? textoVentaja(jugador, ordenCompetitivo()) : '';
-      el.best.classList.toggle('vivo', !!jugador && jugador.puesto === 1 && jugador.juego.score > 0);
+      const ventaja = jugador ? textoVentaja(jugador, ordenCompetitivo()) : '';
+      const lider = !!jugador && jugador.puesto === 1 && jugador.juego.score > 0;
+      // la ventaja deja la barra pequeña y pasa a la banda grande de estado
+      marca = '';
+      if (el.compVentaja) {
+        const estado = lider ? 'lider' : 'persigue';
+        if (el.compVentaja.dataset.estado !== estado) el.compVentaja.dataset.estado = estado;
+        const rango = String(nivelDeRango());
+        if (el.compVentaja.dataset.rango !== rango) el.compVentaja.dataset.rango = rango;
+        const texto = ventaja || t('compTied');
+        if (el.compVentajaTexto.textContent !== texto) el.compVentajaTexto.textContent = texto;
+        const detalle = jugador
+          ? `${rankName(guardado.competitive.points)} · #${jugador.puesto} · ${puntos(jugador.juego.score)}`
+          : '';
+        if (el.compVentajaDetalle.textContent !== detalle) el.compVentajaDetalle.textContent = detalle;
+        if (el.compPublico) {
+          const cuenta = Number(el.compPublico.dataset.cuenta) || 0;
+          const etiqueta = t('compCrowd', { count: cuenta });
+          if (el.compPublico.getAttribute('aria-label') !== etiqueta) {
+            el.compPublico.setAttribute('aria-label', etiqueta);
+          }
+        }
+      }
+      el.best.classList.toggle('vivo', lider);
       el.meta.classList.remove('urgente');
       if (el.best.title) el.best.removeAttribute('title');
     } else {
@@ -5003,31 +5037,53 @@ function bonoPuntosCompetitivo() {
 
 // copas de la partida: se suman una vez, al cerrar el resultado
 // la subida de rango se celebra una vez, con el icono nuevo y sin llenar la pantalla
+const CHISPAS_RANGO = [
+  [-58, -26], [-40, 22], [-22, -40], [12, -36], [44, -24],
+  [60, 8], [34, 30], [-30, 34], [6, 40], [-62, 2],
+];
+
 function bloqueSubidaRango(copas) {
   if (!copas || !copas.subio) return '';
   const info = rankInfo(copas.total);
-  return `<div class="subida-rango" role="status">
-      ${iconoRango(info.nivel)}
-      <span>${t('newRank', { name: copas.subio })}</span>
+  const antes = Number.isInteger(copas.nivelAntes) ? copas.nivelAntes : info.nivel;
+  const chispas = CHISPAS_RANGO.map(([x, y], i) =>
+    `<i style="--x:${x}px;--y:${y}px;--i:${i};--d:${120 + i * 24}ms"></i>`).join('');
+  return `<div class="subida-rango" data-rango="${info.nivel}" role="status">
+      <span class="subida-halo" aria-hidden="true"></span>
+      <span class="subida-iconos" aria-hidden="true">
+        <span class="subida-viejo">${iconoRango(antes)}</span>
+        <b class="subida-flecha">→</b>
+        <span class="subida-nuevo">${iconoRango(info.nivel)}</span>
+      </span>
+      <span class="subida-texto">
+        <b>${t('rankUp')}</b>
+        <strong>${copas.subio}</strong>
+        <em>${puntos(copas.total)} ${t('statsPoints')}</em>
+      </span>
+      <span class="subida-chispas" aria-hidden="true">${chispas}</span>
     </div>`;
 }
 
 function copasDePartida(puesto) {
   if (!app.copas) {
     const antes = guardado.competitive.points;
-    const rangoAntes = rankName(antes);
+    const infoAntes = rankInfo(antes);
+    const rangoAntes = infoAntes.nombre;
     const base = COPAS_POR_PUESTO[Math.min(3, Math.max(0, (puesto || 4) - 1))] || 0;
     const bono = bonoPuntosCompetitivo();
     const ganadas = base + bono;
     guardado.competitive.points = Math.max(0, antes + ganadas);
     guardar();
-    const rangoAhora = rankName(guardado.competitive.points);
+    const infoAhora = rankInfo(guardado.competitive.points);
+    const rangoAhora = infoAhora.nombre;
     app.copas = {
       base,
       bono,
       ganadas,
       total: guardado.competitive.points,
       subio: rangoAhora !== rangoAntes ? rangoAhora : '',
+      nivelAntes: infoAntes.nivel,
+      nivelAhora: infoAhora.nivel,
     };
   }
   return app.copas;
@@ -5120,11 +5176,38 @@ const DIBUJOS_RANGO = [
   ['#.#.#', '#####', '#####', '.###.', '..#..'], // maestro
 ];
 
+// la grada crece con el rango: más bloques de público en la banda de estado
+const PUBLICO_POR_RANGO = [4, 6, 8, 10, 13, 16];
+
+function bloquesPublico(nivel) {
+  const n = Math.max(0, Math.min(PUBLICO_POR_RANGO.length - 1, Math.floor(Number(nivel) || 0)));
+  const total = PUBLICO_POR_RANGO[n];
+  return {
+    total,
+    html: Array.from({ length: total }, (_, i) =>
+      `<i style="--i:${i};--d:${i * 70}ms"></i>`).join(''),
+  };
+}
+
+function pintarPublico(nivel) {
+  if (!el.compPublico) return;
+  const { total, html } = bloquesPublico(nivel);
+  if (el.compPublico.dataset.cuenta === String(total)) return;
+  el.compPublico.innerHTML = html;
+  el.compPublico.dataset.cuenta = String(total);
+  el.compPublico.setAttribute('aria-label', t('compCrowd', { count: total }));
+}
+
 function iconoRango(nivel) {
-  const n = Math.max(0, Math.min(DIBUJOS_RANGO.length - 1, Number(nivel) || 0));
+  const n = Math.max(0, Math.min(DIBUJOS_RANGO.length - 1, Math.floor(Number(nivel) || 0)));
   let celdas = '';
+  let indice = 0;
   for (const fila of DIBUJOS_RANGO[n]) {
-    for (const celda of fila) celdas += `<i${celda === '#' ? ' class="lleno"' : ''}></i>`;
+    for (const celda of fila) {
+      const lleno = celda === '#';
+      celdas += `<i${lleno ? ` class="lleno" style="--i:${indice};--d:${140 + indice * 18}ms"` : ''}></i>`;
+      indice++;
+    }
   }
   return `<span class="rango-icono" data-rango="${n}" aria-hidden="true">${celdas}</span>`;
 }
@@ -5154,6 +5237,7 @@ function menuCompetitivo() {
   const tramo = info.tramo || 0;
   const avance = tramo > 0 ? Math.min(100, Math.round(((tramo - info.falta) / tramo) * 100)) : 100;
   const dato = (valor, etiqueta) => `<div class="comp-dato"><b>${valor}</b><span>${etiqueta}</span></div>`;
+  const grada = bloquesPublico(info.nivel);
 
   // la escalera de rangos: los seis peldaños, con el actual enmarcado
   const escalera = rankList().map((r) => {
@@ -5189,6 +5273,7 @@ function menuCompetitivo() {
       <span><b>×2</b><i>20 s · ${t('phaseSprint')}</i></span>
     </div>
     <p class="comp-rivales"><span>${t('compRivals')}</span><span>${RIVAL_NAMES.join(' · ')}</span></p>
+    <p class="comp-grada"><span>${t('compCrowd', { count: grada.total })}</span><span class="comp-grada-bloques" aria-hidden="true">${grada.html}</span></p>
     <p class="comp-reglas"><span>60 s</span><span>${t('compDrop')}</span><span>${t('compProtected')}</span></p>
     <div class="acciones">
       <button class="principal" type="button" data-accion="jugarCompetitivo">${t('play')} <kbd>↵</kbd></button>
@@ -5307,6 +5392,10 @@ function empezarCompetitivo() {
 
   const nivelRivales = rankInfo(guardado.competitive.points).nivel;
   const dificultad = dificultadRivales(nivelRivales);
+  // el rango no sólo cambia la dificultad: también llena la grada y sube la luz
+  pintarPublico(nivelRivales);
+  if (el.compVentaja) el.compVentaja.dataset.rango = String(nivelRivales);
+  if (el.stage) el.stage.dataset.rango = String(nivelRivales);
   for (let i = 0; i < TOTAL_TABLEROS; i++) {
     // misma velocidad, mismo mapa y mismo modificador para los cuatro
     const cfg = { ...configuracionArena(), graciaMs: GRACIA_MS };
@@ -5467,14 +5556,6 @@ function actualizarTableros() {
     if (estado) {
       const texto = protegido ? t('compProtected') : '';
       if (estado.textContent !== texto) estado.textContent = texto;
-    }
-
-    if (tab.esJugador) {
-      const hueco = fig.querySelector('.tablero-gap');
-      if (hueco) {
-        const texto = textoVentaja(tab, orden);
-        if (hueco.textContent !== texto) hueco.textContent = texto;
-      }
     }
   });
 }

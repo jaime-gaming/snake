@@ -1143,8 +1143,8 @@ process.stdout.write('arte, idioma y tableros\n');
     && main.includes('El cuerpo se extiende de forma continua y lenta'),
   'marca: la e no se aproxima despacio y de forma continua a la manzana');
 
-  comprobar(pagina.includes('snake.js?v=27') && pagina.includes('styles.css?v=27') && pagina.includes('<title>Snake</title>'),
-    'caché: falta el sello de la página (v27)');
+  comprobar(pagina.includes('snake.js?v=28') && pagina.includes('styles.css?v=28') && pagina.includes('<title>Snake</title>'),
+    'caché: falta el sello de la página (v28)');
   comprobar(pagina.includes('id="lang-switch"') && idiomas.includes("en: {")
     && idiomas.includes('export function setLanguage'), 'idioma: falta el selector ES/EN o su traducción');
   setLanguage('en');
@@ -1289,8 +1289,15 @@ process.stdout.write('cuatro tableros, sorteo y cuenta atrás\n');
   comprobar(main.includes('const DIBUJOS_RANGO') && css.includes('grid-template-columns: repeat(5, 1fr)'),
     'competitivo: los iconos de rango no tienen una figura propia por peldaño');
   comprobar(main.includes('bloqueSubidaRango(copas)') && css.includes('.subida-rango')
-    && css.includes('@keyframes subida-rango'),
+    && css.includes('@keyframes subida-rango') && main.includes('CHISPAS_RANGO')
+    && css.includes('@keyframes subida-chispa'),
   'competitivo: falta la animación de subida de rango');
+  comprobar(pagina.includes('id="comp-ventaja"') && main.includes('compVentajaTexto.textContent')
+    && css.includes('#comp-ventaja-texto') && !main.includes('tablero-gap'),
+  'competitivo: la ventaja no vive en su banda grande');
+  comprobar(main.includes('PUBLICO_POR_RANGO') && css.includes('#comp-publico')
+    && main.includes("t('compCrowd'"),
+  'competitivo: la grada no crece con el rango');
   comprobar(main.includes('function dibujarArena()') && main.includes('function actualizarTableros()')
     && main.includes('vivosCompetitivo()'),
   'competitivo: faltan el dibujo y los rótulos de los cuatro tableros');
@@ -1326,7 +1333,8 @@ process.stdout.write('cuatro tableros, sorteo y cuenta atrás\n');
     && pagina.includes('id="reloj-fase"'),
   'competitivo: faltan los tres actos, el marcador en vivo o el aviso dentro de la barra');
   comprobar(main.includes('el.topbar.classList.toggle') && css.includes('#topbar.competitivo .meta')
-    && main.includes('el.stage.dataset.fase') && css.includes('#stage[data-fase="sprint"]'),
+    && main.includes('el.stage.dataset.fase') && css.includes('#stage[data-fase="sprint"]')
+    && css.includes('#stage::before') && css.includes('transition: opacity 0.65s'),
   'competitivo: la barra o la luz del escenario no siguen el acto');
   comprobar(css.includes('flex-direction: column') && css.includes('flex: 0 0 auto') && css.includes('margin: auto 0')
     && input.includes('scrollUp') && input.includes('repetible') && main.includes('repetido = false'),
