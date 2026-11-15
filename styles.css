@@ -2209,6 +2209,37 @@ button.foco {
   display: none !important;
 }
 
+/* botón de vuelta al hub: blanco, bajo la barra, a la izquierda.
+   sólo existe cuando se entra desde el hub (?from=hub) */
+
+#hub-volver {
+  position: fixed;
+  top: calc(max(6px, env(safe-area-inset-top)) + 48px);
+  left: max(clamp(6px, 1.4vw, 14px), calc((100vw - 1500px) / 2 + clamp(6px, 1.4vw, 14px)));
+  z-index: 45;
+  padding: 7px 13px;
+  background: var(--fg);
+  color: #000;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  transition: background 0.12s;
+}
+
+#hub-volver:hover {
+  background: #d8d8d8;
+}
+
+#hub-volver.foco {
+  outline: 2px solid #000;
+  outline-offset: -2px;
+}
+
+/* deja libre la banda del botón bajo la barra cuando el hub está presente */
+body[data-desde-hub="1"] #overlay {
+  padding-top: max(96px, calc(env(safe-area-inset-top) + 90px));
+}
+
 /* pie */
 
 #footer {

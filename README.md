@@ -69,6 +69,13 @@ Cada peldaño tiene su propia figura de bloques; al subir de rango, el resultado
 
 La portada enlaza con el perfil: partidas, victorias en competitivo, frutas, tiempo jugado, mejor cadena, mejor puntuación, puntos de rango y el peldaño actual. Al final hay un botón para **borrar todo el progreso** —récords, campaña, rango y estadísticas— con confirmación; el ajuste de borrado hace lo mismo.
 
+## Hub
+
+La portada puede vivir dentro del hub de juegos: al entrar con `?from=hub`
+aparece un botón blanco bajo la barra superior, a la izquierda, que dice
+**volver al hub** y devuelve a `classic.jaime-gaming.com?from=snake`. Sin ese
+parámetro, la portada queda como siempre.
+
 ## Idioma
 
 El selector **EN / ES** cambia todos los textos y recuerda la elección. La estética no cambia con el idioma: los mismos bloques, los mismos silencios y el mismo rojo.

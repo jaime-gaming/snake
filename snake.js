@@ -1,4 +1,4 @@
-/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-11-09 · v29).
+/* snake — un solo fichero, sin módulos. generado por tools/build.mjs (2026-11-15 · v30).
    no lo edites a mano: cambia js/*.js y vuelve a ejecutar node tools/build.mjs */
 (function () {
 'use strict';
@@ -2880,6 +2880,7 @@ const STRINGS = {
       'ZIGZAG TRIPLE': 'zigzag triple', 'ANILLO CUADRADO': 'anillo cuadrado',
       'OCHO PILARES': 'ocho pilares', 'LABERINTO II': 'laberinto ii', 'GRAN FINAL': 'gran final',
     },
+    hubBack: 'volver al hub',
     controls: 'controles',
     hideGrid: 'quitar trama',
     showGrid: 'poner trama',
@@ -3103,6 +3104,7 @@ const STRINGS = {
       'ZIGZAG TRIPLE': 'triple zigzag', 'ANILLO CUADRADO': 'square ring',
       'OCHO PILARES': 'eight pillars', 'LABERINTO II': 'maze ii', 'GRAN FINAL': 'grand finale',
     },
+    hubBack: 'back to hub',
     controls: 'controls',
     hideGrid: 'hide scanlines',
     showGrid: 'show scanlines',
@@ -3455,6 +3457,19 @@ function comprobarPiezas() {
 const ORDEN = MODE_ORDER;
 const CLAVE = 'snake.v2';
 const CLAVE_ANTIGUA = 'snake.frenzy.v1';
+
+// el hub enlaza con ?from=hub y la portada entonces ofrece la vuelta al hub;
+// el enlace de vuelta lleva ?from=snake para que el hub sepa de dónde vienes.
+const URL_HUB = 'https://classic.jaime-gaming.com/?from=snake';
+const DESDE_HUB = (() => {
+  try {
+    const desde = new URLSearchParams(location.search).get('from');
+    return !!desde && desde.toLowerCase() === 'hub';
+  } catch (err) {
+    return false;
+  }
+})();
+if (DESDE_HUB) document.body.dataset.desdeHub = '1';
 
 // los controles de sonido y pausa ya no viven en la barra: siguen
 // existiendo como disparadores internos para M/P y para el menú de ajustes.
@@ -4448,6 +4463,8 @@ function desplazarUI(paso, repetido = false) {
 }
 
 function llevarALaVista(nodo) {
+  // los nodos fijos ya están siempre a la vista: no hay que desplazar la capa
+  if (nodo && typeof getComputedStyle === 'function' && getComputedStyle(nodo).position === 'fixed') return;
   const caja = el.overlay;
   if (!caja || !caja.classList.contains('abierto') || typeof nodo.getBoundingClientRect !== 'function') {
     if (nodo && typeof nodo.scrollIntoView === 'function') {
@@ -4491,7 +4508,7 @@ function enfocarPrimero(selector) {
 function anilloFoco() {
   const todos = botonesUI();
   if (app.pantalla === 'home') {
-    return todos.filter((b) => b.dataset.grupo !== undefined || b.classList.contains('link'));
+    return todos.filter((b) => b.dataset.grupo !== undefined || b.classList.contains('link') || b.dataset.accion === 'hub');
   }
   if (app.pantalla === 'modes') return todos.filter((b) => b.dataset.modo !== undefined || b.dataset.accion === 'settings');
   if (app.pantalla === 'levels') return todos.filter((b) => b.dataset.nivel !== undefined);
@@ -4611,7 +4628,11 @@ function mostrarInicio() {
       <span class="row-right">${resumenGrupo(i)}</span>
     </button>`).join('');
 
-  ponerOverlay(`<div class="panel inicio portada">
+  const volverHub = DESDE_HUB
+    ? `<button id="hub-volver" type="button" data-accion="hub" data-i18n="hubBack">${t('hubBack')}</button>`
+    : '';
+
+  ponerOverlay(`${volverHub}<div class="panel inicio portada">
     <div class="inicio-texto">
       <header class="inicio-cabeza">
         <h1 class="marca"><canvas id="marca" role="img" aria-label="snake"></canvas></h1>
@@ -6122,6 +6143,12 @@ function accion(nombre, repetido = false) {
     return;
   }
 
+  // con el foco nativo (tab) en el botón del hub, enter lo activa a él
+  if (nombre === 'confirm' && document.activeElement && document.activeElement.id === 'hub-volver') {
+    document.activeElement.click();
+    return;
+  }
+
   if (nombre === 'scrollUp' || nombre === 'scrollDown' || nombre === 'scrollTop' || nombre === 'scrollBottom') {
     const caja = el.overlay;
     if (!caja || !caja.classList.contains('abierto')) return;
@@ -6300,6 +6327,9 @@ function ejecutar(nombre) {
       break;
     case 'modos':
       mostrarInicio();
+      break;
+    case 'hub':
+      location.href = URL_HUB;
       break;
     case 'help':
       mostrarAyuda();

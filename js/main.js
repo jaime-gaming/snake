@@ -27,6 +27,19 @@ const ORDEN = MODE_ORDER;
 const CLAVE = 'snake.v2';
 const CLAVE_ANTIGUA = 'snake.frenzy.v1';
 
+// el hub enlaza con ?from=hub y la portada entonces ofrece la vuelta al hub;
+// el enlace de vuelta lleva ?from=snake para que el hub sepa de dónde vienes.
+const URL_HUB = 'https://classic.jaime-gaming.com/?from=snake';
+const DESDE_HUB = (() => {
+  try {
+    const desde = new URLSearchParams(location.search).get('from');
+    return !!desde && desde.toLowerCase() === 'hub';
+  } catch (err) {
+    return false;
+  }
+})();
+if (DESDE_HUB) document.body.dataset.desdeHub = '1';
+
 // los controles de sonido y pausa ya no viven en la barra: siguen
 // existiendo como disparadores internos para M/P y para el menú de ajustes.
 function controlOculto(id, texto) {
@@ -1019,6 +1032,8 @@ function desplazarUI(paso, repetido = false) {
 }
 
 function llevarALaVista(nodo) {
+  // los nodos fijos ya están siempre a la vista: no hay que desplazar la capa
+  if (nodo && typeof getComputedStyle === 'function' && getComputedStyle(nodo).position === 'fixed') return;
   const caja = el.overlay;
   if (!caja || !caja.classList.contains('abierto') || typeof nodo.getBoundingClientRect !== 'function') {
     if (nodo && typeof nodo.scrollIntoView === 'function') {
@@ -1062,7 +1077,7 @@ function enfocarPrimero(selector) {
 function anilloFoco() {
   const todos = botonesUI();
   if (app.pantalla === 'home') {
-    return todos.filter((b) => b.dataset.grupo !== undefined || b.classList.contains('link'));
+    return todos.filter((b) => b.dataset.grupo !== undefined || b.classList.contains('link') || b.dataset.accion === 'hub');
   }
   if (app.pantalla === 'modes') return todos.filter((b) => b.dataset.modo !== undefined || b.dataset.accion === 'settings');
   if (app.pantalla === 'levels') return todos.filter((b) => b.dataset.nivel !== undefined);
@@ -1182,7 +1197,11 @@ function mostrarInicio() {
       <span class="row-right">${resumenGrupo(i)}</span>
     </button>`).join('');
 
-  ponerOverlay(`<div class="panel inicio portada">
+  const volverHub = DESDE_HUB
+    ? `<button id="hub-volver" type="button" data-accion="hub" data-i18n="hubBack">${t('hubBack')}</button>`
+    : '';
+
+  ponerOverlay(`${volverHub}<div class="panel inicio portada">
     <div class="inicio-texto">
       <header class="inicio-cabeza">
         <h1 class="marca"><canvas id="marca" role="img" aria-label="snake"></canvas></h1>
@@ -2693,6 +2712,12 @@ function accion(nombre, repetido = false) {
     return;
   }
 
+  // con el foco nativo (tab) en el botón del hub, enter lo activa a él
+  if (nombre === 'confirm' && document.activeElement && document.activeElement.id === 'hub-volver') {
+    document.activeElement.click();
+    return;
+  }
+
   if (nombre === 'scrollUp' || nombre === 'scrollDown' || nombre === 'scrollTop' || nombre === 'scrollBottom') {
     const caja = el.overlay;
     if (!caja || !caja.classList.contains('abierto')) return;
@@ -2871,6 +2896,9 @@ function ejecutar(nombre) {
       break;
     case 'modos':
       mostrarInicio();
+      break;
+    case 'hub':
+      location.href = URL_HUB;
       break;
     case 'help':
       mostrarAyuda();

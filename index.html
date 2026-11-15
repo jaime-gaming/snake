@@ -26,6 +26,9 @@
     if (!route) return;
     try {
       var target = new URL(route, location.origin);
+      // el parámetro del hub (?from=hub) sobrevive a la reescritura de la ruta
+      var desde = new URLSearchParams(location.search).get('from');
+      if (desde && !target.searchParams.has('from')) target.searchParams.set('from', desde);
       history.replaceState(null, '', target.pathname + target.search + target.hash);
     } catch (error) {
       // Si la ruta de retorno no es válida, dejamos que arranque la portada.
@@ -39,7 +42,7 @@
   })();
 </script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Crect x='2' y='7' width='4' height='4' fill='%23fff'/%3E%3Crect x='6' y='7' width='4' height='4' fill='%23fff'/%3E%3Crect x='10' y='7' width='2' height='4' fill='%23fff'/%3E%3Crect x='13' y='2' width='3' height='3' fill='%23ff2b2b'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="styles.css?v=29">
+<link rel="stylesheet" href="styles.css?v=30">
 </head>
 <body data-screen="home">
   <div id="app">
@@ -151,6 +154,6 @@
     })();
   </script>
 
-  <script src="snake.js?v=29"></script>
+  <script src="snake.js?v=30"></script>
 </body>
 </html>
