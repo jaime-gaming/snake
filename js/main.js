@@ -29,16 +29,33 @@ const CLAVE_ANTIGUA = 'snake.frenzy.v1';
 
 // el hub enlaza con ?from=hub y la portada entonces ofrece la vuelta al hub;
 // el enlace de vuelta lleva ?from=snake para que el hub sepa de dónde vienes.
-const URL_HUB = 'https://classic.jaime-gaming.com/?from=snake';
-const DESDE_HUB = (() => {
+// el origen se recuerda en sessionStorage: el botón dura lo que la pestaña.
+const HUB_URL = 'https://classic.jaime-gaming.com/?from=snake';
+const CLAVE_ORIGEN = 'snake.from';
+
+function llegaDelHub() {
+  let origen = '';
   try {
-    const desde = new URLSearchParams(location.search).get('from');
-    return !!desde && desde.toLowerCase() === 'hub';
+    origen = new URLSearchParams(location.search).get('from') || '';
+  } catch (err) {
+    origen = '';
+  }
+  if (origen === 'hub') {
+    try {
+      sessionStorage.setItem(CLAVE_ORIGEN, 'hub');
+    } catch (err) {
+      // sin almacenamiento de sesión el botón dura esta carga
+    }
+    return true;
+  }
+  try {
+    return sessionStorage.getItem(CLAVE_ORIGEN) === 'hub';
   } catch (err) {
     return false;
   }
-})();
-if (DESDE_HUB) document.body.dataset.desdeHub = '1';
+}
+
+const vieneDelHub = llegaDelHub();
 
 // los controles de sonido y pausa ya no viven en la barra: siguen
 // existiendo como disparadores internos para M/P y para el menú de ajustes.
@@ -998,7 +1015,7 @@ const foco = { indice: -1 };
 // botones que se pueden alcanzar con las flechas en la capa abierta
 function botonesUI() {
   if (!el.overlay.classList.contains('abierto')) return [];
-  return [...el.overlay.querySelectorAll('button')].filter((b) => !b.disabled);
+  return [...el.overlay.querySelectorAll('button, .hub-volver')].filter((b) => !b.disabled);
 }
 
 function pintarFoco() {
@@ -1032,8 +1049,6 @@ function desplazarUI(paso, repetido = false) {
 }
 
 function llevarALaVista(nodo) {
-  // los nodos fijos ya están siempre a la vista: no hay que desplazar la capa
-  if (nodo && typeof getComputedStyle === 'function' && getComputedStyle(nodo).position === 'fixed') return;
   const caja = el.overlay;
   if (!caja || !caja.classList.contains('abierto') || typeof nodo.getBoundingClientRect !== 'function') {
     if (nodo && typeof nodo.scrollIntoView === 'function') {
@@ -1077,7 +1092,7 @@ function enfocarPrimero(selector) {
 function anilloFoco() {
   const todos = botonesUI();
   if (app.pantalla === 'home') {
-    return todos.filter((b) => b.dataset.grupo !== undefined || b.classList.contains('link') || b.dataset.accion === 'hub');
+    return todos.filter((b) => b.dataset.grupo !== undefined || b.classList.contains('link') || b.classList.contains('hub-volver'));
   }
   if (app.pantalla === 'modes') return todos.filter((b) => b.dataset.modo !== undefined || b.dataset.accion === 'settings');
   if (app.pantalla === 'levels') return todos.filter((b) => b.dataset.nivel !== undefined);
@@ -1135,6 +1150,12 @@ function moverFoco(dx, dy, repetido = false) {
 }
 
 function activarFoco() {
+  // con el foco nativo (tab) en el enlace del hub, enter lo activa a él
+  const activo = document.activeElement;
+  if (activo && activo.classList && activo.classList.contains('hub-volver')) {
+    activo.click();
+    return true;
+  }
   const lista = botonesUI();
   const boton = lista[foco.indice];
   if (!boton) return false;
@@ -1185,6 +1206,10 @@ function filaModo(modo, i) {
   </button>`;
 }
 
+const botonHub = () => (vieneDelHub
+  ? `<div class="hub-barra"><a class="hub-volver" href="${HUB_URL}"><span aria-hidden="true">←</span>${t('backToHub')}</a></div>`
+  : '');
+
 function mostrarInicio() {
   pararTemporizador();
   app.juego = null;
@@ -1197,11 +1222,7 @@ function mostrarInicio() {
       <span class="row-right">${resumenGrupo(i)}</span>
     </button>`).join('');
 
-  const volverHub = DESDE_HUB
-    ? `<button id="hub-volver" type="button" data-accion="hub" data-i18n="hubBack">${t('hubBack')}</button>`
-    : '';
-
-  ponerOverlay(`${volverHub}<div class="panel inicio portada">
+  ponerOverlay(`<div class="panel inicio portada">
     <div class="inicio-texto">
       <header class="inicio-cabeza">
         <h1 class="marca"><canvas id="marca" role="img" aria-label="snake"></canvas></h1>
@@ -1218,7 +1239,7 @@ function mostrarInicio() {
       <canvas id="demo" aria-label="${t('preview')}"></canvas>
       <p class="nota" id="demo-nota">${t('previewGroupHint')}</p>
     </aside>
-  </div>`);
+  </div>${botonHub()}`);
 
   el.score.textContent = '—';
   el.meta.textContent = t('chooseGroup');
@@ -2712,12 +2733,6 @@ function accion(nombre, repetido = false) {
     return;
   }
 
-  // con el foco nativo (tab) en el botón del hub, enter lo activa a él
-  if (nombre === 'confirm' && document.activeElement && document.activeElement.id === 'hub-volver') {
-    document.activeElement.click();
-    return;
-  }
-
   if (nombre === 'scrollUp' || nombre === 'scrollDown' || nombre === 'scrollTop' || nombre === 'scrollBottom') {
     const caja = el.overlay;
     if (!caja || !caja.classList.contains('abierto')) return;
@@ -2896,9 +2911,6 @@ function ejecutar(nombre) {
       break;
     case 'modos':
       mostrarInicio();
-      break;
-    case 'hub':
-      location.href = URL_HUB;
       break;
     case 'help':
       mostrarAyuda();

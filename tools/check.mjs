@@ -1176,9 +1176,9 @@ process.stdout.write('arte, idioma y tableros\n');
 
   comprobar(pagina.includes('snake.js?v=30') && pagina.includes('styles.css?v=30') && pagina.includes('<title>Snake</title>'),
     'caché: falta el sello de la página (v30)');
-  comprobar(main.includes("desde.toLowerCase() === 'hub'") && main.includes('data-accion="hub"')
-    && main.includes('?from=snake') && css.includes('#hub-volver')
-    && idiomas.includes("hubBack: 'volver al hub'") && idiomas.includes("hubBack: 'back to hub'"),
+  comprobar(main.includes("origen === 'hub'") && main.includes("sessionStorage.setItem(CLAVE_ORIGEN, 'hub')")
+    && main.includes('?from=snake') && css.includes('.hub-volver')
+    && idiomas.includes("backToHub: 'volver al hub'") && idiomas.includes("backToHub: 'back to hub'"),
     'hub: falta el botón de vuelta al hub para ?from=hub');
   comprobar(pagina.includes('id="lang-switch"') && idiomas.includes("en: {")
     && idiomas.includes('export function setLanguage'), 'idioma: falta el selector ES/EN o su traducción');
