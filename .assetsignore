@@ -1,0 +1,15 @@
+/.git/
+/.github/
+/js/
+/tools/
+/media/
+/serve.mjs
+/wrangler.toml
+/README.md
+/DESPLIEGUE.md
+/CHANGELOG.md
+/SECURITY.md
+/LICENSE
+/.gitignore
+/.assetsignore
+.DS_Store

@@ -1264,6 +1264,27 @@ process.stdout.write('arte, idioma y tableros\n');
     && readme.includes('1200') && !readme.includes('Cloudflare'),
     'README: falta el manual de arte y rangos del juego');
 
+  // el manual de la casa: arranque en un minuto, capturas que existen y los
+  // ficheros que un repositorio publicado debe traer
+  for (const rel of ['LICENSE', 'CHANGELOG.md', 'SECURITY.md', '.assetsignore']) {
+    comprobar(fs.existsSync(path.join(RAIZ, rel)), `falta ${rel} en la raíz`);
+  }
+  comprobar(readme.includes('## Ejecutar en local') && readme.includes('node serve.mjs')
+    && readme.includes('node tools/build.mjs') && readme.includes('## Capturas'),
+  'README: faltan las instrucciones de ejecución o la sección de capturas');
+  const capturas = [...readme.matchAll(/!\[[^\]]*\]\((media\/[^)]+)\)/g)].map((m) => m[1]);
+  comprobar(capturas.length >= 4, `README: sólo ${capturas.length} capturas enlazadas`);
+  for (const captura of capturas) {
+    comprobar(fs.existsSync(path.join(RAIZ, captura)), `README: enlaza ${captura}, que no existe`);
+  }
+  const licencia = fs.existsSync(path.join(RAIZ, 'LICENSE'))
+    ? fs.readFileSync(path.join(RAIZ, 'LICENSE'), 'utf8') : '';
+  comprobar(licencia.startsWith('MIT License') && readme.includes('[MIT](LICENSE)'),
+    'licencia: LICENSE no es MIT o el README no la enlaza');
+  comprobar(!fs.readFileSync(path.join(RAIZ, '.assetsignore'), 'utf8').includes('styles.css')
+    && fs.readFileSync(path.join(RAIZ, '.assetsignore'), 'utf8').includes('/media/'),
+  'despliegue: .assetsignore debe dejar fuera las capturas y dentro el juego');
+
 /* ═══════════════════════════════════════════════════════════════════════════
    competitivo con tableros por rango, sorteos, cuenta atrás y copas;
    contrarreloj con reloj que acelera y manzana envenenada
