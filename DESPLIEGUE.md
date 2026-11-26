@@ -46,5 +46,8 @@ Worker nuevo: revisa el punto 1.
 `_headers` (Pages) marca el HTML como `no-store`. En Workers, el HTML se sirve
 sin caché por defecto; si tienes una regla de caché para todo el sitio,
 excluye `/`, `/index.html` y las rutas del juego, o purga tras cada despliegue.
-Los assets llevan sello `?v=29` para que un cambio de CSS/JS no reutilice la
-copia anterior.
+Los assets llevan sello `?v=` en `index.html` (ahora `?v=30`) para que un cambio
+de CSS/JS no reutilice la copia anterior. El sello vive en el HTML y en la
+comprobación de `tools/check.mjs`; `tools/verificar-despliegue.mjs` no lo lleva
+escrito: lo lee del repositorio y del HTML servido, así que al subirlo basta con
+tocar esos dos sitios.

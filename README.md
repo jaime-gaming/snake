@@ -2,6 +2,72 @@
 
 Un juego de serpientes de bloques en blanco y negro. Sin adornos, sin dependencias y sin llamadas a la red: sólo la rejilla, la manzana, el pulso de los bloques y el ruido seco de cada choque. La interfaz está en español y en inglés, y se puede jugar con teclado, gesto táctil o mando.
 
+![La portada: el logotipo de bloques y las tres rutas del juego](media/portada.png)
+
+**Juega en [snake.jaime-gaming.com](https://snake.jaime-gaming.com)** · [Cómo ejecutarlo en local](#ejecutar-en-local) · [Capturas](#capturas) · [Controles](#controles) · [Modos](#modos) · [Competitivo](#competitivo)
+
+## Ejecutar en local
+
+El juego no tiene dependencias, ni instalación, ni compilación. En el repositorio ya está el bundle `snake.js`, así que basta con abrir `index.html`.
+
+Node.js **20 o superior** sólo hace falta para el servidor de desarrollo y para las comprobaciones; para jugar no se necesita nada.
+
+### Opción rápida: abrir la página
+
+Descarga el repositorio y abre `index.html` con doble clic. La página detecta que viene de `file://`, usa rutas relativas y funciona sin servidor. El audio arranca en la primera interacción, como en cualquier navegador.
+
+### Opción recomendada: servidor de desarrollo
+
+```sh
+git clone https://github.com/jaime-gaming/snake.git
+cd snake
+node serve.mjs          # http://localhost:8123
+node serve.mjs 3000     # o el puerto que quieras
+```
+
+`serve.mjs` sirve el sitio **sin caché** (para no mirar CSS viejo), devuelve `index.html` en las rutas profundas (`/competitivo`, `/campaña/nivel-30`…) y entiende las URLs antiguas bajo `/snake/`. También escucha en `0.0.0.0`, así que se puede abrir desde el móvil con la IP del ordenador.
+
+Cualquier otro servidor estático vale igual, siempre que las rutas desconocidas caigan en `index.html`:
+
+```sh
+python3 -m http.server 8000
+npx serve .
+```
+
+### Comprobaciones
+
+```sh
+node tools/check.mjs           # reglas, niveles y textos; sin navegador
+node tools/build.mjs           # regenera snake.js a partir de js/*.js
+node tools/build.mjs --check   # falla si snake.js no coincide con las fuentes
+```
+
+`snake.js` es un **artefacto generado**: no se edita a mano. Los cambios van en `js/*.js` y después se ejecuta `node tools/build.mjs`. El mismo par de comandos es lo que corre la CI en cada `push` y en cada *pull request* (`.github/workflows/checks.yml`).
+
+### Estructura
+
+| Ruta | Qué es |
+| --- | --- |
+| `index.html` | la página: la barra, el lienzo, el reloj y los avisos |
+| `styles.css` | toda la estética de bloques |
+| `snake.js` | bundle generado que carga la página |
+| `js/` | fuentes del juego: `engine`, `levels`, `audio`, `input`, `i18n`, `grid`, `main` |
+| `tools/` | `build.mjs`, `check.mjs` y `verificar-despliegue.mjs` |
+| `media/` | las capturas de este README |
+
+## Capturas
+
+| | |
+| --- | --- |
+| ![Clásico en marcha](media/clasico.png) | ![Frenesí con sus olas de fruta](media/frenesi.png) |
+| **Clásico** — cada fruta acelera y a las treinta llegan los muros. | **Frenesí** — bordes abiertos, olas de fruta y picos de velocidad. |
+| ![El cazador persiguiendo](media/cazador.png) | ![Contrarreloj con el reloj grande](media/contrarreloj.png) |
+| **Cazador** — la serpiente roja come puntos azules y después te busca. | **Contrarreloj** — treinta segundos que aceleran; cada fruta suma tres. |
+| ![Competitivo con tableros separados](media/competitivo.png) | ![Menú del competitivo con la escalera de rangos](media/competitivo-menu.png) |
+| **Competitivo** — seis tableros a la vez, tres actos de veinte segundos. | **Menú del competitivo** — rango, puntos y qué abre cada peldaño. |
+| ![La rejilla de la campaña](media/campana.png) | ![El perfil con las estadísticas](media/perfil.png) |
+| **Campaña** — treinta niveles y la vista previa del elegido. | **Perfil** — lo jugado, los récords y el rango actual. |
+
 ## Idea visual
 
 La pantalla es una hoja de tinta: negro profundo, blancos duros y un rojo reservado para lo que quema. La serpiente no es una línea continua, sino una cadena de bloques que respira con la manzana. El título de la portada está dibujado como cinco serpientes independientes; la `e` persigue la manzana despacio, sin prisa, hasta alcanzarla. Los marcos son escuetos, las esquinas se marcan con dos trazos y cada aviso ocupa el menor espacio posible. La tipografía mezcla texto sin serifa para leer con comodidad y monoespaciada para cifras y rótulos; los datos siguen alineados como bloques.
@@ -80,3 +146,24 @@ El selector **EN / ES** cambia todos los textos y recuerda la elección. La est�
 ## Despliegue
 
 La publicación en el dominio, la caché y la comprobación posterior están en [DESPLIEGUE.md](DESPLIEGUE.md).
+
+## Contribuir
+
+Los arreglos y las ideas son bienvenidos. Antes de abrir un *pull request*:
+
+```sh
+node tools/check.mjs
+node tools/build.mjs          # si has tocado js/*.js
+node tools/build.mjs --check   # debe decir «snake.js al día»
+```
+
+- Toca `js/*.js`, nunca `snake.js`, y regenera el bundle en el mismo cambio.
+- Si cambias `styles.css` o `snake.js`, sube el sello `?v=` de `index.html` (y la comprobación de `tools/check.mjs`) para que nadie vea una copia vieja.
+- Las comprobaciones de `tools/check.mjs` son estrictas a propósito: cubren modos, rangos, idioma y textos. Si una falla, arregla el código o justifica por qué la comprobación cambia.
+- Los textos de la interfaz van **en español y en inglés** en `js/i18n.js`; una cadena sin su pareja deja la mitad del juego en el otro idioma.
+
+No hay plantilla de *issue* ni código de conducta: abre un *issue* o un *pull request* contando qué cambia y por qué.
+
+## Licencia
+
+[MIT](LICENSE) © 2026 Jaime Gaming. Es la misma licencia que usa [Wave](https://github.com/jaime-gaming/Wave).
